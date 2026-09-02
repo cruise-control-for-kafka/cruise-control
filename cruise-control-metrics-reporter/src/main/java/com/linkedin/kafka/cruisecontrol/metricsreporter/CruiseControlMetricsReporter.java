@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import org.apache.kafka.clients.ClientUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AlterConfigOp;
 import org.apache.kafka.clients.admin.AlterConfigsResult;
@@ -375,7 +376,6 @@ public class CruiseControlMetricsReporter implements MetricsReporter, Runnable {
     String cruiseControlMetricsTopic = _metricsTopic.name();
 
     try {
-      // For compatibility with Kafka 4.0 and beyond we must use new API methods.
       TopicDescription topicDescription = getTopicDescription(_adminClient, cruiseControlMetricsTopic);
 
       if (topicDescription.partitions().size() < _metricsTopic.numPartitions()) {
@@ -514,68 +514,22 @@ public class CruiseControlMetricsReporter implements MetricsReporter, Runnable {
   }
 
   /**
-   * Attempts to retrieve the method for mapping topic names to futures from the {@link org.apache.kafka.clients.admin.DescribeTopicsResult} class.
-   * This method first tries to get the {@code topicNameValues()} method, which is available in Kafka 3.1.0 and later.
-   * If the method is not found, it falls back to trying to retrieve the {@code values()} method, which is available in Kafka 3.9.0 and earlier.
-   *
-   * If neither of these methods is found, a {@link RuntimeException} is thrown.
-   *
-   * <p>This method is useful for ensuring compatibility with both older and newer versions of Kafka clients.</p>
-   *
-   * @return the {@link Method} object representing the {@code topicNameValues()} or {@code values()} method.
-   * @throws RuntimeException if neither the {@code values()} nor {@code topicNameValues()} methods are found.
-   */
-  /* test */ static Method topicNameValuesMethod() {
-    //
-    Method topicDescriptionMethod = null;
-    try {
-      // First we try to get the topicNameValues() method
-      topicDescriptionMethod = DescribeTopicsResult.class.getMethod("topicNameValues");
-    } catch (NoSuchMethodException exception) {
-      LOG.info("Failed to get method topicNameValues() from DescribeTopicsResult class since we are probably on kafka 3.0.0 or older: ", exception);
-    }
-
-    if (topicDescriptionMethod == null) {
-      try {
-        // Second we try to get the values() method
-        topicDescriptionMethod = DescribeTopicsResult.class.getMethod("values");
-      } catch (NoSuchMethodException exception) {
-        LOG.info("Failed to get method values() from DescribeTopicsResult class: ", exception);
-      }
-    }
-
-    if (topicDescriptionMethod != null) {
-      return topicDescriptionMethod;
-    } else {
-      throw new RuntimeException("Unable to find both values() and topicNameValues() method in the DescribeTopicsResult class ");
-    }
-  }
-
-  /**
-   * Retrieves the {@link TopicDescription} for the specified Kafka topic, handling compatibility
-   * with Kafka versions 4.0 and above. This method uses reflection to invoke the appropriate method
-   * for retrieving topic description information, depending on the Kafka version.
+   * Retrieves the {@link TopicDescription} for the specified Kafka topic.
    *
    * @param adminClient The Kafka {@link AdminClient} used to interact with the Kafka cluster.
    * @param ccMetricsTopic The name of the Kafka topic for which the description is to be retrieved.
    *
    * @return The {@link TopicDescription} for the specified Kafka topic.
    *
-   * @throws KafkaTopicDescriptionException If an error occurs while retrieving the topic description,
-   *         or if the topic name retrieval method cannot be found or invoked properly. This includes
-   *         exceptions related to reflection (e.g., {@link NoSuchMethodException}), invocation issues,
-   *         execution exceptions, timeouts, and interruptions.
+   * @throws KafkaTopicDescriptionException If an error occurs while retrieving the topic description.
    */
-  /* test */ static TopicDescription getTopicDescription(AdminClient adminClient, String ccMetricsTopic) throws KafkaTopicDescriptionException {
+  /* test */ static TopicDescription getTopicDescription(Admin adminClient, String ccMetricsTopic) throws KafkaTopicDescriptionException {
     try {
-      // For compatibility with Kafka 4.0 and beyond we must use new API methods.
-      Method topicDescriptionMethod = topicNameValuesMethod();
-      DescribeTopicsResult describeTopicsResult = adminClient.describeTopics(Collections.singletonList(ccMetricsTopic));
-      Map<String, KafkaFuture<TopicDescription>> topicDescriptionMap = (Map<String, KafkaFuture<TopicDescription>>) topicDescriptionMethod
-              .invoke(describeTopicsResult);
-      return topicDescriptionMap.get(ccMetricsTopic).get(CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-    } catch (InvocationTargetException | IllegalAccessException | ExecutionException | InterruptedException | TimeoutException e) {
-      throw new KafkaTopicDescriptionException(String.format("Unable to retrieve config of Cruise Cruise Control metrics topic {}.",
+        DescribeTopicsResult describeTopicsResult = adminClient.describeTopics(Collections.singletonList(ccMetricsTopic));
+        Map<String, KafkaFuture<TopicDescription>> topicDescriptionMap = describeTopicsResult.topicNameValues();
+        return topicDescriptionMap.get(ccMetricsTopic).get(CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+    } catch (ExecutionException | InterruptedException | TimeoutException e) {
+      throw new KafkaTopicDescriptionException(String.format("Unable to retrieve config of Cruise Cruise Control metrics topic %s.",
               ccMetricsTopic), e);
     }
   }

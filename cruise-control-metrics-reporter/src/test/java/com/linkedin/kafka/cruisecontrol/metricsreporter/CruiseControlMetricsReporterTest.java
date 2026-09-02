@@ -6,21 +6,18 @@ package com.linkedin.kafka.cruisecontrol.metricsreporter;
 
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.CruiseControlMetric;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.MetricSerde;
-import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCContainerizedKraftCluster;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCKafkaClientsIntegrationTestHarness;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -33,16 +30,13 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.testcontainers.kafka.KafkaContainer;
 
 import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporter.DEFAULT_BOOTSTRAP_SERVERS_HOST;
 import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporter.DEFAULT_BOOTSTRAP_SERVERS_PORT;
-import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_TOPIC_AUTO_CREATE_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_TOPIC_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_TOPIC_NUM_PARTITIONS_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_TOPIC_REPLICATION_FACTOR_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.metricsreporter.metric.RawMetricType.*;
@@ -50,25 +44,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 public class CruiseControlMetricsReporterTest extends CCKafkaClientsIntegrationTestHarness {
-  private static final int NUM_OF_BROKERS = 2;
-  protected static final String TOPIC = "CruiseControlMetricsReporterTest";
-  protected static final String HOST = "127.0.0.1";
-  protected CCContainerizedKraftCluster _cluster;
-  protected List<Map<Object, Object>> _brokerConfigs;
-
   /**
    * Setup the unit test.
    */
   @Before
   public void setUp() {
-    Properties adminClientProps = new Properties();
-    setSecurityConfigs(adminClientProps, "admin");
-
-    _brokerConfigs = buildBrokerConfigs();
-    _cluster = new CCContainerizedKraftCluster(NUM_OF_BROKERS, _brokerConfigs, adminClientProps);
-    _cluster.start();
-    _bootstrapUrl = _cluster.getExternalBootstrapAddress();
-
+    super.setUp();
     Properties props = new Properties();
     props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
     AtomicInteger failed = new AtomicInteger(0);
@@ -85,34 +66,6 @@ public class CruiseControlMetricsReporterTest extends CCKafkaClientsIntegrationT
       }
     }
     assertEquals(0, failed.get());
-  }
-
-  /**
-   * Tear down the unit test.
-   */
-  @After
-  public void tearDown() {
-    if (_cluster != null) {
-      _cluster.close();
-    }
-  }
-
-  @Override
-  public Properties overridingProps() {
-    Properties props = new Properties();
-    props.setProperty(CommonClientConfigs.METRIC_REPORTER_CLASSES_CONFIG, CruiseControlMetricsReporter.class.getName());
-    props.setProperty(CruiseControlMetricsReporterConfig.config(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG),
-      HOST + ":" + CCContainerizedKraftCluster.CONTAINER_INTERNAL_LISTENER_PORT);
-    props.put("listener.security.protocol.map", String.join(",",
-      CCContainerizedKraftCluster.CONTROLLER_LISTENER_NAME + ":PLAINTEXT",
-      CCContainerizedKraftCluster.INTERNAL_LISTENER_NAME + ":PLAINTEXT",
-      CCContainerizedKraftCluster.EXTERNAL_LISTENER_NAME + ":PLAINTEXT"));
-    props.setProperty(CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG, "100");
-    props.setProperty(CRUISE_CONTROL_METRICS_TOPIC_CONFIG, TOPIC);
-    props.setProperty("log.flush.interval.messages", "1");
-    props.setProperty("offsets.topic.replication.factor", "1");
-    props.setProperty("default.replication.factor", "2");
-    return props;
   }
 
   @Test
