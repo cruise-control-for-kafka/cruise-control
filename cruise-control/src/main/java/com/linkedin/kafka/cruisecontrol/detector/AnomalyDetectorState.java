@@ -42,6 +42,8 @@ public class AnomalyDetectorState {
   @JsonResponseField
   private static final String RECENT_GOAL_VIOLATIONS = "recentGoalViolations";
   @JsonResponseField
+  private static final String RECENT_INTRA_BROKER_GOAL_VIOLATIONS = "recentIntraBrokerGoalViolations";
+  @JsonResponseField
   private static final String RECENT_BROKER_FAILURES = "recentBrokerFailures";
   @JsonResponseField
   private static final String RECENT_METRIC_ANOMALIES = "recentMetricAnomalies";
@@ -129,6 +131,8 @@ public class AnomalyDetectorState {
                              dropwizardMetricRegistry.meter(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, "broker-failure-rate")));
       _anomalyRateByType.put(GOAL_VIOLATION,
                              dropwizardMetricRegistry.meter(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, "goal-violation-rate")));
+      _anomalyRateByType.put(INTRA_BROKER_GOAL_VIOLATION,
+                             dropwizardMetricRegistry.meter(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, "intra-broker-goal-violation-rate")));
       _anomalyRateByType.put(METRIC_ANOMALY,
                              dropwizardMetricRegistry.meter(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, "metric-anomaly-rate")));
       _anomalyRateByType.put(DISK_FAILURE,
@@ -165,6 +169,15 @@ public class AnomalyDetectorState {
    * @param goalViolations Goal violation to check whether there are unfixable goals.
    */
   void refreshHasUnfixableGoal(GoalViolations goalViolations) {
+    _hasUnfixableGoals = AnomalyDetectorUtils.hasUnfixableGoals(goalViolations);
+  }
+
+  /**
+   * Refreshes the anomaly detector cache that indicates whether unfixable goals were detected in the cluster.
+   *
+   * @param goalViolations Goal violation to check whether there are unfixable goals.
+   */
+  void refreshHasUnfixableGoal(IntraBrokerGoalViolations goalViolations) {
     _hasUnfixableGoals = AnomalyDetectorUtils.hasUnfixableGoals(goalViolations);
   }
 
@@ -390,6 +403,7 @@ public class AnomalyDetectorState {
     anomalyDetectorState.put(SELF_HEALING_DISABLED, selfHealingByEnableStatus.get(false));
     anomalyDetectorState.put(SELF_HEALING_ENABLED_RATIO, selfHealingEnabledRatio().getJsonStructure());
     anomalyDetectorState.put(RECENT_GOAL_VIOLATIONS, recentAnomalies(GOAL_VIOLATION, true));
+    anomalyDetectorState.put(RECENT_INTRA_BROKER_GOAL_VIOLATIONS, recentAnomalies(INTRA_BROKER_GOAL_VIOLATION, true));
     anomalyDetectorState.put(RECENT_BROKER_FAILURES, recentAnomalies(BROKER_FAILURE, true));
     anomalyDetectorState.put(RECENT_METRIC_ANOMALIES, recentAnomalies(METRIC_ANOMALY, true));
     anomalyDetectorState.put(RECENT_DISK_FAILURES, recentAnomalies(DISK_FAILURE, true));
@@ -406,11 +420,12 @@ public class AnomalyDetectorState {
   @Override
   public synchronized String toString() {
     Map<Boolean, Set<String>> selfHealingByEnableStatus = getSelfHealingByEnableStatus();
-    return String.format("{%s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%.3f}%n",
+    return String.format("{%s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%s, %s:%.3f}%n",
                          SELF_HEALING_ENABLED, selfHealingByEnableStatus.get(true),
                          SELF_HEALING_DISABLED, selfHealingByEnableStatus.get(false),
                          SELF_HEALING_ENABLED_RATIO, selfHealingEnabledRatio().getJsonStructure(),
                          RECENT_GOAL_VIOLATIONS, recentAnomalies(GOAL_VIOLATION, false),
+                         RECENT_INTRA_BROKER_GOAL_VIOLATIONS, recentAnomalies(INTRA_BROKER_GOAL_VIOLATION, false),
                          RECENT_BROKER_FAILURES, recentAnomalies(BROKER_FAILURE, false),
                          RECENT_METRIC_ANOMALIES, recentAnomalies(METRIC_ANOMALY, false),
                          RECENT_DISK_FAILURES, recentAnomalies(DISK_FAILURE, false),

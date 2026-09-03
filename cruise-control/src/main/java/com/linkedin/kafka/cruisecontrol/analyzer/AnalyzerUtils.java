@@ -222,6 +222,14 @@ public final class AnalyzerUtils {
 
   /**
    * @param config The configurations for Cruise Control.
+   * @return The list of intra broker goals sorted by highest to lowest default priority.
+   */
+  public static List<Goal> getIntraBrokerGoalsByPriority(KafkaCruiseControlConfig config) {
+    return config.getConfiguredInstances(AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG, Goal.class);
+  }
+
+  /**
+   * @param config The configurations for Cruise Control.
    * @return A goal map with goal name as the keys.
    */
   public static Map<String, Goal> getCaseInsensitiveGoalsByName(KafkaCruiseControlConfig config) {

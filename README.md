@@ -35,6 +35,7 @@ Cruise Control for Apache Kafka
     * Metric anomaly detection
     * Disk failure detection (not available in `kafka_0_11_and_1_0` branch)
     * Slow broker detection (not available in `kafka_0_11_and_1_0` branch)
+    * Intra-Broker goal violation
   
   * Admin operations, including:
     * Add brokers

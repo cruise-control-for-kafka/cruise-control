@@ -9,6 +9,7 @@ import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.kafka.cruisecontrol.detector.BrokerFailures;
 import com.linkedin.kafka.cruisecontrol.detector.DiskFailures;
 import com.linkedin.kafka.cruisecontrol.detector.GoalViolations;
+import com.linkedin.kafka.cruisecontrol.detector.IntraBrokerGoalViolations;
 import com.linkedin.kafka.cruisecontrol.detector.KafkaMetricAnomaly;
 import com.linkedin.kafka.cruisecontrol.detector.MaintenanceEvent;
 import com.linkedin.kafka.cruisecontrol.detector.TopicAnomaly;
@@ -30,6 +31,15 @@ public interface AnomalyNotifier extends CruiseControlConfigurable {
    * {@link com.linkedin.kafka.cruisecontrol.detector.notifier.AnomalyNotificationResult.Action}.
    */
   AnomalyNotificationResult onGoalViolation(GoalViolations goalViolations);
+
+  /**
+   * When a particular intra broker goal is violated this method will be called.
+   *
+   * @param goalViolations The detected intra broker goal violations.
+   * @return The notification result that asks Cruise Control to perform a particular
+   * {@link com.linkedin.kafka.cruisecontrol.detector.notifier.AnomalyNotificationResult.Action}.
+   */
+  AnomalyNotificationResult onIntraBrokerGoalViolation(IntraBrokerGoalViolations goalViolations);
 
   /**
    * The method will be called when a broker failure has been detected.

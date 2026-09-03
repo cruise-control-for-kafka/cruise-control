@@ -229,6 +229,10 @@ public class MaintenanceEventTopicReaderTest extends CruiseControlIntegrationTes
                                                                                   parameterConfigOverrides);
 
     assertNotNull(maintenanceEventReader);
+    long start = System.currentTimeMillis();
+    while (System.currentTimeMillis() < start + 15000) {
+      //wait
+    }
     verify(newPartitionCount, newRF, newRetentionMs, true);
     Set<MaintenanceEvent> events = maintenanceEventReader.readEvents(TEST_TIMEOUT);
     EasyMock.verify(mockKafkaCruiseControl);

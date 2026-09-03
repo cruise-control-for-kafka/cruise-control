@@ -66,6 +66,7 @@ public class GoalOptimizer implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(GoalOptimizer.class);
   private static final long HALF_MINUTE_IN_MS = TimeUnit.SECONDS.toMillis(30);
   private final List<Goal> _goalsByPriority;
+  private final List<Goal> _intraBrokerGoals;
   private final BalancingConstraint _balancingConstraint;
   private final Pattern _defaultExcludedTopics;
   private final LoadMonitor _loadMonitor;
@@ -104,6 +105,7 @@ public class GoalOptimizer implements Runnable {
                        Executor executor,
                        AdminClient adminClient) {
     _goalsByPriority = AnalyzerUtils.getDefaultGoalsByPriority(config);
+    _intraBrokerGoals = AnalyzerUtils.getIntraBrokerGoalsByPriority(config);
     _defaultModelCompletenessRequirements = MonitorUtils.combineLoadRequirementOptions(_goalsByPriority);
     _requirementsWithAvailableValidWindows = new ModelCompletenessRequirements(
         1,
@@ -127,7 +129,7 @@ public class GoalOptimizer implements Runnable {
     _proposalPrecomputingProgress = new OperationProgress();
     _proposalComputationTimer = dropwizardMetricRegistry.timer(MetricRegistry.name(GOAL_OPTIMIZER_SENSOR, "proposal-computation-timer"));
 
-    // The cluster is identified as unfixable if combined goals can not be fixed
+    // The cluster is identified as unfixable if combined goals cannot be fixed
     dropwizardMetricRegistry.register(MetricRegistry.name(GOAL_OPTIMIZER_SENSOR, "has-unfixable-proposal-optimization"),
                                       (Gauge<Integer>) () -> hasUnfixableProposalOptimization() ? 1 : 0);
     _hasUnfixableProposalOptimization = false;
@@ -151,7 +153,7 @@ public class GoalOptimizer implements Runnable {
 
   @Override
   public void run() {
-    // We need to get this thread so it can be interrupted if the cached proposal has been invalidated.
+    // We need to get this thread, so it can be interrupted if the cached proposal has been invalidated.
     _proposalPrecomputingSchedulerThread = Thread.currentThread();
     LOG.info("Starting proposal candidate computation.");
     while (!_shutdown && _numPrecomputingThreads > 0) {
@@ -546,6 +548,25 @@ public class GoalOptimizer implements Runnable {
   }
 
   /**
+   * Checks if the list of Goals includes {@link #_intraBrokerGoals}
+   * @param goals The list of goals to look in
+   * @return return true if the list of goals contains an Intra Broker Goal
+   */
+  protected boolean containsIntraBrokerGoal(List<Goal> goals) {
+    boolean result = false;
+
+    HashSet<Goal> intraBrokerGoals = new HashSet<>(_intraBrokerGoals);
+
+    for (Goal goal : goals) {
+      if (intraBrokerGoals.contains(goal)) {
+        result = true;
+        break;
+      }
+    }
+    return result;
+  }
+
+  /**
    * Get the broker set resolver
    * @return the configured BrokerSetResolver instance
    */
@@ -600,7 +621,12 @@ public class GoalOptimizer implements Runnable {
         // We compute the proposal even if there is not enough modeled partitions.
         ModelCompletenessRequirements requirements = _loadMonitor.meetCompletenessRequirements(_defaultModelCompletenessRequirements)
                                                      ? _defaultModelCompletenessRequirements : _requirementsWithAvailableValidWindows;
-        ClusterModel clusterModel = _loadMonitor.clusterModel(_time.milliseconds(), requirements, _allowCapacityEstimation, operationProgress);
+        // We check for Intra broker goals among Default goals - if we have intra broker goals, set populateReplicaPlacementInfo to true
+        ClusterModel clusterModel = _loadMonitor.clusterModel(_time.milliseconds(),
+                                                              requirements,
+                                                              containsIntraBrokerGoal(_goalsByPriority),
+                                                              _allowCapacityEstimation,
+                                                              operationProgress);
         if (!clusterModel.topics().isEmpty()) {
           OptimizerResult result = optimizations(clusterModel, _goalsByPriority, operationProgress);
           LOG.debug("Generated a proposal candidate in {} ms.", _time.milliseconds() - startMs);

@@ -19,6 +19,8 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 
 /**
@@ -153,6 +155,7 @@ public class BrokerCapacityConfigFileResolver implements BrokerCapacityConfigRes
   public static final double DEFAULT_CPU_CAPACITY_WITH_CORES = 100.0;
   private static Map<Integer, BrokerCapacityInfo> capacitiesForBrokers;
   private String _configFile;
+  private static final Logger LOG = LoggerFactory.getLogger(BrokerCapacityConfigFileResolver.class);
 
   @Override
   public void configure(Map<String, ?> configs) {
@@ -186,6 +189,19 @@ public class BrokerCapacityConfigFileResolver implements BrokerCapacityConfigRes
     } else {
       throw new IllegalArgumentException("The broker id(" + brokerId + ") should be non-negative.");
     }
+  }
+
+  @Override
+  public boolean isJbodKafkaCluster() {
+    // If any of the brokers in the cluster are using JBOD, the cluster is considered to be using JBOD
+    for (Map.Entry<Integer, BrokerCapacityInfo> entry : capacitiesForBrokers.entrySet()) {
+      if (entry.getValue().diskCapacityByLogDir() != null && entry.getValue().diskCapacityByLogDir().size() > 1) {
+        LOG.info("Kafka Cluster is considered as a JBOD type");
+        return true;
+      }
+    }
+    LOG.info("Kafka Cluster is considered as a non-JBOD type");
+    return false;
   }
 
   private static boolean isJBOD(Map<Resource, Object> brokerCapacity) {

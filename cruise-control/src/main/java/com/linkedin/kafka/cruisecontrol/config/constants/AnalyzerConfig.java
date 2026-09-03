@@ -285,8 +285,10 @@ public final class AnalyzerConfig {
    * <code>intra.broker.goals</code>
    */
   public static final String INTRA_BROKER_GOALS_CONFIG = "intra.broker.goals";
-  public static final String DEFAULT_INTRA_BROKER_GOALS = new StringJoiner(",").add(IntraBrokerDiskCapacityGoal.class.getName())
-                                                                               .add(IntraBrokerDiskUsageDistributionGoal.class.getName()).toString();
+  public static final String DEFAULT_INTRA_BROKER_GOALS = new StringJoiner(",")
+          .add(IntraBrokerDiskCapacityGoal.class.getName())
+          .add(IntraBrokerDiskUsageDistributionGoal.class.getName())
+          .toString();
   public static final String INTRA_BROKER_GOALS_DOC = "A list of case insensitive intra-broker goals in the order of priority. "
       + "The high priority goals will be executed first. The intra-broker goals are only relevant if intra-broker operation is "
       + "supported (i.e. in  Cruise Control versions above 2.*), otherwise this list should be empty.";
