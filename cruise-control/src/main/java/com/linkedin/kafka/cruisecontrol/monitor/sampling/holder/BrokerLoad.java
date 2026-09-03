@@ -70,14 +70,14 @@ public class BrokerLoad {
         break;
       case TOPIC:
         TopicMetric tm = (TopicMetric) ccm;
-        _dotHandledTopicMetrics.computeIfAbsent(tm.topic(), t -> new RawMetricsHolder())
+        _dotHandledTopicMetrics.computeIfAbsent(replaceDotsWithUnderscores(tm.topic()), t -> new RawMetricsHolder())
                                .recordCruiseControlMetric(ccm);
         break;
       case PARTITION:
         PartitionMetric pm = (PartitionMetric) ccm;
-        _dotHandledPartitionMetrics.computeIfAbsent(new TopicPartition(pm.topic(), pm.partition()), tp -> new RawMetricsHolder())
+        _dotHandledPartitionMetrics.computeIfAbsent(new TopicPartition(replaceDotsWithUnderscores(pm.topic()), pm.partition()), tp -> new RawMetricsHolder())
                                    .recordCruiseControlMetric(ccm);
-        _dotHandledTopicsWithPartitionSizeReported.add(pm.topic());
+        _dotHandledTopicsWithPartitionSizeReported.add(replaceDotsWithUnderscores(pm.topic()));
         break;
       default:
         throw new IllegalStateException(String.format("Should never be here. Unrecognized metric scope %s",
