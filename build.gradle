@@ -513,9 +513,11 @@ artifactoryPublish.skip = true
 artifactory {
   contextUrl = 'https://linkedin.jfrog.io/linkedin'
   publish {
-    repoKey = 'cruise-control'
-    username = System.getenv('ARTIFACTORY_USER')
-    password = System.getenv('ARTIFACTORY_KEY')
+    repository {
+      repoKey = 'cruise-control'
+      username = System.getenv('ARTIFACTORY_USER')
+      password = System.getenv('ARTIFACTORY_KEY')
+    }
 
     defaults {
       publications ('java')
