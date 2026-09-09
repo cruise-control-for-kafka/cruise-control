@@ -290,6 +290,7 @@ project(':cruise-control') {
     implementation "org.apache.logging.log4j:log4j-slf4j-impl:2.17.2"
     implementation "io.netty:netty-handler:${nettyVersion}"
     implementation "io.netty:netty-transport-native-epoll:${nettyVersion}"
+    implementation "software.amazon.msk:aws-msk-iam-auth:2.0.2"
     api "org.apache.kafka:kafka_$scalaBinaryVersion:$kafkaVersion"
     api "org.apache.kafka:kafka-server:$kafkaVersion"
     api "org.apache.kafka:kafka-server-common:$kafkaVersion"
