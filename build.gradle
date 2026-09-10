@@ -181,12 +181,13 @@ project(':cruise-control-core') {
 
   dependencies {
     configurations.all {
+      exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'
       exclude group: 'log4j', module: 'log4j'
       exclude group: 'ch.qos.logback'
     }
-    implementation "org.slf4j:slf4j-api:1.7.36"
-    implementation "org.apache.logging.log4j:log4j-slf4j-impl:2.17.2"
+    implementation "org.slf4j:slf4j-api:2.0.17"
+    implementation "org.apache.logging.log4j:log4j-slf4j2-impl:2.25.0"
     implementation 'org.apache.commons:commons-math3:3.6.1'
     api "org.eclipse.jetty:jetty-servlet:${jettyVersion}"
 
@@ -279,6 +280,7 @@ project(':cruise-control') {
 
   dependencies {
     configurations.all {
+      exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'
       exclude group: 'log4j', module: 'log4j'
       exclude group: 'ch.qos.logback'
@@ -286,8 +288,8 @@ project(':cruise-control') {
 
     api project(':cruise-control-metrics-reporter')
     api project(':cruise-control-core')
-    implementation "org.slf4j:slf4j-api:1.7.36"
-    implementation "org.apache.logging.log4j:log4j-slf4j-impl:2.17.2"
+    implementation "org.slf4j:slf4j-api:2.0.17"
+    implementation "org.apache.logging.log4j:log4j-slf4j2-impl:2.25.0"
     implementation "io.netty:netty-handler:${nettyVersion}"
     implementation "io.netty:netty-transport-native-epoll:${nettyVersion}"
     api "org.apache.kafka:kafka_$scalaBinaryVersion:$kafkaVersion"
@@ -363,7 +365,7 @@ project(':cruise-control') {
 
   tasks.create(name: "copyDependantLibs", type: Copy) {
     from (configurations.testRuntimeClasspath) {
-      include('log4j-slf4j-impl*')
+      include('log4j-slf4j2-impl*')
     }
     from (configurations.runtimeClasspath) {
 
@@ -458,14 +460,15 @@ project(':cruise-control-metrics-reporter') {
 
   dependencies {
     configurations.all {
+      exclude group: 'org.apache.logging.log4j', module: 'log4j-slf4j-impl'
       exclude group: 'org.slf4j', module: 'slf4j-log4j12'
       exclude group: 'log4j', module: 'log4j'
       exclude group: 'ch.qos.logback'
     }
 
-    implementation "org.slf4j:slf4j-api:1.7.36"
+    implementation "org.slf4j:slf4j-api:2.0.17"
     implementation "com.yammer.metrics:metrics-core:2.2.0"
-    implementation "org.apache.logging.log4j:log4j-slf4j-impl:2.17.2"
+    implementation "org.apache.logging.log4j:log4j-slf4j2-impl:2.25.0"
     implementation "org.apache.kafka:kafka_$scalaBinaryVersion:$kafkaVersion"
     implementation "org.apache.kafka:kafka-server:$kafkaVersion"
     implementation "org.apache.kafka:kafka-clients:$kafkaVersion"
