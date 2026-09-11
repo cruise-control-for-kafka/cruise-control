@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC0;
@@ -88,14 +89,30 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     )).all().get();
   }
 
-  private static void setWildcardThrottleReplicaForTopic(ReplicationThrottleHelper helper, String topicName) throws Exception {
+  private void setWildcardThrottleReplicaForTopic(String topicName) throws Exception {
     for (String replicaThrottleProp : Arrays.asList(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG,
                                                     ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG)) {
       Collection<AlterConfigOp> configs = Collections.singletonList(
               new AlterConfigOp(new ConfigEntry(replicaThrottleProp, ReplicationThrottleHelper.WILDCARD_ASTERISK), AlterConfigOp.OpType.SET)
       );
-      helper.changeTopicConfigs(topicName, configs);
+      applyTopicConfigs(topicName, configs);
     }
+  }
+
+  private void applyBrokerConfigs(int brokerId, Collection<AlterConfigOp> ops)
+  throws ExecutionException, InterruptedException, TimeoutException {
+    ConfigResource cf = new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(brokerId));
+    Map<ConfigResource, Collection<AlterConfigOp>> configs = Collections.singletonMap(cf, ops);
+    _adminClient.incrementalAlterConfigs(configs).all()
+        .get(ReplicationThrottleHelper.CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+  }
+
+  private void applyTopicConfigs(String topic, Collection<AlterConfigOp> ops)
+  throws ExecutionException, InterruptedException, TimeoutException {
+    ConfigResource cf = new ConfigResource(ConfigResource.Type.TOPIC, topic);
+    Map<ConfigResource, Collection<AlterConfigOp>> configs = Collections.singletonMap(cf, ops);
+    _adminClient.incrementalAlterConfigs(configs).all()
+        .get(ReplicationThrottleHelper.CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
   }
 
   private ExecutionTask inProgressTaskForProposal(long id, ExecutionProposal proposal) {
@@ -166,7 +183,7 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     );
     // Expect that only the dynamic throttle rate configs are removed when clearing throttles
     expectDescribeBrokerConfigs(mockAdminClient, brokers, brokerConfig);
-    expectIncrementalBrokerConfigs(mockAdminClient, brokers);
+    expectIncrementalBrokerConfigs(mockAdminClient);
     expectDescribeBrokerConfigs(mockAdminClient, brokers, brokerConfig2);
     expectDescribeTopicConfigs(mockAdminClient, TOPIC0, EMPTY_CONFIG, false);
     expectListTopics(mockAdminClient, Collections.emptySet());
@@ -178,8 +195,8 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
 
     // Case 2: a situation where Topic0 gets deleted after its configs were read.
     EasyMock.reset(mockAdminClient);
-    expectDescribeBrokerConfigs(mockAdminClient, brokers);
-    expectIncrementalBrokerConfigs(mockAdminClient, brokers);
+    expectDescribeBrokerConfigs(mockAdminClient, brokers, brokerConfig);
+    expectIncrementalBrokerConfigs(mockAdminClient);
     expectDescribeBrokerConfigs(mockAdminClient, brokers, EMPTY_CONFIG);
     String throttledReplicas = brokerId0 + "," + brokerId1;
     Config topicConfigProps = new Config(Arrays.asList(
@@ -216,6 +233,12 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
 
     // Case 1: a situation where Topic0 does not exist. Hence no property is returned upon read.
     expectDescribeBrokerConfigs(mockAdminClient, brokers);
+    // incremental alter for brokers, then verification describe with expected throttle values
+    expectIncrementalBrokerConfigs(mockAdminClient);
+    Config brokerConfigAfter = new Config(Arrays.asList(
+        new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_RATE_CONFIG, String.valueOf(throttleRate)),
+        new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_RATE_CONFIG, String.valueOf(throttleRate))));
+    expectDescribeBrokerConfigs(mockAdminClient, brokers, brokerConfigAfter);
     expectDescribeTopicConfigs(mockAdminClient, TOPIC0, EMPTY_CONFIG, false);
     expectListTopics(mockAdminClient, Collections.emptySet());
     expectIncrementalTopicConfigs(mockAdminClient, TOPIC0, false);
@@ -228,6 +251,8 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     // Case 2: a situation where Topic0 gets deleted after its configs were read. Change configs should not fail.
     EasyMock.reset(mockAdminClient);
     expectDescribeBrokerConfigs(mockAdminClient, brokers);
+    expectIncrementalBrokerConfigs(mockAdminClient);
+    expectDescribeBrokerConfigs(mockAdminClient, brokers, brokerConfigAfter);
     String throttledReplicas = brokerId0 + "," + brokerId1;
     Config topicConfigs = new Config(Arrays.asList(
       new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG, throttledReplicas),
@@ -299,27 +324,25 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
               new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_RATE_CONFIG, String.valueOf(throttleRate)),
               AlterConfigOp.OpType.SET)
     );
-    throttleHelper.changeBrokerConfigs(0, broker0Configs);
+    applyBrokerConfigs(0, broker0Configs);
 
     // Partition 1 (which is not involved in any execution proposal) has pre-existing throttled
     // replicas (on both leaders and followers); we expect these configurations to be merged
     // with our new throttled replicas.
     List<AlterConfigOp> topic0Configs = Arrays.asList(
-      new AlterConfigOp(new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG, "1:0,1:1"),
-              AlterConfigOp.OpType.SET),
-      new AlterConfigOp(new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG, "1:0,1:1"),
-              AlterConfigOp.OpType.SET)
-    );
-    throttleHelper.changeTopicConfigs(TOPIC0, topic0Configs);
+        new AlterConfigOp(
+            new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG, "1:0,1:1"),
+            AlterConfigOp.OpType.SET),
+        new AlterConfigOp(
+            new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG, "1:0,1:1"),
+            AlterConfigOp.OpType.SET));
+    applyTopicConfigs(TOPIC0, topic0Configs);
 
     // Topic 1 is not involved in any execution proposal. It has pre-existing throttled replicas.
     List<AlterConfigOp> topic1Config = Arrays.asList(
-      new AlterConfigOp(new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG, "1:1"),
-              AlterConfigOp.OpType.SET),
-      new AlterConfigOp(new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG, "1:1"),
-              AlterConfigOp.OpType.SET)
-    );
-    throttleHelper.changeTopicConfigs(TOPIC1, topic1Config);
+      new AlterConfigOp(new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG, "1:1"), AlterConfigOp.OpType.SET),
+      new AlterConfigOp(new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG, "1:1"), AlterConfigOp.OpType.SET));
+    applyTopicConfigs(TOPIC1, topic1Config);
 
     throttleHelper.setThrottles(Collections.singletonList(proposal));
 
@@ -355,8 +378,8 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_adminClient, throttleRate);
 
     // Set replica throttle config values for both topics
-    setWildcardThrottleReplicaForTopic(throttleHelper, TOPIC0);
-    setWildcardThrottleReplicaForTopic(throttleHelper, TOPIC1);
+    setWildcardThrottleReplicaForTopic(TOPIC0);
+    setWildcardThrottleReplicaForTopic(TOPIC1);
     ExecutionProposal proposal = new ExecutionProposal(new TopicPartition(TOPIC0, 0),
                                            100,
                                                        new ReplicaPlacementInfo(0),
@@ -498,15 +521,15 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     EasyMock.replay(mockAdminClient);
     ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(mockAdminClient, 100L, retries);
     ConfigResource cf = new ConfigResource(ConfigResource.Type.TOPIC, TOPIC0);
-    assertThrows(IllegalStateException.class, () -> throttleHelper.waitForConfigs(cf, Collections.singletonList(
-            new AlterConfigOp(new ConfigEntry("k", "v"), AlterConfigOp.OpType.SET)
-    )));
+    Map<ConfigResource, Collection<AlterConfigOp>> opsByResource = Collections.singletonMap(cf,
+            Collections.singletonList(new AlterConfigOp(new ConfigEntry("k", "v"), AlterConfigOp.OpType.SET)));
+    assertThrows(IllegalStateException.class, () -> throttleHelper.waitForConfigs(opsByResource));
 
     // Case 2: queue a single result and call checkConfigs with matching configs, so it succeeds
     EasyMock.reset(mockAdminClient);
     expectDescribeTopicConfigs(mockAdminClient, TOPIC0, EMPTY_CONFIG, true);
     EasyMock.replay(mockAdminClient);
-    throttleHelper.waitForConfigs(cf, Collections.emptyList());
+    throttleHelper.waitForConfigs(Collections.singletonMap(cf, Collections.emptyList()));
   }
 
   @Test
@@ -582,14 +605,15 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     ConfigResource cf = new ConfigResource(ConfigResource.Type.TOPIC, topic);
     AlterConfigsResult mockAlterConfigsResult = EasyMock.mock(AlterConfigsResult.class);
     KafkaFuture<Void> mockFuture = EasyMock.mock(KafkaFuture.class);
-    EasyMock.expect(mockAlterConfigsResult.all()).andReturn(mockFuture);
+    Map<ConfigResource, KafkaFuture<Void>> futures = Collections.singletonMap(cf, mockFuture);
+    EasyMock.expect(mockAlterConfigsResult.values()).andReturn(futures);
     if (topicExists) {
       EasyMock.expect(mockFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(null);
     } else {
       EasyMock.expect(mockFuture.get(EasyMock.anyLong(), EasyMock.anyObject()))
               .andThrow(new ExecutionException(new UnknownTopicOrPartitionException()));
     }
-    EasyMock.expect(adminClient.incrementalAlterConfigs(Collections.singletonMap(cf, EasyMock.anyObject()))).andReturn(mockAlterConfigsResult);
+    EasyMock.expect(adminClient.incrementalAlterConfigs(EasyMock.anyObject())).andReturn(mockAlterConfigsResult);
     EasyMock.replay(mockAlterConfigsResult, mockFuture);
   }
 
@@ -606,37 +630,237 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
   private void expectDescribeBrokerConfigs(AdminClient adminClient, List<Integer> brokers)
   throws ExecutionException, InterruptedException, TimeoutException {
     // All participating brokers have throttled rate set already
-    Config brokerConfig = new Config(Arrays.asList(
-      new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_RATE_CONFIG, "100"),
-      new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_RATE_CONFIG, "100")));
-    expectDescribeBrokerConfigs(adminClient, brokers, brokerConfig);
+    expectDescribeBrokerConfigs(adminClient, brokers, EMPTY_CONFIG);
   }
 
   private void expectDescribeBrokerConfigs(AdminClient adminClient, List<Integer> brokers, Config brokerConfig)
   throws ExecutionException, InterruptedException, TimeoutException {
+    Map<ConfigResource, Config> brokerConfigs = new HashMap<>();
     for (int i : brokers) {
       ConfigResource cf = new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(i));
-      Map<ConfigResource, Config> brokerConfigs = Collections.singletonMap(cf, brokerConfig);
-      DescribeConfigsResult mockDescribeConfigsResult = EasyMock.mock(DescribeConfigsResult.class);
-      KafkaFuture<Map<ConfigResource, Config>> mockFuture = EasyMock.mock(KafkaFuture.class);
-      EasyMock.expect(mockFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(brokerConfigs);
-      EasyMock.expect(mockDescribeConfigsResult.all()).andReturn(mockFuture);
-      EasyMock.expect(adminClient.describeConfigs(Collections.singletonList(cf))).andReturn(mockDescribeConfigsResult);
-      EasyMock.replay(mockDescribeConfigsResult, mockFuture);
+      brokerConfigs.put(cf, brokerConfig);
     }
+    DescribeConfigsResult mockDescribeConfigsResult = EasyMock.mock(DescribeConfigsResult.class);
+    KafkaFuture<Map<ConfigResource, Config>> mockFuture = EasyMock.mock(KafkaFuture.class);
+    EasyMock.expect(mockFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(brokerConfigs);
+    EasyMock.expect(mockDescribeConfigsResult.all()).andReturn(mockFuture);
+    EasyMock.expect(adminClient.describeConfigs(EasyMock.anyObject())).andReturn(mockDescribeConfigsResult);
+    EasyMock.replay(mockDescribeConfigsResult, mockFuture);
   }
 
-  private void expectIncrementalBrokerConfigs(AdminClient adminClient, List<Integer> brokers)
+  private void expectIncrementalBrokerConfigs(AdminClient adminClient)
   throws ExecutionException, InterruptedException, TimeoutException {
-    for (int brokerId : brokers) {
-      ConfigResource cf = new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(brokerId));
-      AlterConfigsResult mockAlterConfigsResult = EasyMock.mock(AlterConfigsResult.class);
-      KafkaFuture<Void> mockFuture = EasyMock.mock(KafkaFuture.class);
-      EasyMock.expect(mockAlterConfigsResult.all()).andReturn(mockFuture);
-      EasyMock.expect(mockFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(null);
-      EasyMock.expect(adminClient.incrementalAlterConfigs(Collections.singletonMap(cf, EasyMock.anyObject()))).andReturn(mockAlterConfigsResult);
-      EasyMock.replay(mockAlterConfigsResult, mockFuture);
+    AlterConfigsResult mockAlterConfigsResult = EasyMock.mock(AlterConfigsResult.class);
+    KafkaFuture<Void> mockFuture = EasyMock.mock(KafkaFuture.class);
+    EasyMock.expect(mockAlterConfigsResult.all()).andReturn(mockFuture);
+    EasyMock.expect(mockFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(null);
+    EasyMock.expect(adminClient.incrementalAlterConfigs(EasyMock.anyObject())).andReturn(mockAlterConfigsResult);
+    EasyMock.replay(mockAlterConfigsResult, mockFuture);
+  }
+
+  /**
+   * With no participating brokers, no broker config alter should be issued.
+   */
+  @Test
+  public void setThrottlesWhenNoParticipatingBrokersThenNoBrokerAlter() throws Exception {
+    AdminClient mockAdminClient = EasyMock.strictMock(AdminClient.class);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(mockAdminClient, 100L, java.util.Set.of());
+    EasyMock.replay(mockAdminClient);
+    throttleHelper.setThrottles(Collections.emptyList());
+    EasyMock.verify(mockAdminClient);
+  }
+
+  /**
+   * If wildcard throttles are already set on the topic, operations should be a no-op for topic configuration updates.
+   */
+  @Test
+  public void setThrottledReplicasWhenWildcardPresentThenNoOp() throws Exception {
+    final long throttleRate = 100L;
+    final int brokerId0 = 0;
+    final int brokerId1 = 1;
+    final int brokerId2 = 2;
+    final List<Integer> brokers = Arrays.asList(brokerId0, brokerId1, brokerId2);
+
+    ExecutionProposal proposal = new ExecutionProposal(new TopicPartition(TOPIC0, 0),
+        100,
+        new ReplicaPlacementInfo(brokerId0),
+        Arrays.asList(new ReplicaPlacementInfo(brokerId0), new ReplicaPlacementInfo(brokerId1)),
+        Arrays.asList(new ReplicaPlacementInfo(brokerId0), new ReplicaPlacementInfo(brokerId2)));
+
+    AdminClient mockAdminClient = EasyMock.strictMock(AdminClient.class);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(mockAdminClient, throttleRate, java.util.Set.of());
+
+    Config brokerConfigAlready = new Config(Arrays.asList(
+        new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_RATE_CONFIG, String.valueOf(throttleRate)),
+        new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_RATE_CONFIG, String.valueOf(throttleRate))));
+    expectDescribeBrokerConfigs(mockAdminClient, brokers, brokerConfigAlready);
+
+    Config wildcardTopicConfig = new Config(Arrays.asList(
+        new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG, ReplicationThrottleHelper.WILDCARD_ASTERISK),
+        new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG, ReplicationThrottleHelper.WILDCARD_ASTERISK)));
+    expectDescribeTopicConfigs(mockAdminClient, TOPIC0, wildcardTopicConfig, true);
+
+    EasyMock.replay(mockAdminClient);
+    throttleHelper.setThrottles(Collections.singletonList(proposal));
+    EasyMock.verify(mockAdminClient);
+  }
+
+  /**
+   * waitForConfigs should throw when verification exceeds the maximum number of retries.
+   */
+  @Test
+  public void waitForConfigsWhenExceedsRetriesThenThrow() throws Exception {
+    AdminClient mockAdminClient = EasyMock.strictMock(AdminClient.class);
+    int retries = 2;
+
+    ConfigResource topicCf = new ConfigResource(ConfigResource.Type.TOPIC, TOPIC0);
+    ConfigResource brokerCf = new ConfigResource(ConfigResource.Type.BROKER, "1");
+    Map<ConfigResource, Collection<AlterConfigOp>> opsByResource = new HashMap<>();
+    opsByResource.put(topicCf, Collections.singletonList(new AlterConfigOp(new ConfigEntry("k", "v"), AlterConfigOp.OpType.SET)));
+    opsByResource.put(brokerCf, Collections.singletonList(new AlterConfigOp(new ConfigEntry("a", "b"), AlterConfigOp.OpType.SET)));
+
+    for (int i = 0; i < retries + 1; i++) {
+      DescribeConfigsResult mockDescribeConfigsResult = EasyMock.mock(DescribeConfigsResult.class);
+      KafkaFuture<Map<ConfigResource, Config>> mockFuture = EasyMock.mock(KafkaFuture.class);
+      Map<ConfigResource, Config> returned = new HashMap<>();
+      returned.put(topicCf, new Config(Collections.emptyList()));
+      returned.put(brokerCf, new Config(Collections.emptyList()));
+      EasyMock.expect(mockFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(returned);
+      EasyMock.expect(mockDescribeConfigsResult.all()).andReturn(mockFuture);
+      EasyMock.expect(mockAdminClient.describeConfigs(EasyMock.anyObject())).andReturn(mockDescribeConfigsResult);
+      EasyMock.replay(mockDescribeConfigsResult, mockFuture);
     }
+
+    EasyMock.replay(mockAdminClient);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(mockAdminClient, 100L, retries);
+    assertThrows(IllegalStateException.class, () -> throttleHelper.waitForConfigs(opsByResource));
+  }
+
+  /**
+   * waitForConfigs should succeed when actual configs match the expected
+   * values for all resources.
+   */
+  @Test
+  public void waitForConfigsWhenConfigsMatchThenSuccess() throws Exception {
+    AdminClient mockAdminClient = EasyMock.strictMock(AdminClient.class);
+    int retries = 2;
+
+    ConfigResource topicCf = new ConfigResource(ConfigResource.Type.TOPIC, TOPIC0);
+    ConfigResource brokerCf = new ConfigResource(ConfigResource.Type.BROKER, "1");
+    Map<ConfigResource, Collection<AlterConfigOp>> opsByResource = new HashMap<>();
+    opsByResource.put(topicCf, Collections.singletonList(new AlterConfigOp(new ConfigEntry("k", "v"), AlterConfigOp.OpType.SET)));
+    opsByResource.put(brokerCf, Collections.singletonList(new AlterConfigOp(new ConfigEntry("a", "b"), AlterConfigOp.OpType.SET)));
+
+    Map<ConfigResource, Config> returned = new HashMap<>();
+    returned.put(topicCf, new Config(Collections.singletonList(new ConfigEntry("k", "v"))));
+    returned.put(brokerCf, new Config(Collections.singletonList(new ConfigEntry("a", "b"))));
+
+    DescribeConfigsResult mockDescribeConfigsResult = EasyMock.mock(DescribeConfigsResult.class);
+    KafkaFuture<Map<ConfigResource, Config>> mockFuture = EasyMock.mock(KafkaFuture.class);
+    EasyMock.expect(mockFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(returned);
+    EasyMock.expect(mockDescribeConfigsResult.all()).andReturn(mockFuture);
+    EasyMock.expect(mockAdminClient.describeConfigs(EasyMock.anyObject())).andReturn(mockDescribeConfigsResult);
+    EasyMock.replay(mockDescribeConfigsResult, mockFuture);
+
+    EasyMock.replay(mockAdminClient);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(mockAdminClient, 100L, retries);
+    throttleHelper.waitForConfigs(opsByResource);
+    EasyMock.verify(mockAdminClient);
+  }
+
+  /**
+   * configsEqualByResource returns true when all resources match expected values.
+   */
+  @Test
+  public void configsEqualByResourceWhenAllResourcesMatchThenTrue() {
+    Map<ConfigResource, Map<String, String>> expectedByResource = new HashMap<>();
+    ConfigResource cf1 = new ConfigResource(ConfigResource.Type.TOPIC, TOPIC0);
+    ConfigResource cf2 = new ConfigResource(ConfigResource.Type.BROKER, "1");
+    expectedByResource.put(cf1, Collections.singletonMap("k1", "v1"));
+    expectedByResource.put(cf2, Collections.singletonMap("k2", "v2"));
+
+    Map<ConfigResource, Config> actualByResource = new HashMap<>();
+    actualByResource.put(cf1, new Config(Collections.singletonList(new ConfigEntry("k1", "v1"))));
+    actualByResource.put(cf2, new Config(Collections.singletonList(new ConfigEntry("k2", "v2"))));
+
+    boolean actual = ReplicationThrottleHelper.configsEqualByResource(actualByResource, expectedByResource);
+    assertTrue(actual);
+  }
+
+  /**
+   * configsEqualByResource returns false when any resource mismatches.
+   */
+  @Test
+  public void configsEqualByResourceWhenAnyResourceMismatchesThenFalse() {
+    Map<ConfigResource, Map<String, String>> expectedByResource = new HashMap<>();
+    ConfigResource cf1 = new ConfigResource(ConfigResource.Type.TOPIC, TOPIC0);
+    expectedByResource.put(cf1, Collections.singletonMap("k1", "v1"));
+
+    Map<ConfigResource, Config> actualByResource = new HashMap<>();
+    actualByResource.put(cf1, new Config(Collections.singletonList(new ConfigEntry("k1", "x"))));
+
+    boolean actual = ReplicationThrottleHelper.configsEqualByResource(actualByResource, expectedByResource);
+    assertFalse(actual);
+  }
+
+  /**
+   * Should retry on partial mismatch and eventually succeed when subsequent
+   * describes match the expected values.
+   */
+  @Test
+  public void waitForConfigsWhenPartialMismatchThenRetryAndEventuallySuccess() throws Exception {
+    AdminClient mockAdminClient = EasyMock.strictMock(AdminClient.class);
+    int retries = 2;
+
+    ConfigResource topicCf = new ConfigResource(ConfigResource.Type.TOPIC, TOPIC0);
+    ConfigResource brokerCf = new ConfigResource(ConfigResource.Type.BROKER, "1");
+    Map<ConfigResource, Collection<AlterConfigOp>> opsByResource = new HashMap<>();
+    opsByResource.put(topicCf, Collections.singletonList(new AlterConfigOp(new ConfigEntry("k", "v"), AlterConfigOp.OpType.SET)));
+    opsByResource.put(brokerCf, Collections.singletonList(new AlterConfigOp(new ConfigEntry("a", "b"), AlterConfigOp.OpType.SET)));
+
+    DescribeConfigsResult firstDescribe = EasyMock.mock(DescribeConfigsResult.class);
+    KafkaFuture<Map<ConfigResource, Config>> firstFuture = EasyMock.mock(KafkaFuture.class);
+    Map<ConfigResource, Config> firstReturned = new HashMap<>();
+    firstReturned.put(topicCf, new Config(Collections.emptyList()));
+    firstReturned.put(brokerCf, new Config(Collections.singletonList(new ConfigEntry("a", "b"))));
+    EasyMock.expect(firstFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(firstReturned);
+    EasyMock.expect(firstDescribe.all()).andReturn(firstFuture);
+    EasyMock.expect(mockAdminClient.describeConfigs(EasyMock.anyObject())).andReturn(firstDescribe);
+    EasyMock.replay(firstDescribe, firstFuture);
+
+    DescribeConfigsResult secondDescribe = EasyMock.mock(DescribeConfigsResult.class);
+    KafkaFuture<Map<ConfigResource, Config>> secondFuture = EasyMock.mock(KafkaFuture.class);
+    Map<ConfigResource, Config> secondReturned = new HashMap<>();
+    secondReturned.put(topicCf, new Config(Collections.singletonList(new ConfigEntry("k", "v"))));
+    secondReturned.put(brokerCf, new Config(Collections.singletonList(new ConfigEntry("a", "b"))));
+    EasyMock.expect(secondFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(secondReturned);
+    EasyMock.expect(secondDescribe.all()).andReturn(secondFuture);
+    EasyMock.expect(mockAdminClient.describeConfigs(EasyMock.anyObject())).andReturn(secondDescribe);
+    EasyMock.replay(secondDescribe, secondFuture);
+
+    EasyMock.replay(mockAdminClient);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(mockAdminClient, 100L, retries);
+    throttleHelper.waitForConfigs(opsByResource);
+    EasyMock.verify(mockAdminClient);
+  }
+
+  /**
+   * configsEqualByResource returns false when an expected resource is missing in
+   * the actual result set.
+   */
+  @Test
+  public void configsEqualByResourceWhenMissingResourceInActualThenFalse() {
+    Map<ConfigResource, Map<String, String>> expectedByResource = new HashMap<>();
+    ConfigResource cf1 = new ConfigResource(ConfigResource.Type.TOPIC, TOPIC0);
+    ConfigResource cf2 = new ConfigResource(ConfigResource.Type.BROKER, "1");
+    expectedByResource.put(cf1, Collections.singletonMap("k1", "v1"));
+    expectedByResource.put(cf2, Collections.singletonMap("k2", "v2"));
+
+    Map<ConfigResource, Config> actualByResource = new HashMap<>();
+    actualByResource.put(cf1, new Config(Collections.singletonList(new ConfigEntry("k1", "v1"))));
+
+    boolean actual = ReplicationThrottleHelper.configsEqualByResource(actualByResource, expectedByResource);
+    assertFalse(actual);
   }
 
   private void assertExpectedThrottledRateForBroker(int brokerId, Long expectedRate) throws ExecutionException, InterruptedException {
