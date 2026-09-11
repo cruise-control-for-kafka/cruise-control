@@ -554,18 +554,19 @@ public class AnomalyDetectorManager {
             skipReportingIfNotUpdated = anomalyType == KafkaAnomalyType.BROKER_FAILURE;
             throw ofe;
           } finally {
-            handlePostFixAnomaly(isReadyToFix, fixStarted, anomalyId, skipReportingIfNotUpdated);
+            handlePostFixAnomaly(isReadyToFix, fixStarted, anomalyId, skipReportingIfNotUpdated, anomalyType);
           }
         }
       }
     }
 
-    private void handlePostFixAnomaly(boolean isReadyToFix, boolean fixStarted, String anomalyId, boolean skipReportingIfNotUpdated) {
+    private void handlePostFixAnomaly(boolean isReadyToFix, boolean fixStarted, String anomalyId, boolean skipReportingIfNotUpdated,
+                                      AnomalyType anomalyType) {
       if (isReadyToFix) {
         _anomalyDetectorState.onAnomalyHandle(_anomalyInProgress, fixStarted ? AnomalyState.Status.FIX_STARTED
                                                                              : AnomalyState.Status.FIX_FAILED_TO_START);
         if (fixStarted) {
-          _anomalyDetectorState.incrementNumSelfHealingStarted();
+          _anomalyDetectorState.incrementNumSelfHealingStarted(anomalyType);
           LOG.info("[{}] Self-healing started successfully.", anomalyId);
         } else {
           _anomalyDetectorState.incrementNumSelfHealingFailedToStart();
