@@ -540,6 +540,28 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     entries.add(mockStaticConfig);
     assertTrue(ReplicationThrottleHelper.configsEqual(new Config(entries), expectedConfigs));
     EasyMock.verify(mockStaticConfig);
+
+    // A deleted per-broker config that resolves to a cluster-wide dynamic default
+    // (kafka-configs --entity-default) is also considered applied
+    ConfigEntry mockDynamicDefaultConfig = mockConfigEntry("name6", "value6", ConfigEntry.ConfigSource.DYNAMIC_DEFAULT_BROKER_CONFIG);
+    expectedConfigs.put("name6", null);
+    entries.add(mockDynamicDefaultConfig);
+    assertTrue(ReplicationThrottleHelper.configsEqual(new Config(entries), expectedConfigs));
+    EasyMock.verify(mockDynamicDefaultConfig);
+
+    // A deleted config that resolves to the Kafka default is also considered applied
+    ConfigEntry mockDefaultConfig = mockConfigEntry("name7", "value7", ConfigEntry.ConfigSource.DEFAULT_CONFIG);
+    expectedConfigs.put("name7", null);
+    entries.add(mockDefaultConfig);
+    assertTrue(ReplicationThrottleHelper.configsEqual(new Config(entries), expectedConfigs));
+    EasyMock.verify(mockDefaultConfig);
+
+    // A non-null expected value must still match even when the source is a default layer
+    expectedConfigs.put("name6", "value6");
+    assertTrue(ReplicationThrottleHelper.configsEqual(new Config(entries), expectedConfigs));
+    expectedConfigs.put("name6", "other-value");
+    assertFalse(ReplicationThrottleHelper.configsEqual(new Config(entries), expectedConfigs));
+    expectedConfigs.put("name6", null);
   }
 
   private ExecutionTask prepareMockCompleteTask(ExecutionProposal proposal) {
