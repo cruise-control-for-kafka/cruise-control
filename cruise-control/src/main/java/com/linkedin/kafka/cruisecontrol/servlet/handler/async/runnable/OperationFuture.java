@@ -6,8 +6,8 @@ package com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable;
 
 import com.linkedin.cruisecontrol.servlet.response.CruiseControlResponse;
 import com.linkedin.kafka.cruisecontrol.async.progress.OperationProgress;
-import java.lang.reflect.Field;
 import java.util.Map;
+import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 
@@ -45,19 +45,29 @@ public class OperationFuture extends CompletableFuture<CruiseControlResponse> {
 
   @Override
   public CruiseControlResponse get() throws InterruptedException, ExecutionException {
+    // Annotate failures with the operation context by rethrowing a new exception instance. Mutating the
+    // original exception's detailMessage via reflection is not possible on Java 9+ without --add-opens
+    // and threw InaccessibleObjectException at runtime on Java 17.
     try {
       return super.get();
-    } catch (Throwable t) {
-      try {
-        Field f = Throwable.class.getDeclaredField("detailMessage");
-        f.setAccessible(true);
-        f.set(t, String.format("Operation '%s' received exception. ", _operation)
-                 + (t.getMessage() == null ? "" : t.getMessage()));
-      } catch (IllegalAccessException | NoSuchFieldException e) {
-        // let it go
-      }
-      throw t;
+    } catch (ExecutionException ee) {
+      ExecutionException annotated = new ExecutionException(annotatedMessage(ee), ee.getCause());
+      annotated.setStackTrace(ee.getStackTrace());
+      throw annotated;
+    } catch (CancellationException ce) {
+      CancellationException annotated = new CancellationException(annotatedMessage(ce));
+      annotated.initCause(ce);
+      annotated.setStackTrace(ce.getStackTrace());
+      throw annotated;
+    } catch (InterruptedException ie) {
+      InterruptedException annotated = new InterruptedException(annotatedMessage(ie));
+      annotated.setStackTrace(ie.getStackTrace());
+      throw annotated;
     }
+  }
+
+  private String annotatedMessage(Throwable t) {
+    return String.format("Operation '%s' received exception. ", _operation) + (t.getMessage() == null ? "" : t.getMessage());
   }
 
   /**
