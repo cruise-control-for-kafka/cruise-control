@@ -5,23 +5,22 @@
 package com.linkedin.kafka.cruisecontrol.servlet.security.jwt;
 
 import com.nimbusds.jwt.SignedJWT;
+import org.eclipse.jetty.http.HttpCookie;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpStatus;
-import org.eclipse.jetty.security.ServerAuthException;
-import org.eclipse.jetty.security.UserAuthentication;
+import org.eclipse.jetty.http.HttpURI;
+import org.eclipse.jetty.security.AuthenticationState;
+import org.eclipse.jetty.security.UserIdentity;
 import org.eclipse.jetty.security.authentication.LoginAuthenticator;
-import org.eclipse.jetty.server.Authentication;
-import org.eclipse.jetty.server.UserIdentity;
+import org.eclipse.jetty.security.internal.DeferredAuthenticationState;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Response;
+import org.eclipse.jetty.util.Callback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import java.io.IOException;
 import java.text.ParseException;
+import java.util.List;
 import java.util.function.Function;
 
 /**
@@ -58,7 +57,7 @@ public class JwtAuthenticator extends LoginAuthenticator {
   static final String REDIRECT_URL = "{redirectUrl}";
 
   private final String _cookieName;
-  private final Function<HttpServletRequest, String> _authenticationProviderUrlGenerator;
+  private final Function<Request, String> _authenticationProviderUrlGenerator;
 
   /**
    * Creates a new {@link JwtAuthenticator} instance with a custom authentication provider url and a cookie name that
@@ -73,84 +72,64 @@ public class JwtAuthenticator extends LoginAuthenticator {
    */
   public JwtAuthenticator(String authenticationProviderUrl, String cookieName) {
     _cookieName = cookieName;
-    Function<String, Function<HttpServletRequest, String>> urlGen =
-        url -> req -> url.replace(REDIRECT_URL, req.getRequestURL().toString() + getOriginalQueryString(req));
+    Function<String, Function<Request, String>> urlGen =
+        url -> req -> {
+          HttpURI httpUri = HttpURI.build(req.getHttpURI()).query(null);
+          return url.replace(REDIRECT_URL, httpUri.asString() + getOriginalQueryString(req));
+        };
     _authenticationProviderUrlGenerator = urlGen.apply(authenticationProviderUrl);
   }
 
   @Override
-  public String getAuthMethod() {
+  public String getAuthenticationType() {
     return METHOD;
   }
 
   @Override
-  public void prepareRequest(ServletRequest request) {
-
-  }
-
-  @Override
-  public Authentication validateRequest(ServletRequest request, ServletResponse response, boolean mandatory) throws ServerAuthException {
+  public AuthenticationState validateRequest(Request request, Response response, Callback callback) {
     JWT_LOGGER.trace("Authentication request received for " + request.toString());
-    if (!(request instanceof HttpServletRequest) && !(response instanceof HttpServletResponse)) {
-      return Authentication.UNAUTHENTICATED;
-    }
 
     String serializedJWT;
-    HttpServletRequest req = (HttpServletRequest) request;
     // we'll skip the authentication for CORS preflight requests
-    if (HttpMethod.OPTIONS.name().equalsIgnoreCase(req.getMethod())) {
-      return Authentication.NOT_CHECKED;
+    if (HttpMethod.OPTIONS.name().equalsIgnoreCase(request.getMethod())) {
+      return new DeferredAuthenticationState(this);
     }
-    serializedJWT = getJwtFromBearerAuthorization(req);
+    serializedJWT = getJwtFromBearerAuthorization(request);
     if (serializedJWT == null) {
-      serializedJWT = getJwtFromCookie(req);
+      serializedJWT = getJwtFromCookie(request);
     }
     if (serializedJWT == null) {
-      String loginURL = _authenticationProviderUrlGenerator.apply(req);
+      String loginURL = _authenticationProviderUrlGenerator.apply(request);
       JWT_LOGGER.info("No JWT token found, sending redirect to " + loginURL);
-      try {
-        ((HttpServletResponse) response).sendRedirect(loginURL);
-        return Authentication.SEND_CONTINUE;
-      } catch (IOException e) {
-        JWT_LOGGER.error("Couldn't authenticate request", e);
-        throw new ServerAuthException(e);
-      }
+      Response.sendRedirect(request, response, callback, loginURL);
+      return AuthenticationState.CHALLENGE;
     } else {
       try {
         SignedJWT jwtToken = SignedJWT.parse(serializedJWT);
         String userName = jwtToken.getJWTClaimsSet().getSubject();
         request.setAttribute(JWT_TOKEN_REQUEST_ATTRIBUTE, serializedJWT);
-        UserIdentity identity = login(userName, jwtToken, request);
+        UserIdentity identity = login(userName, jwtToken, request, response);
         if (identity == null) {
-          ((HttpServletResponse) response).setStatus(HttpStatus.UNAUTHORIZED_401);
-          return Authentication.SEND_FAILURE;
+          response.setStatus(HttpStatus.UNAUTHORIZED_401);
+          return AuthenticationState.SEND_FAILURE;
         } else {
-          return new UserAuthentication(getAuthMethod(), identity);
+          return new UserAuthenticationSucceeded(getAuthenticationType(), identity);
         }
       } catch (ParseException pe) {
-        String loginURL = _authenticationProviderUrlGenerator.apply(req);
+        String loginURL = _authenticationProviderUrlGenerator.apply(request);
         JWT_LOGGER.warn("Unable to parse the JWT token, redirecting back to the login page", pe);
-        try {
-          ((HttpServletResponse) response).sendRedirect(loginURL);
-        } catch (IOException e) {
-          throw new ServerAuthException(e);
-        }
+        Response.sendRedirect(request, response, callback, loginURL);
       }
     }
 
-    return Authentication.SEND_FAILURE;
+    return AuthenticationState.SEND_FAILURE;
   }
 
-  @Override
-  public boolean secureResponse(ServletRequest request, ServletResponse response, boolean mandatory, Authentication.User validatedUser) {
-    return true;
-  }
-
-  String getJwtFromCookie(HttpServletRequest req) {
+  String getJwtFromCookie(Request req) {
     String serializedJWT = null;
-    Cookie[] cookies = req.getCookies();
+    List<HttpCookie> cookies = Request.getCookies(req);
     if (cookies != null) {
-      for (Cookie cookie : cookies) {
+      for (HttpCookie cookie : cookies) {
         if (_cookieName != null && _cookieName.equals(cookie.getName())) {
           JWT_LOGGER.trace(_cookieName + " cookie has been found and is being processed");
           serializedJWT = cookie.getValue();
@@ -161,8 +140,8 @@ public class JwtAuthenticator extends LoginAuthenticator {
     return serializedJWT;
   }
 
-  String getJwtFromBearerAuthorization(HttpServletRequest req) {
-    String authorizationHeader = req.getHeader(HttpHeader.AUTHORIZATION.asString());
+  String getJwtFromBearerAuthorization(Request req) {
+    String authorizationHeader = req.getHeaders().get(HttpHeader.AUTHORIZATION.asString());
     if (authorizationHeader == null || !authorizationHeader.startsWith(BEARER)) {
       return null;
     } else {
@@ -170,8 +149,8 @@ public class JwtAuthenticator extends LoginAuthenticator {
     }
   }
 
-  private String getOriginalQueryString(HttpServletRequest request) {
-    String originalQueryString = request.getQueryString();
+  private String getOriginalQueryString(Request req) {
+    String originalQueryString = req.getHttpURI().getQuery();
     return (originalQueryString == null) ? "" : "?" + originalQueryString;
   }
 }

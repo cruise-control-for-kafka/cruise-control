@@ -7,15 +7,15 @@ package com.linkedin.kafka.cruisecontrol.servlet;
 import java.util.Map;
 import java.util.Set;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.stream.Collectors;
 import java.util.Collections;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
-import org.eclipse.jetty.security.UserStore;
 import org.eclipse.jetty.security.PropertyUserStore;
-import org.eclipse.jetty.security.AbstractLoginService;
+import org.eclipse.jetty.security.RolePrincipal;
+import org.eclipse.jetty.security.UserStore;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
-import javax.security.auth.Subject;
+import org.eclipse.jetty.util.resource.Resource;
+import org.eclipse.jetty.util.resource.ResourceFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,23 +39,19 @@ public class UserPermissionsManager {
      * @return a map of usernames -> their assigned roles
      */
     private Map<String, Set<String>> createRolesPerUsersMap() {
-        Map<String, Set<String>> rolesPerUsers = new HashMap();
+        Map<String, Set<String>> rolesPerUsers = new HashMap<>();
         boolean securityEnabled = _config.getBoolean(WebServerConfig.WEBSERVER_SECURITY_ENABLE_CONFIG);
         if (securityEnabled) {
-            String privilegedFilePath = _config.getString(WebServerConfig.WEBSERVER_AUTH_CREDENTIALS_FILE_CONFIG);
-            UserStore userStore = createUserStoreFromFile(privilegedFilePath);
+            String privilegesFilePath = _config.getString(WebServerConfig.WEBSERVER_AUTH_CREDENTIALS_FILE_CONFIG);
+            Resource resource = ResourceFactory.root().newResource(privilegesFilePath);
+            ExposedPropertyUserStore userStore = createUserStoreFromResource(resource);
             startUserStore(userStore);
 
-            Set<String> userNames = userStore.getKnownUserIdentities().keySet();
+            Set<String> userNames = userStore.getUsersNames();
 
             for (String user : userNames) {
-                Subject userSubject = userStore.getUserIdentity(user).getSubject();
-                Set<AbstractLoginService.RolePrincipal> roles = userSubject == null
-                        ? new HashSet<>()
-                        : userSubject.getPrincipals(AbstractLoginService.RolePrincipal.class);
-
-                Set<String> roleNames = roles.stream()
-                        .map(AbstractLoginService.RolePrincipal::getName)
+                Set<String> roleNames = userStore.getRolePrincipals(user).stream()
+                        .map(RolePrincipal::getName)
                         .map(String::toUpperCase)
                         .collect(Collectors.toSet());
                 rolesPerUsers.put(user, roleNames);
@@ -94,12 +90,25 @@ public class UserPermissionsManager {
 
     /** Creates UserStore from an external file
      *
-     * @param privilegedFilePath a filepath containing user privileges information
+     * @param privilegesResource a filepath containing user privileges information
      * @return a UserStore object
      */
-    private UserStore createUserStoreFromFile(String privilegedFilePath) {
-        PropertyUserStore userStore = new PropertyUserStore();
-        userStore.setConfig(privilegedFilePath);
+    private ExposedPropertyUserStore createUserStoreFromResource(Resource privilegesResource) {
+        ExposedPropertyUserStore userStore = new ExposedPropertyUserStore();
+        userStore.setConfig(privilegesResource);
         return userStore;
+    }
+
+    private static class ExposedPropertyUserStore extends PropertyUserStore {
+
+        /**
+         * This method exposes the protected `_users` map inherited from
+         * UserStore, providing direct access to the stored users' names.
+         *
+         * @return the set of users' names
+         */
+        public Set<String> getUsersNames() {
+            return _users.keySet();
+        }
     }
 }

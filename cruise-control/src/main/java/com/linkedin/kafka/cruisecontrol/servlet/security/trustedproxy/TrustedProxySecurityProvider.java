@@ -7,9 +7,7 @@ package com.linkedin.kafka.cruisecontrol.servlet.security.trustedproxy;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.security.spnego.SpnegoSecurityProvider;
-import org.eclipse.jetty.security.Authenticator;
 import org.eclipse.jetty.security.LoginService;
-import org.eclipse.jetty.security.authentication.ConfigurableSpnegoAuthenticator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.nio.file.Paths;
@@ -45,16 +43,11 @@ public class TrustedProxySecurityProvider extends SpnegoSecurityProvider {
 
   @Override
   public LoginService loginService() {
-    TrustedProxyLoginService loginService = new TrustedProxyLoginService(_spnegoPrincipal.realm(), authorizationService(),
+    TrustedProxyLoginService loginService = new TrustedProxyLoginService(_spnegoPrincipal.realm(), _privilegesFilePath,
             _trustedProxyServices, _trustedProxyServicesIpRegex, _fallbackToSpnegoAllowed, _spnegoPrincipalToLocalRules);
     loginService.setServiceName(_spnegoPrincipal.serviceName());
     loginService.setHostName(_spnegoPrincipal.hostName());
     loginService.setKeyTabPath(Paths.get(_keyTabPath));
     return loginService;
-  }
-
-  @Override
-  public Authenticator authenticator() {
-    return new ConfigurableSpnegoAuthenticator();
   }
 }

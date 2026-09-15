@@ -4,19 +4,24 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.security.spnego;
 
-import com.linkedin.kafka.cruisecontrol.servlet.security.DummyAuthorizationService;
-import com.linkedin.kafka.cruisecontrol.servlet.security.UserStoreAuthorizationService;
+import com.linkedin.kafka.cruisecontrol.servlet.security.DummyLoginService;
 import org.apache.kafka.common.security.kerberos.KerberosName;
 import org.apache.kafka.common.security.kerberos.KerberosShortNamer;
-import org.eclipse.jetty.security.ConfigurableSpnegoLoginService;
 import org.eclipse.jetty.security.IdentityService;
 import org.eclipse.jetty.security.LoginService;
 import org.eclipse.jetty.security.PropertyUserStore;
-import org.eclipse.jetty.security.SpnegoUserIdentity;
-import org.eclipse.jetty.security.SpnegoUserPrincipal;
-import org.eclipse.jetty.security.authentication.AuthorizationService;
-import org.eclipse.jetty.server.UserIdentity;
+import org.eclipse.jetty.security.RoleDelegateUserIdentity;
+import org.eclipse.jetty.security.RolePrincipal;
+import org.eclipse.jetty.security.SPNEGOLoginService;
+import org.eclipse.jetty.security.SPNEGOUserPrincipal;
+import org.eclipse.jetty.security.UserIdentity;
+import org.eclipse.jetty.security.UserPrincipal;
+import org.eclipse.jetty.security.UserStore;
+import org.eclipse.jetty.server.Request;
+import org.eclipse.jetty.server.Session;
 import org.eclipse.jetty.util.component.ContainerLifeCycle;
+import org.eclipse.jetty.util.resource.PathResourceFactory;
+import org.eclipse.jetty.util.resource.Resource;
 import org.ietf.jgss.GSSContext;
 import org.ietf.jgss.GSSCredential;
 import org.ietf.jgss.GSSException;
@@ -24,9 +29,6 @@ import org.ietf.jgss.GSSManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import javax.security.auth.Subject;
-import javax.servlet.ServletRequest;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpSession;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
@@ -34,39 +36,41 @@ import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Path;
 import java.security.PrivilegedAction;
 import java.util.List;
+import java.util.function.Function;
 
 /**
- * This class is purely needed in order to manage the {@link AuthorizationService}.
- * For instance if the AuthorizationService holds a {@link org.eclipse.jetty.security.PropertyUserStore} then it would load
- * users from the store during the {@link PropertyUserStore#start()} method.
- *
- * @see UserStoreAuthorizationService
+ * This class consolidates SPNEGO authentication and authorization logic within the LoginService.
+ * It manages the {@link PropertyUserStore} directly.
  */
-public class SpnegoLoginServiceWithAuthServiceLifecycle extends ContainerLifeCycle implements LoginService {
+public class SpnegoLoginService extends ContainerLifeCycle implements LoginService {
 
-  private static final Logger LOG = LoggerFactory.getLogger(SpnegoLoginServiceWithAuthServiceLifecycle.class);
-  private static final String GSS_HOLDER_CLASS_NAME = "org.eclipse.jetty.security.ConfigurableSpnegoLoginService$GSSContextHolder";
-  private static final String REQUEST_ATTR_ADDED_NEW_SESSION = SpnegoLoginServiceWithAuthServiceLifecycle.class.getName() + "#ADDED_NEW_SESSION";
+  private static final Logger LOG = LoggerFactory.getLogger(SpnegoLoginService.class);
+  private static final String GSS_HOLDER_CLASS_NAME = "org.eclipse.jetty.security.SPNEGOLoginService$GSSContextHolder";
+  private static final String REQUEST_ATTR_ADDED_NEW_SESSION = SpnegoLoginService.class.getName() + "#ADDED_NEW_SESSION";
   private final GSSManager _gssManager = GSSManager.getInstance();
-  private final ConfigurableSpnegoLoginService _spnegoLoginService;
-  private final AuthorizationService _authorizationService;
+  private final SPNEGOLoginService _spnegoLoginService;
+  private final UserStore _userStore;
   private final KerberosShortNamer _kerberosShortNamer;
   private Subject _spnegoSubject;
   private GSSCredential _spnegoServiceCredential;
   private Constructor<?> _holderConstructor;
 
-  public SpnegoLoginServiceWithAuthServiceLifecycle(String realm, AuthorizationService authorizationService, List<String> principalToLocalRules) {
-    _spnegoLoginService = new ConfigurableSpnegoLoginService(realm, new DummyAuthorizationService());
-    _authorizationService = authorizationService;
-    _kerberosShortNamer = principalToLocalRules == null || principalToLocalRules.isEmpty()
-            ? null
-            : KerberosShortNamer.fromUnparsedRules(realm, principalToLocalRules);
+  public SpnegoLoginService(String realm, String privilegesFilePath, List<String> principalToLocalRules) {
+    this(realm, createUserStore(privilegesFilePath), principalToLocalRules);
   }
+
+  public SpnegoLoginService(String realm, UserStore userStore, List<String> principalToLocalRules) {
+   _spnegoLoginService = new SPNEGOLoginService(realm, new DummyLoginService());
+   _userStore = userStore;
+   _kerberosShortNamer = principalToLocalRules == null || principalToLocalRules.isEmpty()
+     ? null
+     : KerberosShortNamer.fromUnparsedRules(realm, principalToLocalRules);
+   }
 
   @Override
   protected void doStart() throws Exception {
     addBean(_spnegoLoginService);
-    addBean(_authorizationService);
+    addBean(_userStore);
     super.doStart();
     extractSpnegoContext();
   }
@@ -77,14 +81,13 @@ public class SpnegoLoginServiceWithAuthServiceLifecycle extends ContainerLifeCyc
   }
 
   @Override
-  public UserIdentity login(String username, Object credentials, ServletRequest req) {
+  public UserIdentity login(String username, Object credentials, Request request, Function<Boolean, Session> getOrCreateSession) {
     // save GSS context
-    HttpServletRequest request = (HttpServletRequest) req;
     GSSContext gssContext = addContext(request);
 
     // authentication
-    SpnegoUserIdentity userIdentity = (SpnegoUserIdentity) _spnegoLoginService.login(username, credentials, req);
-    SpnegoUserPrincipal userPrincipal = (SpnegoUserPrincipal) userIdentity.getUserPrincipal();
+    UserIdentity userIdentity = _spnegoLoginService.login(username, credentials, request, getOrCreateSession);
+    SPNEGOUserPrincipal userPrincipal = (SPNEGOUserPrincipal) userIdentity.getUserPrincipal();
 
     // get full principal and create user principal shortname
     String fullPrincipal = getFullPrincipalFromGssContext(gssContext);
@@ -93,9 +96,9 @@ public class SpnegoLoginServiceWithAuthServiceLifecycle extends ContainerLifeCyc
     String userShortname = getSpnegoUserPrincipalShortname(fullPrincipal);
 
     // do authorization and create UserIdentity
-    userPrincipal = new SpnegoUserPrincipal(userShortname, userPrincipal.getEncodedToken());
-    UserIdentity roleDelegate = _authorizationService.getUserIdentity((HttpServletRequest) req, userShortname);
-    return new SpnegoUserIdentity(userIdentity.getSubject(), userPrincipal, roleDelegate);
+    userPrincipal = new SPNEGOUserPrincipal(userShortname, userPrincipal.getEncodedToken());
+    UserIdentity roleDelegate = getUserIdentity(userShortname);
+    return new RoleDelegateUserIdentity(userIdentity.getSubject(), userPrincipal, roleDelegate);
   }
 
   @Override
@@ -129,18 +132,15 @@ public class SpnegoLoginServiceWithAuthServiceLifecycle extends ContainerLifeCyc
   public void setKeyTabPath(Path keyTabFile) {
     _spnegoLoginService.setKeyTabPath(keyTabFile);
   }
+  
+  private UserIdentity getUserIdentity(String name) {
+    // Apply SPNEGO-specific name processing
+    int hostSeparator = name.indexOf('/');
+    String shortName = hostSeparator > 0 ? name.substring(0, hostSeparator) : name;
+    int realmSeparator = shortName.indexOf('@');
+    shortName = realmSeparator > 0 ? shortName.substring(0, realmSeparator) : shortName;
 
-  private String getFullPrincipal(HttpServletRequest request) {
-    String fullPrincipal;
-    try {
-      fullPrincipal = ((GSSContext) request.getSession()
-              .getAttribute(GSS_HOLDER_CLASS_NAME))
-              .getSrcName()
-              .toString();
-    } catch (GSSException e) {
-      throw new RuntimeException(e);
-    }
-    return fullPrincipal;
+    return getUserIdentityFromIdentityService(shortName);
   }
 
   private String getSpnegoUserPrincipalShortname(String fullPrincipal) {
@@ -170,11 +170,11 @@ public class SpnegoLoginServiceWithAuthServiceLifecycle extends ContainerLifeCyc
 
   // Visible for testing
   void extractSpnegoContext() {
-    // All the following code depends on the structure of org.eclipse.jetty.security.ConfigurableSpnegoLoginService$GSSContextHolder and
-    // org.eclipse.jetty.security.ConfigurableSpnegoLoginService$SpnegoContext
+    // All the following code depends on the structure of org.eclipse.jetty.security.SPNEGOLoginService$GSSContextHolder and
+    // org.eclipse.jetty.security.SPNEGOLoginService$SpnegoContext
     // If jetty is upgraded, this code might brake
     try {
-      Field contextField = ConfigurableSpnegoLoginService.class.getDeclaredField("_context");
+      Field contextField = SPNEGOLoginService.class.getDeclaredField("_context");
       contextField.setAccessible(true);
       Object spnegoContext = contextField.get(_spnegoLoginService);
       Class<?> contextClass = spnegoContext.getClass();
@@ -190,12 +190,11 @@ public class SpnegoLoginServiceWithAuthServiceLifecycle extends ContainerLifeCyc
     } catch (NoSuchFieldException | IllegalAccessException | ClassNotFoundException | NoSuchMethodException e) {
       throw new RuntimeException("Failed to init SPNEGO context", e);
     }
-
   }
 
-  private GSSContext addContext(HttpServletRequest request) {
-    // This tries to inject an externally created GSSContext into ConfigurableSpnegoLoginService.
-    // ConfigurableSpnegoLoginService drops the realm part of the client principal, but we need that to evaluate the auth to local rules
+  protected GSSContext addContext(Request request) {
+    // This tries to inject an externally created GSSContext into SPNEGOLoginService.
+    // SPNEGOLoginService drops the realm part of the client principal, but we need that to evaluate the auth to local rules
     // By injecting the GSSContext through the session, we can get access to the full principal
     // If jetty is upgraded, this code might brake
     try {
@@ -212,12 +211,12 @@ public class SpnegoLoginServiceWithAuthServiceLifecycle extends ContainerLifeCyc
     }
   }
 
-  private void cleanRequest(HttpServletRequest request) {
+  private void cleanRequest(Request request) {
     if (!"true".equals(request.getAttribute(REQUEST_ATTR_ADDED_NEW_SESSION))) {
       return;
     }
     request.removeAttribute(REQUEST_ATTR_ADDED_NEW_SESSION);
-    HttpSession session = request.getSession();
+    Session session = request.getSession(false);
     if (session != null) {
       try {
         session.invalidate();
@@ -235,6 +234,34 @@ public class SpnegoLoginServiceWithAuthServiceLifecycle extends ContainerLifeCyc
         throw new RuntimeException(e);
       }
     };
+  }
+
+  private static PropertyUserStore createUserStore(String privilegesFilePath) {
+    PropertyUserStore userStore = new PropertyUserStore();
+    Resource res = new PathResourceFactory().newResource(Path.of(privilegesFilePath));
+    userStore.setConfig(res);
+    return userStore;
+  }
+
+  // Visible for testing
+  UserIdentity getUserIdentityFromIdentityService(String userName) {
+    UserPrincipal user = _userStore.getUserPrincipal(userName);
+    List<RolePrincipal> roles = _userStore.getRolePrincipals(userName);
+    if (user == null) {
+      return null;
+    }
+    return getIdentityService().newUserIdentity(
+      createSubject(user, roles),
+      user,
+      roles.stream().map(RolePrincipal::getName).toArray(String[]::new)
+    );
+  }
+
+  private Subject createSubject(UserPrincipal user, List<RolePrincipal> rolePrincipals) {
+    Subject subject = new Subject();
+    subject.getPrincipals().add(user);
+    subject.getPrincipals().addAll(rolePrincipals);
+    return subject;
   }
 
 }

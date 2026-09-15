@@ -10,8 +10,9 @@ import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import org.eclipse.jetty.security.ConstraintMapping;
-import org.eclipse.jetty.util.security.Constraint;
+import org.eclipse.jetty.ee10.servlet.security.ConstraintMapping;
+import org.eclipse.jetty.security.Authenticator;
+import org.eclipse.jetty.security.Constraint;
 
 
 /**
@@ -65,10 +66,11 @@ public abstract class DefaultRoleSecurityProvider implements SecurityProvider {
   }
 
   private ConstraintMapping mapping(CruiseControlEndPoint endpoint, String... roles) {
-    Constraint constraint = new Constraint();
-    constraint.setName(Constraint.__BASIC_AUTH);
-    constraint.setRoles(roles);
-    constraint.setAuthenticate(true);
+    Constraint constraint = new Constraint.Builder()
+        .name(Authenticator.BASIC_AUTH)
+        .roles(roles)
+        .authorization(Constraint.Authorization.SPECIFIC_ROLE)
+        .build();
     ConstraintMapping mapping = new ConstraintMapping();
     mapping.setPathSpec(_webServerApiUrlPrefix.replace("*", endpoint.name().toLowerCase()));
     mapping.setConstraint(constraint);

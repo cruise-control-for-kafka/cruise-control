@@ -10,7 +10,7 @@ import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
 import com.linkedin.cruisecontrol.http.CruiseControlRequestContext;
 import java.io.IOException;
 
-import static javax.servlet.http.HttpServletResponse.SC_OK;
+import static jakarta.servlet.http.HttpServletResponse.SC_OK;
 
 
 public abstract class AbstractCruiseControlResponse implements CruiseControlResponse {

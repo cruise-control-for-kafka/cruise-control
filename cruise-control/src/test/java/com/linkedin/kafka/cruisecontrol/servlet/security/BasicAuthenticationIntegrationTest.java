@@ -10,7 +10,7 @@ import org.eclipse.jetty.http.HttpHeader;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URI;

@@ -4,12 +4,9 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.security;
 
-import org.eclipse.jetty.security.ConstraintSecurityHandler;
+import org.eclipse.jetty.ee10.servlet.security.ConstraintSecurityHandler;
+import org.eclipse.jetty.security.Constraint;
 import org.eclipse.jetty.server.Request;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import java.io.IOException;
 
 /**
  * A custom {@link ConstraintSecurityHandler} that converts the request to lowercase to ensure case insensitivity.
@@ -17,8 +14,7 @@ import java.io.IOException;
 public class CruiseControlSecurityHandler extends ConstraintSecurityHandler {
 
   @Override
-  public void handle(String pathInContext, Request baseRequest, HttpServletRequest request, HttpServletResponse response)
-      throws IOException, ServletException {
-    super.handle(pathInContext.toLowerCase(), baseRequest, request, response);
+  public Constraint getConstraint(String pathInContext, Request request) {
+    return super.getConstraint(pathInContext.toLowerCase(), request);
   }
 }

@@ -7,7 +7,7 @@ package com.linkedin.kafka.cruisecontrol.servlet.security;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlApp;
 import javax.security.auth.Subject;
 import javax.security.auth.login.LoginException;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URI;

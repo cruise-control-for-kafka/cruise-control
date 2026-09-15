@@ -8,7 +8,7 @@ import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.ServletRequestHandler;
 import com.linkedin.kafka.cruisecontrol.servlet.security.CruiseControlSecurityHandler;
 import com.linkedin.kafka.cruisecontrol.servlet.security.SecurityProvider;
-import org.eclipse.jetty.security.ConstraintSecurityHandler;
+import org.eclipse.jetty.ee10.servlet.security.ConstraintSecurityHandler;
 import org.eclipse.jetty.server.Connector;
 import org.eclipse.jetty.server.CustomRequestLog;
 import org.eclipse.jetty.server.HttpConfiguration;
@@ -17,11 +17,13 @@ import org.eclipse.jetty.server.SecureRequestCustomizer;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.Slf4jRequestLogWriter;
-import org.eclipse.jetty.servlet.DefaultServlet;
-import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.servlet.ServletHolder;
+import org.eclipse.jetty.ee10.servlet.DefaultServlet;
+import org.eclipse.jetty.ee10.servlet.ServletContextHandler;
+import org.eclipse.jetty.ee10.servlet.ServletHolder;
 import org.eclipse.jetty.util.ssl.SslContextFactory;
-import javax.servlet.ServletException;
+import jakarta.servlet.ServletException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 public class KafkaCruiseControlServletApp extends KafkaCruiseControlApp {
@@ -55,7 +57,7 @@ public class KafkaCruiseControlServletApp extends KafkaCruiseControlApp {
         ServerConnector serverConnector;
         Boolean webserverSslEnable = _config.getBoolean(WebServerConfig.WEBSERVER_SSL_ENABLE_CONFIG);
         if (webserverSslEnable != null && webserverSslEnable) {
-            SslContextFactory sslServerContextFactory = new SslContextFactory.Server();
+            SslContextFactory.Server sslServerContextFactory = new SslContextFactory.Server();
             sslServerContextFactory.setKeyStorePath(_config.getString(WebServerConfig.WEBSERVER_SSL_KEYSTORE_LOCATION_CONFIG));
             sslServerContextFactory.setKeyStorePassword(_config.getPassword(WebServerConfig.WEBSERVER_SSL_KEYSTORE_PASSWORD_CONFIG).value());
             sslServerContextFactory.setKeyManagerPassword(_config.getPassword(WebServerConfig.WEBSERVER_SSL_KEY_PASSWORD_CONFIG).value());
@@ -67,12 +69,8 @@ public class KafkaCruiseControlServletApp extends KafkaCruiseControlApp {
             maybeConfigureTlsProtocolsAndCiphers(sslServerContextFactory);
 
             Boolean stsEnabled = _config.getBoolean(WebServerConfig.WEBSERVER_SSL_STS_ENABLED);
-            if (stsEnabled != null && stsEnabled) {
-                HttpConnectionFactory httpConnectionFactory = configureConnectionFactoryForHsts();
-                serverConnector = new ServerConnector(_server, sslServerContextFactory, httpConnectionFactory);
-            } else {
-                serverConnector = new ServerConnector(_server, sslServerContextFactory);
-            }
+            HttpConnectionFactory httpConnectionFactory = configureHttpsConnectionFactory(stsEnabled != null && stsEnabled);
+            serverConnector = new ServerConnector(_server, sslServerContextFactory, httpConnectionFactory);
         } else {
             serverConnector = new ServerConnector(_server);
         }
@@ -81,18 +79,27 @@ public class KafkaCruiseControlServletApp extends KafkaCruiseControlApp {
         return serverConnector;
     }
 
-    private HttpConnectionFactory configureConnectionFactoryForHsts() {
-        Long stsMaxAge = _config.getLong(WebServerConfig.WEBSERVER_SSL_STS_MAX_AGE);
-        Boolean stsIncludeSubDomains = _config.getBoolean(WebServerConfig.WEBSERVER_SSL_STS_INCLUDE_SUBDOMAINS);
+    private HttpConnectionFactory configureHttpsConnectionFactory(boolean stsEnabled) {
         Integer maxHeaderSize = _config.getInt(WebServerConfig.WEBSERVER_HTTP_MAX_HEADER_SIZE);
 
         SecureRequestCustomizer src = new SecureRequestCustomizer();
-        src.setStsMaxAge(stsMaxAge);
-        src.setStsIncludeSubDomains(stsIncludeSubDomains);
+        // Jetty's SecureRequestCustomizer enables SNI host checking by default, which rejects a request with HTTP 400
+        // ("Invalid SNI") whenever the request Host does not match the server certificate. Cruise Control is commonly
+        // fronted by a TLS-terminating/re-originating proxy (e.g. a Kubernetes ingress) where the forwarded Host and
+        // the backend certificate legitimately differ, so disable the check to avoid spurious 400s that would
+        // otherwise mask the real 200/401/403 responses. This must be applied to every HTTPS connector, not only when
+        // HSTS is enabled, since Jetty installs a SecureRequestCustomizer (with the check on) by default.
+        src.setSniHostCheck(false);
+        if (stsEnabled) {
+            src.setStsMaxAge(_config.getLong(WebServerConfig.WEBSERVER_SSL_STS_MAX_AGE));
+            src.setStsIncludeSubDomains(_config.getBoolean(WebServerConfig.WEBSERVER_SSL_STS_INCLUDE_SUBDOMAINS));
+        }
 
         HttpConfiguration httpsConfig = new HttpConfiguration();
         httpsConfig.addCustomizer(src);
-        httpsConfig.setRequestHeaderSize(maxHeaderSize);
+        if (maxHeaderSize != null) {
+            httpsConfig.setRequestHeaderSize(maxHeaderSize);
+        }
         return new HttpConnectionFactory(httpsConfig);
     }
 
@@ -120,12 +127,17 @@ public class KafkaCruiseControlServletApp extends KafkaCruiseControlApp {
     protected void setupWebUi(ServletContextHandler contextHandler) {
         // Placeholder for any static content
         String webuiDir = _config.getString(WebServerConfig.WEBSERVER_UI_DISKPATH_CONFIG);
-        String webuiPathPrefix = _config.getString(WebServerConfig.WEBSERVER_UI_URLPREFIX_CONFIG);
-        DefaultServlet defaultServlet = new DefaultServlet();
-        ServletHolder holderWebapp = new ServletHolder("default", defaultServlet);
-        // holderWebapp.setInitParameter("org.eclipse.jetty.servlet.Default.dirAllowed", "false");
-        holderWebapp.setInitParameter("resourceBase", webuiDir);
-        contextHandler.addServlet(holderWebapp, webuiPathPrefix);
+        Path path = Path.of(webuiDir);
+        if (Files.isDirectory(path) && Files.isReadable(path)) {
+            String webUiPathPrefix = _config.getString(WebServerConfig.WEBSERVER_UI_URLPREFIX_CONFIG);
+            DefaultServlet defaultServlet = new DefaultServlet();
+            ServletHolder holderWebapp = new ServletHolder("default", defaultServlet);
+            // holderWebapp.setInitParameter("org.eclipse.jetty.servlet.Default.dirAllowed", "false");
+            contextHandler.setBaseResourceAsString(webuiDir);
+            contextHandler.addServlet(holderWebapp, webUiPathPrefix);
+        } else {
+            LOG.warn("WebUI directory not found or unreadable: {} UI disabled", webuiDir);
+        }
     }
 
     protected ServletContextHandler createContextHandler() {

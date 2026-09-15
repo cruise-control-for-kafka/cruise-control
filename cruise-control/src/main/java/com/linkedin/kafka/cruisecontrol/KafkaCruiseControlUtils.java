@@ -53,7 +53,7 @@ import org.apache.kafka.common.security.auth.SecurityProtocol;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import javax.servlet.ServletException;
+import jakarta.servlet.ServletException;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;

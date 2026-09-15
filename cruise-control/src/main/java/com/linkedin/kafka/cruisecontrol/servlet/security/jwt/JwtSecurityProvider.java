@@ -7,11 +7,9 @@ package com.linkedin.kafka.cruisecontrol.servlet.security.jwt;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.security.DefaultRoleSecurityProvider;
-import com.linkedin.kafka.cruisecontrol.servlet.security.UserStoreAuthorizationService;
+import jakarta.servlet.ServletException;
 import org.eclipse.jetty.security.Authenticator;
 import org.eclipse.jetty.security.LoginService;
-import org.eclipse.jetty.security.authentication.AuthorizationService;
-import javax.servlet.ServletException;
 import java.io.IOException;
 import java.security.cert.CertificateException;
 import java.util.List;
@@ -49,7 +47,7 @@ public class JwtSecurityProvider extends DefaultRoleSecurityProvider {
   @Override
   public LoginService loginService() throws ServletException {
     try {
-      return new JwtLoginService(authorizationService(), _publicKeyLocation, _audiences);
+      return new JwtLoginService(_privilegesFilePath, _publicKeyLocation, _audiences);
     } catch (IOException | CertificateException e) {
       throw new ServletException(e);
     }
@@ -58,9 +56,5 @@ public class JwtSecurityProvider extends DefaultRoleSecurityProvider {
   @Override
   public Authenticator authenticator() {
     return new JwtAuthenticator(_authenticationProviderUrl, _cookieName);
-  }
-
-  public AuthorizationService authorizationService() {
-    return new UserStoreAuthorizationService(_privilegesFilePath);
   }
 }

@@ -4,14 +4,14 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.security.trustedproxy;
 
-import org.eclipse.jetty.security.SpnegoUserPrincipal;
+import org.eclipse.jetty.security.SPNEGOUserPrincipal;
 
-public class TrustedProxyPrincipal extends SpnegoUserPrincipal {
+public class TrustedProxyPrincipal extends SPNEGOUserPrincipal {
 
-  private final SpnegoUserPrincipal _serviceUserPrincipal;
+  private final SPNEGOUserPrincipal _serviceUserPrincipal;
   private final String _doAsPrincipal;
 
-  public TrustedProxyPrincipal(String doAsPrincipal, SpnegoUserPrincipal serviceUserPrincipal) {
+  public TrustedProxyPrincipal(String doAsPrincipal, SPNEGOUserPrincipal serviceUserPrincipal) {
     super(doAsPrincipal, serviceUserPrincipal.getEncodedToken());
     _doAsPrincipal = doAsPrincipal;
     _serviceUserPrincipal = serviceUserPrincipal;
@@ -22,7 +22,7 @@ public class TrustedProxyPrincipal extends SpnegoUserPrincipal {
     return _doAsPrincipal;
   }
 
-  public SpnegoUserPrincipal servicePrincipal() {
+  public SPNEGOUserPrincipal servicePrincipal() {
     return _serviceUserPrincipal;
   }
 }

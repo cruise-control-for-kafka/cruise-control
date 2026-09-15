@@ -18,7 +18,7 @@ import java.util.Map;
 
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JSON_VERSION;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;
-import static javax.servlet.http.HttpServletResponse.SC_ACCEPTED;
+import static jakarta.servlet.http.HttpServletResponse.SC_ACCEPTED;
 
 @JsonResponseClass
 public class ProgressResult extends AbstractCruiseControlResponse {
