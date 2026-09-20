@@ -6,6 +6,7 @@ package com.linkedin.kafka.cruisecontrol.monitor.sampling.prometheus;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -68,8 +69,8 @@ class PrometheusAdapter {
          They accept values with a decimal point (up to 64 bits). The samples returned are inclusive of the "end"
          timestamp provided.
          */
-        data.add(new BasicNameValuePair(START, String.valueOf((double) startTimeMs / SEC_TO_MS)));
-        data.add(new BasicNameValuePair(END, String.valueOf((double) endTimeMs / SEC_TO_MS)));
+        data.add(new BasicNameValuePair(START, BigDecimal.valueOf(startTimeMs, 3).toPlainString()));
+        data.add(new BasicNameValuePair(END, BigDecimal.valueOf(endTimeMs, 3).toPlainString()));
         // step is expected to be in seconds, and accept values with a decimal point (up to 64 bits).
         data.add(new BasicNameValuePair(STEP, String.valueOf((double) _samplingIntervalMs / SEC_TO_MS)));
 
