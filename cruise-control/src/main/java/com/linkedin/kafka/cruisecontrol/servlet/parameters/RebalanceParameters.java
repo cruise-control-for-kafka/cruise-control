@@ -10,25 +10,14 @@ import com.linkedin.kafka.cruisecontrol.executor.ConcurrencyType;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.ReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.UserRequestException;
+
 import java.io.UnsupportedEncodingException;
 import java.util.Collections;
 import java.util.Map;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.DRY_RUN_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.CONCURRENT_PARTITION_MOVEMENTS_PER_BROKER_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.CONCURRENT_LEADER_MOVEMENTS_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.BROKER_CONCURRENT_LEADER_MOVEMENTS_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.EXECUTION_PROGRESS_CHECK_INTERVAL_MS_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.MAX_PARTITION_MOVEMENTS_IN_CLUSTER_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.SKIP_HARD_GOAL_CHECK_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REPLICA_MOVEMENT_STRATEGIES_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REPLICATION_THROTTLE_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REVIEW_ID_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REASON_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.STOP_ONGOING_EXECUTION_PARAM;
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.*;
 
 
 /**
@@ -56,133 +45,135 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
  * </pre>
  */
 public class RebalanceParameters extends ProposalsParameters {
-  protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
-  static {
-    SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-    validParameterNames.add(DRY_RUN_PARAM);
-    validParameterNames.add(REASON_PARAM);
-    validParameterNames.add(CONCURRENT_PARTITION_MOVEMENTS_PER_BROKER_PARAM);
-    validParameterNames.add(MAX_PARTITION_MOVEMENTS_IN_CLUSTER_PARAM);
-    validParameterNames.add(CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_PARAM);
-    validParameterNames.add(CONCURRENT_LEADER_MOVEMENTS_PARAM);
-    validParameterNames.add(BROKER_CONCURRENT_LEADER_MOVEMENTS_PARAM);
-    validParameterNames.add(EXECUTION_PROGRESS_CHECK_INTERVAL_MS_PARAM);
-    validParameterNames.add(SKIP_HARD_GOAL_CHECK_PARAM);
-    validParameterNames.add(REPLICA_MOVEMENT_STRATEGIES_PARAM);
-    validParameterNames.add(REPLICATION_THROTTLE_PARAM);
-    validParameterNames.add(REVIEW_ID_PARAM);
-    validParameterNames.add(STOP_ONGOING_EXECUTION_PARAM);
-    validParameterNames.addAll(ProposalsParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
-    CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
-  }
-  protected boolean _dryRun;
-  protected Integer _concurrentInterBrokerPartitionMovements;
-  protected Integer _maxInterBrokerPartitionMovements;
-  protected Integer _concurrentIntraBrokerPartitionMovements;
-  protected Integer _clusterLeaderMovementConcurrency;
-  protected Integer _brokerLeaderMovementConcurrency;
-  protected Long _executionProgressCheckIntervalMs;
-  protected boolean _skipHardGoalCheck;
-  protected ReplicaMovementStrategy _replicaMovementStrategy;
-  protected Long _replicationThrottle;
-  protected Integer _reviewId;
-  protected String _reason;
-  protected boolean _stopOngoingExecution;
+    protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
 
-  public RebalanceParameters() {
-    super();
-  }
-
-  @Override
-  protected void initParameters() throws UnsupportedEncodingException {
-    super.initParameters();
-    _dryRun = ParameterUtils.getDryRun(_requestContext);
-    _concurrentInterBrokerPartitionMovements = ParameterUtils.concurrentMovements(_requestContext, ConcurrencyType.INTER_BROKER_REPLICA);
-    _maxInterBrokerPartitionMovements = ParameterUtils.maxPartitionMovements(_requestContext);
-    _concurrentIntraBrokerPartitionMovements = ParameterUtils.concurrentMovements(_requestContext, ConcurrencyType.INTRA_BROKER_REPLICA);
-    _clusterLeaderMovementConcurrency = ParameterUtils.concurrentMovements(_requestContext, ConcurrencyType.LEADERSHIP_CLUSTER);
-    _brokerLeaderMovementConcurrency = ParameterUtils.concurrentMovements(_requestContext, ConcurrencyType.LEADERSHIP_BROKER);
-    _executionProgressCheckIntervalMs = ParameterUtils.executionProgressCheckIntervalMs(_requestContext);
-    _skipHardGoalCheck = ParameterUtils.skipHardGoalCheck(_requestContext);
-    _replicaMovementStrategy = ParameterUtils.getReplicaMovementStrategy(_requestContext, _config);
-    _ignoreProposalCache = ParameterUtils.ignoreProposalCache(_requestContext);
-    _destinationBrokerIds = ParameterUtils.destinationBrokerIds(_requestContext);
-    boolean twoStepVerificationEnabled = _config.getBoolean(WebServerConfig.TWO_STEP_VERIFICATION_ENABLED_CONFIG);
-    _replicationThrottle = ParameterUtils.replicationThrottle(_requestContext, _config);
-    _reviewId = ParameterUtils.reviewId(_requestContext, twoStepVerificationEnabled);
-    _isRebalanceDiskMode = ParameterUtils.isRebalanceDiskMode(_requestContext);
-    boolean requestReasonRequired = _config.getBoolean(ExecutorConfig.REQUEST_REASON_REQUIRED_CONFIG);
-    _reason = ParameterUtils.reason(_requestContext, requestReasonRequired && !_dryRun);
-    _stopOngoingExecution = ParameterUtils.stopOngoingExecution(_requestContext);
-    if (_stopOngoingExecution && _dryRun) {
-      throw new UserRequestException(String.format("%s and %s cannot both be set to true.", STOP_ONGOING_EXECUTION_PARAM, DRY_RUN_PARAM));
+    static {
+        SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        validParameterNames.add(DRY_RUN_PARAM);
+        validParameterNames.add(REASON_PARAM);
+        validParameterNames.add(CONCURRENT_PARTITION_MOVEMENTS_PER_BROKER_PARAM);
+        validParameterNames.add(MAX_PARTITION_MOVEMENTS_IN_CLUSTER_PARAM);
+        validParameterNames.add(CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_PARAM);
+        validParameterNames.add(CONCURRENT_LEADER_MOVEMENTS_PARAM);
+        validParameterNames.add(BROKER_CONCURRENT_LEADER_MOVEMENTS_PARAM);
+        validParameterNames.add(EXECUTION_PROGRESS_CHECK_INTERVAL_MS_PARAM);
+        validParameterNames.add(SKIP_HARD_GOAL_CHECK_PARAM);
+        validParameterNames.add(REPLICA_MOVEMENT_STRATEGIES_PARAM);
+        validParameterNames.add(REPLICATION_THROTTLE_PARAM);
+        validParameterNames.add(REVIEW_ID_PARAM);
+        validParameterNames.add(STOP_ONGOING_EXECUTION_PARAM);
+        validParameterNames.addAll(ProposalsParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
+        CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
     }
-  }
 
-  @Override
-  public void setReviewId(int reviewId) {
-    _reviewId = reviewId;
-  }
+    protected boolean _dryRun;
+    protected Integer _concurrentInterBrokerPartitionMovements;
+    protected Integer _maxInterBrokerPartitionMovements;
+    protected Integer _concurrentIntraBrokerPartitionMovements;
+    protected Integer _clusterLeaderMovementConcurrency;
+    protected Integer _brokerLeaderMovementConcurrency;
+    protected Long _executionProgressCheckIntervalMs;
+    protected boolean _skipHardGoalCheck;
+    protected ReplicaMovementStrategy _replicaMovementStrategy;
+    protected Long _replicationThrottle;
+    protected Integer _reviewId;
+    protected String _reason;
+    protected boolean _stopOngoingExecution;
 
-  public Integer reviewId() {
-    return _reviewId;
-  }
+    public RebalanceParameters() {
+        super();
+    }
 
-  public boolean dryRun() {
-    return _dryRun;
-  }
+    @Override
+    protected void initParameters() throws UnsupportedEncodingException {
+        super.initParameters();
+        _dryRun = ParameterUtils.getDryRun(_requestContext);
+        _concurrentInterBrokerPartitionMovements = ParameterUtils.concurrentMovements(_requestContext, ConcurrencyType.INTER_BROKER_REPLICA);
+        _maxInterBrokerPartitionMovements = ParameterUtils.maxPartitionMovements(_requestContext);
+        _concurrentIntraBrokerPartitionMovements = ParameterUtils.concurrentMovements(_requestContext, ConcurrencyType.INTRA_BROKER_REPLICA);
+        _clusterLeaderMovementConcurrency = ParameterUtils.concurrentMovements(_requestContext, ConcurrencyType.LEADERSHIP_CLUSTER);
+        _brokerLeaderMovementConcurrency = ParameterUtils.concurrentMovements(_requestContext, ConcurrencyType.LEADERSHIP_BROKER);
+        _executionProgressCheckIntervalMs = ParameterUtils.executionProgressCheckIntervalMs(_requestContext);
+        _skipHardGoalCheck = ParameterUtils.skipHardGoalCheck(_requestContext);
+        _replicaMovementStrategy = ParameterUtils.getReplicaMovementStrategy(_requestContext, _config);
+        _ignoreProposalCache = ParameterUtils.ignoreProposalCache(_requestContext);
+        _destinationBrokerIds = ParameterUtils.destinationBrokerIds(_requestContext);
+        boolean twoStepVerificationEnabled = _config.getBoolean(WebServerConfig.TWO_STEP_VERIFICATION_ENABLED_CONFIG);
+        _replicationThrottle = ParameterUtils.replicationThrottle(_requestContext, _config);
+        _reviewId = ParameterUtils.reviewId(_requestContext, twoStepVerificationEnabled);
+        _isRebalanceDiskMode = ParameterUtils.isRebalanceDiskMode(_requestContext);
+        boolean requestReasonRequired = _config.getBoolean(ExecutorConfig.REQUEST_REASON_REQUIRED_CONFIG);
+        _reason = ParameterUtils.reason(_requestContext, requestReasonRequired && !_dryRun);
+        _stopOngoingExecution = ParameterUtils.stopOngoingExecution(_requestContext);
+        if (_stopOngoingExecution && _dryRun) {
+            throw new UserRequestException(String.format("%s and %s cannot both be set to true.", STOP_ONGOING_EXECUTION_PARAM, DRY_RUN_PARAM));
+        }
+    }
 
-  public Integer concurrentInterBrokerPartitionMovements() {
-    return _concurrentInterBrokerPartitionMovements;
-  }
+    @Override
+    public void setReviewId(int reviewId) {
+        _reviewId = reviewId;
+    }
 
-  public Integer concurrentIntraBrokerPartitionMovements() {
-    return _concurrentIntraBrokerPartitionMovements;
-  }
+    public Integer reviewId() {
+        return _reviewId;
+    }
 
-  public Integer maxInterBrokerPartitionMovements() {
-    return _maxInterBrokerPartitionMovements;
-  }
+    public boolean dryRun() {
+        return _dryRun;
+    }
 
-  public Long executionProgressCheckIntervalMs() {
-    return _executionProgressCheckIntervalMs;
-  }
+    public Integer concurrentInterBrokerPartitionMovements() {
+        return _concurrentInterBrokerPartitionMovements;
+    }
 
-  public Integer clusterConcurrentLeaderMovements() {
-    return _clusterLeaderMovementConcurrency;
-  }
+    public Integer concurrentIntraBrokerPartitionMovements() {
+        return _concurrentIntraBrokerPartitionMovements;
+    }
 
-  public Integer brokerConcurrentLeaderMovements() {
-    return _brokerLeaderMovementConcurrency;
-  }
+    public Integer maxInterBrokerPartitionMovements() {
+        return _maxInterBrokerPartitionMovements;
+    }
 
-  public boolean skipHardGoalCheck() {
-    return _skipHardGoalCheck;
-  }
+    public Long executionProgressCheckIntervalMs() {
+        return _executionProgressCheckIntervalMs;
+    }
 
-  public ReplicaMovementStrategy replicaMovementStrategy() {
-    return _replicaMovementStrategy;
-  }
+    public Integer clusterConcurrentLeaderMovements() {
+        return _clusterLeaderMovementConcurrency;
+    }
 
-  public Long replicationThrottle() {
-    return _replicationThrottle;
-  }
+    public Integer brokerConcurrentLeaderMovements() {
+        return _brokerLeaderMovementConcurrency;
+    }
 
-  public String reason() {
-    return _reason;
-  }
+    public boolean skipHardGoalCheck() {
+        return _skipHardGoalCheck;
+    }
 
-  public boolean stopOngoingExecution() {
-    return _stopOngoingExecution;
-  }
+    public ReplicaMovementStrategy replicaMovementStrategy() {
+        return _replicaMovementStrategy;
+    }
 
-  @Override
-  public void configure(Map<String, ?> configs) {
-    super.configure(configs);
-  }
+    public Long replicationThrottle() {
+        return _replicationThrottle;
+    }
 
-  @Override
-  public SortedSet<String> caseInsensitiveParameterNames() {
-    return CASE_INSENSITIVE_PARAMETER_NAMES;
-  }
+    public String reason() {
+        return _reason;
+    }
+
+    public boolean stopOngoingExecution() {
+        return _stopOngoingExecution;
+    }
+
+    @Override
+    public void configure(Map<String, ?> configs) {
+        super.configure(configs);
+    }
+
+    @Override
+    public SortedSet<String> caseInsensitiveParameterNames() {
+        return CASE_INSENSITIVE_PARAMETER_NAMES;
+    }
 }

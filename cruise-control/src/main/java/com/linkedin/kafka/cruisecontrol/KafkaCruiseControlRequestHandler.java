@@ -95,7 +95,7 @@ public class KafkaCruiseControlRequestHandler {
                            Map<String, Object> parameterConfigOverrides)
             throws Exception {
         // Sanity check: if the request is for REVIEW_BOARD, two step verification must be enabled.
-        if (endPoint == REVIEW_BOARD && !_cruiseControlEndPoints.twoStepVerification()) {
+        if (endPoint == REVIEW_BOARD && _cruiseControlEndPoints.twoStepVerification()) {
             throw new ConfigException(String.format("Attempt to access %s endpoint without enabling '%s' config.",
                     endPoint, WebServerConfig.TWO_STEP_VERIFICATION_ENABLED_CONFIG));
         }
@@ -121,7 +121,7 @@ public class KafkaCruiseControlRequestHandler {
         RequestParameterWrapper requestParameter = requestParameterFor(endPoint);
         if (endPoint == REVIEW) {
             // Sanity check: if the request is for REVIEW, two step verification must be enabled.
-            if (!_cruiseControlEndPoints.twoStepVerification()) {
+            if (_cruiseControlEndPoints.twoStepVerification()) {
                 throw new ConfigException(String.format("Attempt to access %s endpoint without enabling '%s' config.",
                         endPoint, WebServerConfig.TWO_STEP_VERIFICATION_ENABLED_CONFIG));
             }
@@ -131,7 +131,7 @@ public class KafkaCruiseControlRequestHandler {
             if (!hasValidParameterNames(requestContext, parameters)) {
                 return;
             }
-        } else if (!_cruiseControlEndPoints.twoStepVerification()) {
+        } else if (_cruiseControlEndPoints.twoStepVerification()) {
             // Do not add to the purgatory if the two-step verification is disabled.
             parameters = _cruiseControlEndPoints.config().getConfiguredInstance(requestParameter.parametersClass(),
                     CruiseControlParameters.class, parameterConfigOverrides);

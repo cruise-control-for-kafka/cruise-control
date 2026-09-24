@@ -20,5 +20,5 @@ public @interface JsonResponseExternalFields {
   /**
    * @return The reference class.
    */
-  Class value();
+  Class<?> value();
 }

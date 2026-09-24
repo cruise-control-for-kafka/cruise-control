@@ -16,14 +16,14 @@ import org.apache.kafka.common.annotation.InterfaceStability;
  */
 @InterfaceStability.Evolving
 public interface ReplicaToBrokerSetMappingPolicy {
-  /**
-   * Maps a replica to a broker set
-   *
-   * @param replica replica object
-   * @param clusterModel cluster model object
-   * @param brokerSetResolutionHelper broker set resolution helper
-   * @return A broker set Id
-   */
-  String brokerSetIdForReplica(Replica replica, ClusterModel clusterModel, BrokerSetResolutionHelper brokerSetResolutionHelper)
-      throws BrokerSetResolutionException, ReplicaToBrokerSetMappingException;
+    /**
+     * Maps a replica to a broker set
+     *
+     * @param replica                   replica object
+     * @param clusterModel              cluster model object
+     * @param brokerSetResolutionHelper broker set resolution helper
+     * @return A broker set Id
+     */
+    String brokerSetIdForReplica(Replica replica, ClusterModel clusterModel, BrokerSetResolutionHelper brokerSetResolutionHelper)
+            throws BrokerSetResolutionException, ReplicaToBrokerSetMappingException;
 }

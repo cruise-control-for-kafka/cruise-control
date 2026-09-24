@@ -5,11 +5,11 @@
 package com.linkedin.kafka.cruisecontrol.detector.notifier;
 
 /**
- * Alert severity representation based on standard wording 
+ * Alert severity representation based on standard wording
  */
 public enum AlertSeverity {
     CRITICAL("critical"), MAJOR("major"), MINOR("minor"), WARNING("warning");
-    
+
     private final String _value;
 
     AlertSeverity(String value) {

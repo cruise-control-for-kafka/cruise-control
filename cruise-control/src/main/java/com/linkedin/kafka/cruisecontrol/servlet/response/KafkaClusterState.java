@@ -5,18 +5,19 @@
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
 import com.google.gson.Gson;
-import com.linkedin.kafka.cruisecontrol.config.BrokerSetResolver;
-import com.linkedin.kafka.cruisecontrol.config.TopicConfigProvider;
-import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
+import com.linkedin.kafka.cruisecontrol.config.BrokerSetResolver;
+import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.config.TopicConfigProvider;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.KafkaClusterStateParameters;
+import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.common.Cluster;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.regex.Pattern;
-import org.apache.kafka.clients.admin.AdminClient;
-import org.apache.kafka.common.Cluster;
 
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JSON_VERSION;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;

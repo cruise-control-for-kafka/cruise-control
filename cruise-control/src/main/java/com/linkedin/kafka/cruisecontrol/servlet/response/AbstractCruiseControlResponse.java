@@ -4,10 +4,11 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import com.linkedin.cruisecontrol.http.CruiseControlRequestContext;
+import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
 import com.linkedin.cruisecontrol.servlet.response.CruiseControlResponse;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
-import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
-import com.linkedin.cruisecontrol.http.CruiseControlRequestContext;
+
 import java.io.IOException;
 
 import static jakarta.servlet.http.HttpServletResponse.SC_OK;

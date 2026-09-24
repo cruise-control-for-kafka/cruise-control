@@ -1,0 +1,12 @@
+FROM gradle:8.5-jdk17 AS cruise-control-build
+
+WORKDIR /workspace
+COPY . .
+
+RUN ./gradlew jar copyDependantLibs --no-daemon
+
+FROM apache/kafka:4.3.1
+
+COPY --from=cruise-control-build \
+  /workspace/cruise-control-metrics-reporter/build/libs/*.jar \
+  /opt/kafka/libs/cruise-control-metrics-reporter.jar

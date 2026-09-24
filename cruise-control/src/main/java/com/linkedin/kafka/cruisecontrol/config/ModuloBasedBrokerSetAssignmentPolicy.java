@@ -30,28 +30,20 @@ public class ModuloBasedBrokerSetAssignmentPolicy implements BrokerSetAssignment
   @Override
   public Map<String, Set<Integer>> assignBrokerSetsForUnresolvedBrokers(final ClusterModel clusterModel,
                                                                         final Map<String, Set<Integer>> existingBrokerSetMapping) {
-    Set<Broker> allMappedBrokers = existingBrokerSetMapping.values()
+      var allMappedBrokers = existingBrokerSetMapping.values()
                                                            .stream()
-                                                           .flatMap(brokerIds -> brokerIds.stream())
-                                                           .map(brokerId -> clusterModel.broker(brokerId))
+                                                           .flatMap(Collection::stream)
+                                                           .map(clusterModel::broker)
                                                            .filter(Objects::nonNull)
                                                            .collect(Collectors.toSet());
 
-    Set<Broker> extraBrokersInClusterModel = new HashSet<>(clusterModel.brokers());
+    var extraBrokersInClusterModel = new HashSet<>(clusterModel.brokers());
     extraBrokersInClusterModel.removeAll(allMappedBrokers);
 
-    int numberOfBrokerSets = existingBrokerSetMapping.size();
-    List<String> brokerSetIds = new ArrayList<>(existingBrokerSetMapping.keySet());
-    Collections.sort(brokerSetIds);
-
-    extraBrokersInClusterModel.stream().forEach(broker -> {
-      String brokerSet = brokerSetIds.get(broker.id() % numberOfBrokerSets);
-      Set<Integer> brokerIdsForBrokerSet = existingBrokerSetMapping.getOrDefault(brokerSet, new HashSet<>());
-      brokerIdsForBrokerSet.add(broker.id());
-      existingBrokerSetMapping.put(brokerSet, brokerIdsForBrokerSet);
-    });
-
-    return existingBrokerSetMapping;
+    return assignBrokerSetsForUnresolvedBrokers(extraBrokersInClusterModel.stream()
+                                                                          .map(Broker::id)
+                                                                          .collect(Collectors.toSet()),
+                                                existingBrokerSetMapping);
   }
 
   /**
@@ -70,15 +62,22 @@ public class ModuloBasedBrokerSetAssignmentPolicy implements BrokerSetAssignment
     Set<Integer> unmappedBrokers = new HashSet<>(rackIdToBrokerId.keySet());
     unmappedBrokers.removeAll(allMappedBrokers);
 
-    int numberOfBrokerSets = existingBrokerSetMapping.size();
+    return assignBrokerSetsForUnresolvedBrokers(unmappedBrokers, existingBrokerSetMapping);
+  }
+
+  private Map<String, Set<Integer>> assignBrokerSetsForUnresolvedBrokers(final Set<Integer> unresolvedBrokerIds,
+                                                                         final Map<String, Set<Integer>> existingBrokerSetMapping) {
+    if (existingBrokerSetMapping.isEmpty() || unresolvedBrokerIds.isEmpty()) {
+      return existingBrokerSetMapping;
+    }
+
     List<String> brokerSetIds = new ArrayList<>(existingBrokerSetMapping.keySet());
     Collections.sort(brokerSetIds);
+    int numberOfBrokerSets = brokerSetIds.size();
 
-    unmappedBrokers.forEach(brokerId -> {
-      String brokerSet = brokerSetIds.get(brokerId % numberOfBrokerSets);
-      Set<Integer> brokerIdsForBrokerSet = existingBrokerSetMapping.getOrDefault(brokerSet, new HashSet<>());
-      brokerIdsForBrokerSet.add(brokerId);
-      existingBrokerSetMapping.put(brokerSet, brokerIdsForBrokerSet);
+    unresolvedBrokerIds.forEach(brokerId -> {
+      String brokerSet = brokerSetIds.get(Math.floorMod(brokerId, numberOfBrokerSets));
+      existingBrokerSetMapping.computeIfAbsent(brokerSet, key -> new HashSet<>()).add(brokerId);
     });
 
     return existingBrokerSetMapping;

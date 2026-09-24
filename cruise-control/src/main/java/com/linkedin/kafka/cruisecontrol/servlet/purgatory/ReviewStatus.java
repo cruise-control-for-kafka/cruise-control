@@ -12,15 +12,16 @@ import java.util.List;
  * Possible status of requests in {@link Purgatory}.
  */
 public enum ReviewStatus {
-  PENDING_REVIEW, APPROVED, SUBMITTED, DISCARDED;
+    PENDING_REVIEW, APPROVED, SUBMITTED, DISCARDED;
 
-  private static final List<ReviewStatus> CACHED_VALUES = List.of(values());
+    private static final List<ReviewStatus> CACHED_VALUES = List.of(values());
 
-  /**
-   * Use this instead of values() because values() creates a new array each time.
-   * @return enumerated values in the same order as values()
-   */
-  public static List<ReviewStatus> cachedValues() {
-    return Collections.unmodifiableList(CACHED_VALUES);
-  }
+    /**
+     * Use this instead of values() because values() creates a new array each time.
+     *
+     * @return enumerated values in the same order as values()
+     */
+    public static List<ReviewStatus> cachedValues() {
+        return CACHED_VALUES;
+    }
 }

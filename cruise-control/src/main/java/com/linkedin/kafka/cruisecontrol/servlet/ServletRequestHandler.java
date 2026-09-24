@@ -11,6 +11,7 @@ import com.linkedin.kafka.cruisecontrol.async.AsyncKafkaCruiseControl;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+
 import java.io.IOException;
 
 import static com.linkedin.kafka.cruisecontrol.servlet.KafkaCruiseControlServletUtils.handleOptions;
@@ -20,33 +21,33 @@ import static com.linkedin.kafka.cruisecontrol.servlet.KafkaCruiseControlServlet
  */
 public class ServletRequestHandler extends HttpServlet {
 
-  private final KafkaCruiseControlRequestHandler _requestHandler;
+    private final KafkaCruiseControlRequestHandler _requestHandler;
 
-  public ServletRequestHandler(AsyncKafkaCruiseControl asynckafkaCruiseControl, MetricRegistry dropwizardMetricRegistry) {
-    _requestHandler = new KafkaCruiseControlRequestHandler(asynckafkaCruiseControl, dropwizardMetricRegistry);
-  }
+    public ServletRequestHandler(AsyncKafkaCruiseControl asynckafkaCruiseControl, MetricRegistry dropwizardMetricRegistry) {
+        _requestHandler = new KafkaCruiseControlRequestHandler(asynckafkaCruiseControl, dropwizardMetricRegistry);
+    }
 
-  @Override
-  public void destroy() {
-    super.destroy();
-    _requestHandler.destroy();
-  }
+    @Override
+    public void destroy() {
+        super.destroy();
+        _requestHandler.destroy();
+    }
 
-  protected void doOptions(HttpServletRequest request, HttpServletResponse response) {
-    handleOptions(response, _requestHandler.cruiseControlEndPoints().config());
-  }
+    protected void doOptions(HttpServletRequest request, HttpServletResponse response) {
+        handleOptions(response, _requestHandler.cruiseControlEndPoints().config());
+    }
 
-  @Override
-  protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
-    _requestHandler.doGetOrPost(new ServletRequestContext(request, response, _requestHandler.cruiseControlEndPoints().config()));
-  }
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        _requestHandler.doGetOrPost(new ServletRequestContext(request, response, _requestHandler.cruiseControlEndPoints().config()));
+    }
 
-  @Override
-  protected void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException {
-    _requestHandler.doGetOrPost(new ServletRequestContext(request, response, _requestHandler.cruiseControlEndPoints().config()));
-  }
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException {
+        _requestHandler.doGetOrPost(new ServletRequestContext(request, response, _requestHandler.cruiseControlEndPoints().config()));
+    }
 
-  public KafkaCruiseControlEndPoints cruiseControlEndPoints() {
-    return _requestHandler.cruiseControlEndPoints();
-  }
+    public KafkaCruiseControlEndPoints cruiseControlEndPoints() {
+        return _requestHandler.cruiseControlEndPoints();
+    }
 }

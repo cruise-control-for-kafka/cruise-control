@@ -5,18 +5,11 @@
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
-import java.io.UnsupportedEncodingException;
-import java.util.Collections;
-import java.util.Map;
-import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
 
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.IGNORE_PROPOSAL_CACHE_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.KAFKA_ASSIGNER_MODE_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.DESTINATION_BROKER_IDS_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REBALANCE_DISK_MODE_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REASON_PARAM;
+import java.io.UnsupportedEncodingException;
+import java.util.*;
+
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.*;
 
 
 /**
@@ -32,52 +25,54 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
  * </pre>
  */
 public class ProposalsParameters extends GoalBasedOptimizationParameters {
-  protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
-  static {
-    SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-    validParameterNames.add(KAFKA_ASSIGNER_MODE_PARAM);
-    validParameterNames.add(DESTINATION_BROKER_IDS_PARAM);
-    validParameterNames.add(IGNORE_PROPOSAL_CACHE_PARAM);
-    validParameterNames.add(REBALANCE_DISK_MODE_PARAM);
-    validParameterNames.add(REASON_PARAM);
-    validParameterNames.addAll(GoalBasedOptimizationParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
-    CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
-  }
-  protected Set<Integer> _destinationBrokerIds;
-  protected boolean _ignoreProposalCache;
-  protected boolean _isRebalanceDiskMode;
+    protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
 
-  public ProposalsParameters() {
-    super();
-  }
+    static {
+        SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        validParameterNames.add(KAFKA_ASSIGNER_MODE_PARAM);
+        validParameterNames.add(DESTINATION_BROKER_IDS_PARAM);
+        validParameterNames.add(IGNORE_PROPOSAL_CACHE_PARAM);
+        validParameterNames.add(REBALANCE_DISK_MODE_PARAM);
+        validParameterNames.add(REASON_PARAM);
+        validParameterNames.addAll(GoalBasedOptimizationParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
+        CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
+    }
 
-  @Override
-  protected void initParameters() throws UnsupportedEncodingException {
-    super.initParameters();
-    _destinationBrokerIds = ParameterUtils.destinationBrokerIds(_requestContext);
-    _ignoreProposalCache = ParameterUtils.ignoreProposalCache(_requestContext);
-    _isRebalanceDiskMode = ParameterUtils.isRebalanceDiskMode(_requestContext);
-  }
+    protected Set<Integer> _destinationBrokerIds;
+    protected boolean _ignoreProposalCache;
+    protected boolean _isRebalanceDiskMode;
 
-  public Set<Integer> destinationBrokerIds() {
-    return _destinationBrokerIds;
-  }
+    public ProposalsParameters() {
+        super();
+    }
 
-  public boolean ignoreProposalCache() {
-    return _ignoreProposalCache;
-  }
+    @Override
+    protected void initParameters() throws UnsupportedEncodingException {
+        super.initParameters();
+        _destinationBrokerIds = ParameterUtils.destinationBrokerIds(_requestContext);
+        _ignoreProposalCache = ParameterUtils.ignoreProposalCache(_requestContext);
+        _isRebalanceDiskMode = ParameterUtils.isRebalanceDiskMode(_requestContext);
+    }
 
-  public boolean isRebalanceDiskMode() {
-    return _isRebalanceDiskMode;
-  }
+    public Set<Integer> destinationBrokerIds() {
+        return _destinationBrokerIds;
+    }
 
-  @Override
-  public void configure(Map<String, ?> configs) {
-    super.configure(configs);
-  }
+    public boolean ignoreProposalCache() {
+        return _ignoreProposalCache;
+    }
 
-  @Override
-  public SortedSet<String> caseInsensitiveParameterNames() {
-    return CASE_INSENSITIVE_PARAMETER_NAMES;
-  }
+    public boolean isRebalanceDiskMode() {
+        return _isRebalanceDiskMode;
+    }
+
+    @Override
+    public void configure(Map<String, ?> configs) {
+        super.configure(configs);
+    }
+
+    @Override
+    public SortedSet<String> caseInsensitiveParameterNames() {
+        return CASE_INSENSITIVE_PARAMETER_NAMES;
+    }
 }

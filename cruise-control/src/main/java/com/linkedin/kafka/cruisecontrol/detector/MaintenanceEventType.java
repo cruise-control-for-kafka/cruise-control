@@ -10,7 +10,7 @@ import java.util.List;
 
 /**
  * Flags to indicate the type of a maintenance event.
- *
+ * <p>
  * Currently supported maintenance types are as follows:
  * <ul>
  *  <li>{@link #ADD_BROKER}: Move replicas to added brokers for load balancing.</li>
@@ -22,34 +22,36 @@ import java.util.List;
  * </ul>
  */
 public enum MaintenanceEventType {
-  // Do not change the order of enums. Append new ones to the end.
-  ADD_BROKER, REMOVE_BROKER, FIX_OFFLINE_REPLICAS, REBALANCE, DEMOTE_BROKER, TOPIC_REPLICATION_FACTOR;
+    // Do not change the order of enums. Append new ones to the end.
+    ADD_BROKER, REMOVE_BROKER, FIX_OFFLINE_REPLICAS, REBALANCE, DEMOTE_BROKER, TOPIC_REPLICATION_FACTOR;
 
-  private static final List<MaintenanceEventType> CACHED_VALUES = List.of(values());
+    private static final List<MaintenanceEventType> CACHED_VALUES = List.of(values());
 
-  // This id helps with serialization and deserialization of event types
-  byte id() {
-    return (byte) ordinal();
-  }
-  /**
-   * Retrieve the {@link MaintenanceEvent} that corresponds to the given id.
-   *
-   * @param id ID that corresponds to the maintenance event type.
-   * @return Maintenance Event type with the given id.
-   */
-  public static MaintenanceEventType forId(byte id) {
-    if (id < cachedValues().size()) {
-      return cachedValues().get(id);
+    // This id helps with serialization and deserialization of event types
+    byte id() {
+        return (byte) ordinal();
     }
 
-    throw new IllegalArgumentException("MaintenanceEventType " + id + " does not exist.");
-  }
+    /**
+     * Retrieve the {@link MaintenanceEvent} that corresponds to the given id.
+     *
+     * @param id ID that corresponds to the maintenance event type.
+     * @return Maintenance Event type with the given id.
+     */
+    public static MaintenanceEventType forId(byte id) {
+        if (id < cachedValues().size()) {
+            return cachedValues().get(id);
+        }
 
-  /**
-   * Use this instead of values() because values() creates a new array each time.
-   * @return enumerated values in the same order as values()
-   */
-  public static List<MaintenanceEventType> cachedValues() {
-    return Collections.unmodifiableList(CACHED_VALUES);
-  }
+        throw new IllegalArgumentException("MaintenanceEventType " + id + " does not exist.");
+    }
+
+    /**
+     * Use this instead of values() because values() creates a new array each time.
+     *
+     * @return enumerated values in the same order as values()
+     */
+    public static List<MaintenanceEventType> cachedValues() {
+        return CACHED_VALUES;
+    }
 }

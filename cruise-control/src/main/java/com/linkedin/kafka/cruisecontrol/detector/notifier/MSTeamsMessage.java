@@ -28,8 +28,8 @@ public final class MSTeamsMessage implements Serializable {
                 + "\"sections\": [{"
                 + "\"facts\": ["
                 + _facts.entrySet().stream()
-                        .map(e -> "{\"name\": \"" + e.getKey() + "\", \"value\": \"" + e.getValue() + "\"}")
-                        .collect(Collectors.joining(","))
+                .map(e -> "{\"name\": \"" + e.getKey() + "\", \"value\": \"" + e.getValue() + "\"}")
+                .collect(Collectors.joining(","))
                 + "]}]}";
     }
 }

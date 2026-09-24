@@ -4,8 +4,9 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response.stats;
 
-import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
+import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
+
 import java.util.Map;
 
 @JsonResponseClass

@@ -9,7 +9,7 @@ package com.linkedin.kafka.cruisecontrol.exception;
  */
 public class OngoingExecutionException extends KafkaCruiseControlException {
 
-  public OngoingExecutionException(String message) {
-    super(message);
-  }
+    public OngoingExecutionException(String message) {
+        super(message);
+    }
 }

@@ -14,8 +14,8 @@ import static com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyTyp
  * cluster balanceness (e.g. topic having small replication factor or gigantic replicas).
  */
 public abstract class TopicAnomaly extends KafkaAnomaly {
-  @Override
-  public AnomalyType anomalyType() {
-    return TOPIC_ANOMALY;
-  }
+    @Override
+    public AnomalyType anomalyType() {
+        return TOPIC_ANOMALY;
+    }
 }

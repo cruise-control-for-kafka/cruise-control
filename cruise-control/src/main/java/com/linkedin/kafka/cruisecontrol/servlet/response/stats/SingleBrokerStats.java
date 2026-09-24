@@ -6,8 +6,9 @@ package com.linkedin.kafka.cruisecontrol.servlet.response.stats;
 
 import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.DiskStats;
-import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
+import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
+
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;

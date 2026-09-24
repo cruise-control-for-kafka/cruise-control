@@ -9,6 +9,7 @@ import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlEndPoints;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlRequestHandler;
 import com.linkedin.kafka.cruisecontrol.async.AsyncKafkaCruiseControl;
 import io.vertx.ext.web.RoutingContext;
+
 import java.io.IOException;
 
 public class VertxRequestHandler {
@@ -28,6 +29,7 @@ public class VertxRequestHandler {
 
     /**
      * Handles the request
+     *
      * @param context is the request
      */
     public void handle(RoutingContext context) {

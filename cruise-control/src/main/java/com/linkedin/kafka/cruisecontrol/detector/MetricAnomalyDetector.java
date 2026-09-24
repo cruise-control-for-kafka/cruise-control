@@ -26,59 +26,59 @@ import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.get
  * An alert will be triggered if one of the goals is not met.
  */
 public class MetricAnomalyDetector extends AbstractAnomalyDetector implements Runnable {
-  private static final Logger LOG = LoggerFactory.getLogger(MetricAnomalyDetector.class);
-  public static final String METRIC_ANOMALY_DESCRIPTION_OBJECT_CONFIG = "metric.anomaly.description.object";
-  public static final String METRIC_ANOMALY_BROKER_ENTITIES_OBJECT_CONFIG = "metric.anomaly.broker.entities.object";
-  public static final String METRIC_ANOMALY_FIXABLE_OBJECT_CONFIG = "metric.anomaly.fixable.object";
-  private final List<MetricAnomalyFinder> _kafkaMetricAnomalyFinders;
-  private boolean _skippedLatestDetection;
+    private static final Logger LOG = LoggerFactory.getLogger(MetricAnomalyDetector.class);
+    public static final String METRIC_ANOMALY_DESCRIPTION_OBJECT_CONFIG = "metric.anomaly.description.object";
+    public static final String METRIC_ANOMALY_BROKER_ENTITIES_OBJECT_CONFIG = "metric.anomaly.broker.entities.object";
+    public static final String METRIC_ANOMALY_FIXABLE_OBJECT_CONFIG = "metric.anomaly.fixable.object";
+    private final List<MetricAnomalyFinder> _kafkaMetricAnomalyFinders;
+    private boolean _skippedLatestDetection;
 
-  public MetricAnomalyDetector(Queue<Anomaly> anomalies, KafkaCruiseControl kafkaCruiseControl) {
-    super(anomalies, kafkaCruiseControl);
-    Map<String, Object> configWithCruiseControlObject = Collections.singletonMap(KAFKA_CRUISE_CONTROL_OBJECT_CONFIG,
-                                                                                 kafkaCruiseControl);
-    _kafkaMetricAnomalyFinders = kafkaCruiseControl.config().getConfiguredInstances(
-        AnomalyDetectorConfig.METRIC_ANOMALY_FINDER_CLASSES_CONFIG,
-        MetricAnomalyFinder.class,
-        configWithCruiseControlObject);
-    _skippedLatestDetection = true;
-  }
-
-  /**
-   * Get the latest total number of metric anomalies with the given type detected by metric anomaly finders, or {@code 0} if the latest
-   * anomaly detection was skipped.
-   *
-   * @param type Metric anomaly type for which the latest total number of metric anomalies is queried.
-   * @return The latest total number of metric anomalies with the given type detected by metric anomaly finders, or {@code 0} if the latest
-   * anomaly detection was skipped.
-   */
-  int numAnomaliesOfType(MetricAnomalyType type) {
-    return _skippedLatestDetection ? 0 : _kafkaMetricAnomalyFinders.stream().mapToInt(finder -> finder.numAnomaliesOfType(type)).sum();
-  }
-
-  @Override
-  @SuppressWarnings("unchecked")
-  public void run() {
-    try {
-      if (getAnomalyDetectionStatus(_kafkaCruiseControl, true, true) != AnomalyDetectionStatus.READY) {
-        // Skip the latest detection because metric anomaly detector is not ready
+    public MetricAnomalyDetector(Queue<Anomaly> anomalies, KafkaCruiseControl kafkaCruiseControl) {
+        super(anomalies, kafkaCruiseControl);
+        Map<String, Object> configWithCruiseControlObject = Collections.singletonMap(KAFKA_CRUISE_CONTROL_OBJECT_CONFIG,
+                kafkaCruiseControl);
+        _kafkaMetricAnomalyFinders = kafkaCruiseControl.config().getConfiguredInstances(
+                AnomalyDetectorConfig.METRIC_ANOMALY_FINDER_CLASSES_CONFIG,
+                MetricAnomalyFinder.class,
+                configWithCruiseControlObject);
         _skippedLatestDetection = true;
-        return;
-      }
-
-      // Get the historical and current values of broker metrics.
-      Map<BrokerEntity, ValuesAndExtrapolations> metricsHistoryByBroker = _kafkaCruiseControl.loadMonitor().brokerMetrics().valuesAndExtrapolations();
-      Map<BrokerEntity, ValuesAndExtrapolations> currentMetricsByBroker = _kafkaCruiseControl.loadMonitor().currentBrokerMetricValues();
-
-      for (MetricAnomalyFinder<BrokerEntity> kafkaMetricAnomalyFinder : _kafkaMetricAnomalyFinders) {
-        _anomalies.addAll(kafkaMetricAnomalyFinder.metricAnomalies(metricsHistoryByBroker, currentMetricsByBroker));
-      }
-      _skippedLatestDetection = false;
-    } catch (Exception e) {
-      _skippedLatestDetection = true;
-      LOG.warn("Metric Anomaly Detector encountered exception: ", e);
-    } finally {
-      LOG.debug("Metric anomaly detection finished.");
     }
-  }
+
+    /**
+     * Get the latest total number of metric anomalies with the given type detected by metric anomaly finders, or {@code 0} if the latest
+     * anomaly detection was skipped.
+     *
+     * @param type Metric anomaly type for which the latest total number of metric anomalies is queried.
+     * @return The latest total number of metric anomalies with the given type detected by metric anomaly finders, or {@code 0} if the latest
+     * anomaly detection was skipped.
+     */
+    int numAnomaliesOfType(MetricAnomalyType type) {
+        return _skippedLatestDetection ? 0 : _kafkaMetricAnomalyFinders.stream().mapToInt(finder -> finder.numAnomaliesOfType(type)).sum();
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public void run() {
+        try {
+            if (getAnomalyDetectionStatus(_kafkaCruiseControl, true, true) != AnomalyDetectionStatus.READY) {
+                // Skip the latest detection because metric anomaly detector is not ready
+                _skippedLatestDetection = true;
+                return;
+            }
+
+            // Get the historical and current values of broker metrics.
+            Map<BrokerEntity, ValuesAndExtrapolations> metricsHistoryByBroker = _kafkaCruiseControl.loadMonitor().brokerMetrics().valuesAndExtrapolations();
+            Map<BrokerEntity, ValuesAndExtrapolations> currentMetricsByBroker = _kafkaCruiseControl.loadMonitor().currentBrokerMetricValues();
+
+            for (MetricAnomalyFinder<BrokerEntity> kafkaMetricAnomalyFinder : _kafkaMetricAnomalyFinders) {
+                _anomalies.addAll(kafkaMetricAnomalyFinder.metricAnomalies(metricsHistoryByBroker, currentMetricsByBroker));
+            }
+            _skippedLatestDetection = false;
+        } catch (Exception e) {
+            _skippedLatestDetection = true;
+            LOG.warn("Metric Anomaly Detector encountered exception: ", e);
+        } finally {
+            LOG.debug("Metric anomaly detection finished.");
+        }
+    }
 }

@@ -9,13 +9,13 @@ import java.util.SortedSet;
 
 /**
  * A plan to demote brokers.
- *
+ * <p>
  * The desired brokers to demote are indicated using a set of broker ids.
  */
 public class DemoteBrokerPlan extends MaintenancePlanWithBrokers {
-  public static final byte LATEST_SUPPORTED_VERSION = 0;
+    public static final byte LATEST_SUPPORTED_VERSION = 0;
 
-  public DemoteBrokerPlan(long timeMs, int brokerId, SortedSet<Integer> brokers) {
-    super(MaintenanceEventType.DEMOTE_BROKER, timeMs, brokerId, LATEST_SUPPORTED_VERSION, brokers);
-  }
+    public DemoteBrokerPlan(long timeMs, int brokerId, SortedSet<Integer> brokers) {
+        super(MaintenanceEventType.DEMOTE_BROKER, timeMs, brokerId, LATEST_SUPPORTED_VERSION, brokers);
+    }
 }

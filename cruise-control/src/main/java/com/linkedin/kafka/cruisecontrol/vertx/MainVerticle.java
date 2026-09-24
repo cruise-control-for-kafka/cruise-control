@@ -27,12 +27,12 @@ import java.util.Set;
 public class MainVerticle extends AbstractVerticle {
 
   public static final String APPLICATION_JSON = "application/json";
-  private int _port;
-  private String _host;
+  private final int _port;
+  private final String _host;
   private HttpServer _server;
   private VertxRequestHandler _endPoints;
-  private AsyncKafkaCruiseControl _asynckafkaCruiseControl;
-  private MetricRegistry _dropwizardMetricRegistry;
+  private final AsyncKafkaCruiseControl _asynckafkaCruiseControl;
+  private final MetricRegistry _dropwizardMetricRegistry;
 
   public MainVerticle(AsyncKafkaCruiseControl asynckafkaCruiseControl, MetricRegistry dropwizardMetricRegistry, int port, String host) {
     _port = port;

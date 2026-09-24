@@ -6,16 +6,11 @@ package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.purgatory.ReviewStatus;
-import java.io.UnsupportedEncodingException;
-import java.util.Collections;
-import java.util.Map;
-import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
 
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.APPROVE_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.DISCARD_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REASON_PARAM;
+import java.io.UnsupportedEncodingException;
+import java.util.*;
+
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.*;
 
 
 /**
@@ -27,44 +22,46 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
  * </pre>
  */
 public class ReviewParameters extends AbstractParameters {
-  protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
-  static {
-    SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-    validParameterNames.add(REASON_PARAM);
-    validParameterNames.add(APPROVE_PARAM);
-    validParameterNames.add(DISCARD_PARAM);
-    validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
-    CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
-  }
-  protected String _reason;
-  protected Map<ReviewStatus, Set<Integer>> _reviewRequests;
+    protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
 
-  public ReviewParameters() {
-    super();
-  }
+    static {
+        SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        validParameterNames.add(REASON_PARAM);
+        validParameterNames.add(APPROVE_PARAM);
+        validParameterNames.add(DISCARD_PARAM);
+        validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
+        CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
+    }
 
-  @Override
-  protected void initParameters() throws UnsupportedEncodingException {
-    super.initParameters();
-    _reason = ParameterUtils.reason(_requestContext, false);
-    _reviewRequests = ParameterUtils.reviewRequests(_requestContext);
-  }
+    protected String _reason;
+    protected Map<ReviewStatus, Set<Integer>> _reviewRequests;
 
-  public String reason() {
-    return _reason;
-  }
+    public ReviewParameters() {
+        super();
+    }
 
-  public Map<ReviewStatus, Set<Integer>> reviewRequests() {
-    return _reviewRequests;
-  }
+    @Override
+    protected void initParameters() throws UnsupportedEncodingException {
+        super.initParameters();
+        _reason = ParameterUtils.reason(_requestContext, false);
+        _reviewRequests = ParameterUtils.reviewRequests(_requestContext);
+    }
 
-  @Override
-  public void configure(Map<String, ?> configs) {
-    super.configure(configs);
-  }
+    public String reason() {
+        return _reason;
+    }
 
-  @Override
-  public SortedSet<String> caseInsensitiveParameterNames() {
-    return CASE_INSENSITIVE_PARAMETER_NAMES;
-  }
+    public Map<ReviewStatus, Set<Integer>> reviewRequests() {
+        return _reviewRequests;
+    }
+
+    @Override
+    public void configure(Map<String, ?> configs) {
+        super.configure(configs);
+    }
+
+    @Override
+    public SortedSet<String> caseInsensitiveParameterNames() {
+        return CASE_INSENSITIVE_PARAMETER_NAMES;
+    }
 }

@@ -9,16 +9,16 @@ import com.linkedin.cruisecontrol.servlet.EndpointType;
 
 /**
  * An enum for categorizing {@link CruiseControlEndPoint}. Endpoints can be roughly grouped into following four types.
- *<ul>
+ * <ul>
  *  <li>KAFKA_MONITOR: endpoints that get information related to Kafka cluster.</li>
  *  <li>CRUISE_CONTROL_MONITOR: endpoints that get information related to Cruise Control instance.</li>
  *  <li>KAFKA_ADMIN: endpoints that can change state of Kafka cluster.</li>
  *  <li>CRUISE_CONTROL_ADMIN: endpoints that can change state or setting of Cruise Control instance.</li>
- *</ul>
+ * </ul>
  */
 enum CruiseControlEndpointType implements EndpointType {
-  KAFKA_MONITOR,
-  CRUISE_CONTROL_MONITOR,
-  KAFKA_ADMIN,
-  CRUISE_CONTROL_ADMIN
+    KAFKA_MONITOR,
+    CRUISE_CONTROL_MONITOR,
+    KAFKA_ADMIN,
+    CRUISE_CONTROL_ADMIN
 }

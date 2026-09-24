@@ -6,17 +6,11 @@ package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.response.CruiseControlState;
-import java.io.UnsupportedEncodingException;
-import java.util.Collections;
-import java.util.Map;
-import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
 
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REASON_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.SUBSTATES_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.VERBOSE_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.SUPER_VERBOSE_PARAM;
+import java.io.UnsupportedEncodingException;
+import java.util.*;
+
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.*;
 
 
 /**
@@ -28,51 +22,53 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
  * </pre>
  */
 public class CruiseControlStateParameters extends AbstractParameters {
-  protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
-  static {
-    SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-    validParameterNames.add(SUBSTATES_PARAM);
-    validParameterNames.add(VERBOSE_PARAM);
-    validParameterNames.add(SUPER_VERBOSE_PARAM);
-    validParameterNames.add(REASON_PARAM);
-    validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
-    CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
-  }
-  protected Set<CruiseControlState.SubState> _substates;
-  protected boolean _isVerbose;
-  protected boolean _isSuperVerbose;
+    protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
 
-  public CruiseControlStateParameters() {
-    super();
-  }
+    static {
+        SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        validParameterNames.add(SUBSTATES_PARAM);
+        validParameterNames.add(VERBOSE_PARAM);
+        validParameterNames.add(SUPER_VERBOSE_PARAM);
+        validParameterNames.add(REASON_PARAM);
+        validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
+        CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
+    }
 
-  @Override
-  protected void initParameters() throws UnsupportedEncodingException {
-    super.initParameters();
-    _substates = ParameterUtils.substates(_requestContext);
-    _isVerbose = ParameterUtils.isVerbose(_requestContext);
-    _isSuperVerbose = ParameterUtils.isSuperVerbose(_requestContext);
-  }
+    protected Set<CruiseControlState.SubState> _substates;
+    protected boolean _isVerbose;
+    protected boolean _isSuperVerbose;
 
-  public Set<CruiseControlState.SubState> substates() {
-    return _substates;
-  }
+    public CruiseControlStateParameters() {
+        super();
+    }
 
-  public boolean isVerbose() {
-    return _isVerbose;
-  }
+    @Override
+    protected void initParameters() throws UnsupportedEncodingException {
+        super.initParameters();
+        _substates = ParameterUtils.substates(_requestContext);
+        _isVerbose = ParameterUtils.isVerbose(_requestContext);
+        _isSuperVerbose = ParameterUtils.isSuperVerbose(_requestContext);
+    }
 
-  public boolean isSuperVerbose() {
-    return _isSuperVerbose;
-  }
+    public Set<CruiseControlState.SubState> substates() {
+        return _substates;
+    }
 
-  @Override
-  public void configure(Map<String, ?> configs) {
-    super.configure(configs);
-  }
+    public boolean isVerbose() {
+        return _isVerbose;
+    }
 
-  @Override
-  public SortedSet<String> caseInsensitiveParameterNames() {
-    return CASE_INSENSITIVE_PARAMETER_NAMES;
-  }
+    public boolean isSuperVerbose() {
+        return _isSuperVerbose;
+    }
+
+    @Override
+    public void configure(Map<String, ?> configs) {
+        super.configure(configs);
+    }
+
+    @Override
+    public SortedSet<String> caseInsensitiveParameterNames() {
+        return CASE_INSENSITIVE_PARAMETER_NAMES;
+    }
 }

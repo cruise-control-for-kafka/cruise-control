@@ -1,0 +1,22 @@
+FROM gradle:8.5-jdk17 AS build
+
+WORKDIR /workspace
+COPY . .
+
+RUN ./gradlew jar copyDependantLibs --no-daemon
+
+FROM eclipse-temurin:17-jre
+
+WORKDIR /app
+
+COPY --from=build /workspace/cruise-control /app/cruise-control
+COPY --from=build /workspace/cruise-control-metrics-reporter /app/cruise-control-metrics-reporter
+COPY --from=build /workspace/cruise-control-core /app/cruise-control-core
+COPY --from=build /workspace/config /app/config
+COPY --from=build /workspace/kafka-cruise-control-start.sh /app/kafka-cruise-control-start.sh
+
+RUN chmod +x /app/kafka-cruise-control-start.sh
+
+EXPOSE 9090
+
+CMD ["./kafka-cruise-control-start.sh", "config/cruisecontrol.properties", "9090"]

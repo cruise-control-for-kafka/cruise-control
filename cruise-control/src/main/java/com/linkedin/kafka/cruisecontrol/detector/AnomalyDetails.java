@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 
 import static com.linkedin.cruisecontrol.CruiseControlUtils.utcDateFor;
-import static com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyType.GOAL_VIOLATION;
 
 @JsonResponseClass
 public class AnomalyDetails {

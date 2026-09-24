@@ -12,17 +12,17 @@ import org.apache.kafka.common.annotation.InterfaceStability;
  */
 @InterfaceStability.Evolving
 public interface ExecutorNotifier extends CruiseControlConfigurable {
-  /**
-   * Send out a notification when needed.
-   *
-   * @param message Information to be sent.
-   */
-  void sendNotification(String message);
+    /**
+     * Send out a notification when needed.
+     *
+     * @param message Information to be sent.
+     */
+    void sendNotification(String message);
 
-  /**
-   * Send out an alert when needed.
-   *
-   * @param alertMessage Information to be sent.
-   */
-  void sendAlert(String alertMessage);
+    /**
+     * Send out an alert when needed.
+     *
+     * @param alertMessage Information to be sent.
+     */
+    void sendAlert(String alertMessage);
 }

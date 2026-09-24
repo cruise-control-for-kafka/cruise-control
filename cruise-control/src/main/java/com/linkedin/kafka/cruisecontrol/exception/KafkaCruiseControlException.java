@@ -9,16 +9,16 @@ package com.linkedin.kafka.cruisecontrol.exception;
  */
 public class KafkaCruiseControlException extends Exception {
 
-  public KafkaCruiseControlException(String message, Throwable cause) {
-    super(message, cause);
-  }
+    public KafkaCruiseControlException(String message, Throwable cause) {
+        super(message, cause);
+    }
 
-  public KafkaCruiseControlException(String message) {
-    super(message);
-  }
+    public KafkaCruiseControlException(String message) {
+        super(message);
+    }
 
-  public KafkaCruiseControlException(Throwable cause) {
-    super(cause);
-  }
+    public KafkaCruiseControlException(Throwable cause) {
+        super(cause);
+    }
 
 }

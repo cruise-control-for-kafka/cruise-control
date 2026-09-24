@@ -9,6 +9,7 @@ import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.UserPermissionsManager;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.UserPermissionsParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.response.UserPermissions;
+
 import java.util.Map;
 
 import static com.linkedin.cruisecontrol.common.utils.Utils.validateNotNull;

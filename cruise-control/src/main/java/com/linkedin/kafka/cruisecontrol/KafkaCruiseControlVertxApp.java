@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 public class KafkaCruiseControlVertxApp extends KafkaCruiseControlApp {
 
     protected MainVerticle _verticle;
-    private Vertx _vertx;
+    private final Vertx _vertx;
 
     public KafkaCruiseControlVertxApp(KafkaCruiseControlConfig config, Integer port, String hostname) {
         super(config, port, hostname);
@@ -51,7 +51,9 @@ public class KafkaCruiseControlVertxApp extends KafkaCruiseControlApp {
             startupLatch.countDown();
         });
         try {
-            startupLatch.await(1, TimeUnit.MINUTES);
+            if (!startupLatch.await(1, TimeUnit.MINUTES)) {
+                throw new RuntimeException("Startup timed out");
+            }
         } catch (InterruptedException e) {
             throw new RuntimeException("Startup interrupted", e);
         }
@@ -64,14 +66,16 @@ public class KafkaCruiseControlVertxApp extends KafkaCruiseControlApp {
         _vertx.close(event -> {
             super.stop();
             if (event.failed()) {
-                throw new RuntimeException("Sutdown failed", event.cause());
+                throw new RuntimeException("Shutdown failed", event.cause());
             }
             shutdownLatch.countDown();
         });
         try {
-            shutdownLatch.await(1, TimeUnit.MINUTES);
+            if (!shutdownLatch.await(1, TimeUnit.MINUTES)) {
+                throw new RuntimeException("Shutdown timed out");
+            }
         } catch (InterruptedException e) {
-            throw new RuntimeException("Startup interrupted", e);
+            throw new RuntimeException("Shutdown interrupted", e);
         }
     }
 }

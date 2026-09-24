@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.detector.notifier;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
@@ -16,9 +17,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 
 /**
- * Alerta.io data to create alert: https://docs.alerta.io/en/latest/api/reference.html#create-an-alert
+ * Alerta.io data to create alert: <a href="https://docs.alerta.io/en/latest/api/reference.html#create-an-alert">...</a>
  */
 public final class AlertaMessage implements Serializable {
+    @Serial
     private static final long serialVersionUID = -7290861136323903837L;
 
     @NotNull
@@ -207,7 +209,7 @@ public final class AlertaMessage implements Serializable {
                 .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
                 .setSerializationInclusion(Include.NON_NULL).writeValueAsString(this);
         } catch (JsonProcessingException e) {
-            return "AlertaMassage Object parsing error : " + e.getMessage();
+            return "AlertaMessage Object parsing error : " + e.getMessage();
         }
     }
 }

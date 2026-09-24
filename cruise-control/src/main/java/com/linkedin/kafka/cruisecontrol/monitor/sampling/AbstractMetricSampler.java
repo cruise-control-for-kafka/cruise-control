@@ -4,18 +4,19 @@
 
 package com.linkedin.kafka.cruisecontrol.monitor.sampling;
 
-import java.util.Map;
-import java.util.Set;
-import org.apache.kafka.common.Cluster;
-import org.apache.kafka.common.TopicPartition;
 import com.linkedin.cruisecontrol.metricdef.MetricDef;
 import com.linkedin.kafka.cruisecontrol.config.BrokerCapacityConfigResolver;
 import com.linkedin.kafka.cruisecontrol.config.constants.MonitorConfig;
 import com.linkedin.kafka.cruisecontrol.exception.SamplingException;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.CruiseControlMetric;
+import org.apache.kafka.common.Cluster;
+import org.apache.kafka.common.TopicPartition;
 
-import static com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricFetcherManager.BROKER_CAPACITY_CONFIG_RESOLVER_OBJECT_CONFIG;
+import java.util.Map;
+import java.util.Set;
+
 import static com.linkedin.cruisecontrol.common.utils.Utils.validateNotNull;
+import static com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricFetcherManager.BROKER_CAPACITY_CONFIG_RESOLVER_OBJECT_CONFIG;
 
 /**
  * This is a base implementation of a MetricSampler that can be overridden by concrete Metric Sampler
@@ -30,17 +31,17 @@ public abstract class AbstractMetricSampler implements MetricSampler {
     public void configure(Map<String, ?> configs) {
         BrokerCapacityConfigResolver capacityResolver =
                 (BrokerCapacityConfigResolver) validateNotNull(configs.get(BROKER_CAPACITY_CONFIG_RESOLVER_OBJECT_CONFIG),
-                "Metrics reporter sampler configuration is missing broker capacity config resolver object.");
+                        "Metrics reporter sampler configuration is missing broker capacity config resolver object.");
         boolean allowCpuCapacityEstimation = (Boolean) configs.get(
-            MonitorConfig.SAMPLING_ALLOW_CPU_CAPACITY_ESTIMATION_CONFIG);
+                MonitorConfig.SAMPLING_ALLOW_CPU_CAPACITY_ESTIMATION_CONFIG);
         _metricsProcessor = new CruiseControlMetricsProcessor(capacityResolver, allowCpuCapacityEstimation);
     }
 
     @Override
     public Samples getSamples(Cluster cluster, Set<TopicPartition> assignedPartitions, long startTimeMs,
-        long endTimeMs, SamplingMode mode, MetricDef metricDef, long timeoutMs) throws SamplingException {
+                              long endTimeMs, SamplingMode mode, MetricDef metricDef, long timeoutMs) throws SamplingException {
         MetricSamplerOptions metricSamplerOptions = new MetricSamplerOptions(
-            cluster, assignedPartitions, startTimeMs, endTimeMs, mode, metricDef, timeoutMs);
+                cluster, assignedPartitions, startTimeMs, endTimeMs, mode, metricDef, timeoutMs);
         return getSamples(metricSamplerOptions);
     }
 
@@ -51,7 +52,7 @@ public abstract class AbstractMetricSampler implements MetricSampler {
         try {
             if (totalMetricsAdded > 0) {
                 return _metricsProcessor.process(metricSamplerOptions.cluster(),
-                    metricSamplerOptions.assignedPartitions(), metricSamplerOptions.mode());
+                        metricSamplerOptions.assignedPartitions(), metricSamplerOptions.mode());
             } else {
                 return MetricSampler.EMPTY_SAMPLES;
             }
@@ -63,7 +64,7 @@ public abstract class AbstractMetricSampler implements MetricSampler {
     /**
      * This method will be called to retrieve all the {@link CruiseControlMetric}s
      * for a cluster in one sampling period for processing by the {@link CruiseControlMetricsProcessor}.
-     *
+     * <p>
      * Concrete metric sampler implementations can implement this method according to
      * their corresponding business logic of fetching metrics for the cluster.
      *
@@ -71,7 +72,8 @@ public abstract class AbstractMetricSampler implements MetricSampler {
      * @return Total number of metrics retrieved.
      */
     protected abstract int retrieveMetricsForProcessing(MetricSamplerOptions metricSamplerOptions)
-        throws SamplingException;
+            throws SamplingException;
+
     /**
      * This method adds a metric obtained from the cluster to the list of metrics being
      * retrieved for processing during a single sampling period.

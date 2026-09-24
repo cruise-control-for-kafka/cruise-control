@@ -9,6 +9,6 @@ package com.linkedin.kafka.cruisecontrol.exception;
  */
 public class PartitionNotExistsException extends KafkaCruiseControlException {
     public PartitionNotExistsException(String message) {
-      super(message);
+        super(message);
     }
 }

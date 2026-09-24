@@ -392,7 +392,7 @@ public class GoalOptimizer implements Runnable {
     validateNotNull(clusterModel, "The cluster model cannot be null");
     if (goalsByPriority.isEmpty()) {
       throw new IllegalArgumentException("At least one goal must be provided to get an optimization result.");
-    } else if (!clusterModel.isClusterAlive()) {
+    } else if (clusterModel.isClusterAlive()) {
       throw new IllegalArgumentException("All brokers are dead in the cluster.");
     }
 

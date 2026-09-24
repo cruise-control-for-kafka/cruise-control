@@ -5,6 +5,7 @@
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
+
 import java.io.UnsupportedEncodingException;
 import java.util.Collections;
 import java.util.Map;
@@ -16,9 +17,9 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
 
 /**
  * Parameters for {@link CruiseControlEndPoint#ADD_BROKER}
- *<ul>
+ * <ul>
  *   <li>Note that "review_id" is mutually exclusive to the other parameters -- i.e. they cannot be used together.</li>
- *</ul>
+ * </ul>
  *
  * <pre>
  *    POST /kafkacruisecontrol/add_broker?brokerid=[id1,id2...]&amp;dryRun=[true/false]
@@ -35,36 +36,38 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
  * </pre>
  */
 public class AddBrokerParameters extends AddedOrRemovedBrokerParameters {
-  protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
-  static {
-    SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-    validParameterNames.add(THROTTLE_ADDED_BROKER_PARAM);
-    validParameterNames.addAll(AddedOrRemovedBrokerParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
-    CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
-  }
-  protected boolean _throttleAddedBrokers;
+    protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
 
-  public AddBrokerParameters() {
-    super();
-  }
+    static {
+        SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        validParameterNames.add(THROTTLE_ADDED_BROKER_PARAM);
+        validParameterNames.addAll(AddedOrRemovedBrokerParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
+        CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
+    }
 
-  @Override
-  protected void initParameters() throws UnsupportedEncodingException {
-    super.initParameters();
-    _throttleAddedBrokers = ParameterUtils.throttleAddedOrRemovedBrokers(_requestContext, _endPoint);
-  }
+    protected boolean _throttleAddedBrokers;
 
-  public boolean throttleAddedBrokers() {
-    return _throttleAddedBrokers;
-  }
+    public AddBrokerParameters() {
+        super();
+    }
 
-  @Override
-  public void configure(Map<String, ?> configs) {
-    super.configure(configs);
-  }
+    @Override
+    protected void initParameters() throws UnsupportedEncodingException {
+        super.initParameters();
+        _throttleAddedBrokers = ParameterUtils.throttleAddedOrRemovedBrokers(_requestContext, _endPoint);
+    }
 
-  @Override
-  public SortedSet<String> caseInsensitiveParameterNames() {
-    return CASE_INSENSITIVE_PARAMETER_NAMES;
-  }
+    public boolean throttleAddedBrokers() {
+        return _throttleAddedBrokers;
+    }
+
+    @Override
+    public void configure(Map<String, ?> configs) {
+        super.configure(configs);
+    }
+
+    @Override
+    public SortedSet<String> caseInsensitiveParameterNames() {
+        return CASE_INSENSITIVE_PARAMETER_NAMES;
+    }
 }

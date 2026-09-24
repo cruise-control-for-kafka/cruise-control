@@ -5,6 +5,7 @@
 package com.linkedin.kafka.cruisecontrol.executor;
 
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
+
 import java.util.Collections;
 import java.util.List;
 
@@ -20,22 +21,23 @@ import java.util.List;
  * </ul>
  */
 public enum ConcurrencyType {
-  @JsonResponseField
-  INTER_BROKER_REPLICA,
-  @JsonResponseField
-  LEADERSHIP_CLUSTER,
-  @JsonResponseField
-  INTRA_BROKER_REPLICA,
-  @JsonResponseField
-  LEADERSHIP_BROKER;
+    @JsonResponseField
+    INTER_BROKER_REPLICA,
+    @JsonResponseField
+    LEADERSHIP_CLUSTER,
+    @JsonResponseField
+    INTRA_BROKER_REPLICA,
+    @JsonResponseField
+    LEADERSHIP_BROKER;
 
-  private static final List<ConcurrencyType> CACHED_VALUES = List.of(values());
+    private static final List<ConcurrencyType> CACHED_VALUES = List.of(values());
 
-  /**
-   * Use this instead of values() because values() creates a new array each time.
-   * @return enumerated values in the same order as values()
-   */
-  public static List<ConcurrencyType> cachedValues() {
-    return Collections.unmodifiableList(CACHED_VALUES);
-  }
+    /**
+     * Use this instead of values() because values() creates a new array each time.
+     *
+     * @return enumerated values in the same order as values()
+     */
+    public static List<ConcurrencyType> cachedValues() {
+        return CACHED_VALUES;
+    }
 }
