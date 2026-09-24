@@ -348,6 +348,25 @@ public class KafkaCruiseControl {
   }
 
   /**
+   * Get the cluster model cutting off at the current timestamp with replica placement info.
+   * @param requirements the model completeness requirements.
+   * @param allowCapacityEstimation whether allow capacity estimation in cluster model if the underlying live broker capacity is unavailable.
+   * @param operationProgress the progress of the job to report.
+   * @param populateReplicaPlacementInfo whether populate replica placement information.
+   * @return The cluster workload model.
+   * @throws NotEnoughValidWindowsException If there is not enough sample to generate cluster model.
+   * @throws TimeoutException If broker capacity resolver is unable to resolve broker capacity in time.
+   * @throws BrokerCapacityResolutionException If broker capacity resolver fails to resolve broker capacity.
+   */
+  public ClusterModel clusterModel(ModelCompletenessRequirements requirements,
+                                   boolean allowCapacityEstimation,
+                                   OperationProgress operationProgress,
+                                   boolean populateReplicaPlacementInfo)
+          throws NotEnoughValidWindowsException, TimeoutException, BrokerCapacityResolutionException {
+    return _loadMonitor.clusterModel(timeMs(), requirements, populateReplicaPlacementInfo, allowCapacityEstimation, operationProgress);
+  }
+
+  /**
    * Get the cluster model for a given time window.
    * @param from the start time of the window
    * @param to the end time of the window
@@ -684,7 +703,7 @@ public class KafkaCruiseControl {
    * Execute the given balancing proposals for remove operations.
    * @param proposals the given balancing proposals
    * @param throttleDecommissionedBroker Whether throttle the brokers that are being decommissioned.
-   * @param removedBrokers Brokers to be removed, null if no brokers has been removed.
+   * @param removedBrokers Brokers to be removed, null if no brokers have been removed.
    * @param isKafkaAssignerMode {@code true} if kafka assigner mode, {@code false} otherwise.
    * @param concurrentInterBrokerPartitionMovements The maximum number of concurrent inter-broker partition movements per broker
    *                                                (if null, use num.concurrent.partition.movements.per.broker).

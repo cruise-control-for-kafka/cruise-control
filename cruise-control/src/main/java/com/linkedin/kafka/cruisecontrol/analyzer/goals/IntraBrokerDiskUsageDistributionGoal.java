@@ -257,6 +257,8 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
                                     OptimizationOptions optimizationOptions) {
     double upperLimit = _balanceUpperThresholdByBroker.get(broker);
     double lowerLimit = _balanceLowerThresholdByBroker.get(broker);
+    LOG.debug("balancing broker {}", broker);
+    LOG.debug("List of broker disks is {}.", broker.disks());
     for (Disk disk : broker.disks()) {
       if (!disk.isAlive()) {
         continue;
