@@ -482,6 +482,12 @@ project(':cruise-control-metrics-reporter') {
     // Temporary pin for vulnerability
     implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2'
 
+    constraints {
+      implementation("commons-beanutils:commons-beanutils:1.11.0") {
+        because("version 1.9.4 pulled from kafka 4.0.0 has CVE-2025-48734 in it, which is fixed in 1.11.0")
+      }
+    }
+    
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.bouncycastle:bcpkix-jdk15on:1.70'
     testImplementation 'org.powermock:powermock-module-junit4:2.0.9'
