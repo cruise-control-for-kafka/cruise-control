@@ -381,7 +381,9 @@ class ReplicationThrottleHelper {
         if (entry.getValue() != null) {
           return false;
         }
-      } else if (configEntry.source().equals(ConfigEntry.ConfigSource.STATIC_BROKER_CONFIG) && entry.getValue() == null) {
+      } else if ((configEntry.source().equals(ConfigEntry.ConfigSource.STATIC_BROKER_CONFIG)
+                  || configEntry.source().equals(ConfigEntry.ConfigSource.DYNAMIC_DEFAULT_BROKER_CONFIG))
+                 && entry.getValue() == null) {
         LOG.debug("Found static broker config: {}, skipping comparison", configEntry);
       } else if (!Objects.equals(entry.getValue(), configEntry.value())) {
         return false;
