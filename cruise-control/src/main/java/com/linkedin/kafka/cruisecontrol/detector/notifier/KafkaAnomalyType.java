@@ -7,6 +7,7 @@ package com.linkedin.kafka.cruisecontrol.detector.notifier;
 import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorManager;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
+
 import java.util.Collections;
 import java.util.List;
 
@@ -15,7 +16,7 @@ import java.util.List;
  * Flags to indicate the type of an anomaly.
  * Each anomaly type has a priority, which determines order of anomalies being handled by {@link AnomalyDetectorManager}.
  * The smaller the priority value is, the higher priority the anomaly type has.
- *
+ * <p>
  * Currently supported anomaly types are as follows (in descending order of priority).
  * <ul>
  *  <li>{@link #BROKER_FAILURE}: Fail-stop failure of brokers.</li>
@@ -27,36 +28,37 @@ import java.util.List;
  * </ul>
  */
 public enum KafkaAnomalyType implements AnomalyType {
-  @JsonResponseField
-  BROKER_FAILURE(0),
-  @JsonResponseField
-  MAINTENANCE_EVENT(1),
-  @JsonResponseField
-  DISK_FAILURE(2),
-  @JsonResponseField
-  METRIC_ANOMALY(3),
-  @JsonResponseField
-  GOAL_VIOLATION(4),
-  @JsonResponseField
-  TOPIC_ANOMALY(5);
+    @JsonResponseField
+    BROKER_FAILURE(0),
+    @JsonResponseField
+    MAINTENANCE_EVENT(1),
+    @JsonResponseField
+    DISK_FAILURE(2),
+    @JsonResponseField
+    METRIC_ANOMALY(3),
+    @JsonResponseField
+    GOAL_VIOLATION(4),
+    @JsonResponseField
+    TOPIC_ANOMALY(5);
 
-  private static final List<KafkaAnomalyType> CACHED_VALUES = List.of(values());
-  private final int _priority;
+    private static final List<KafkaAnomalyType> CACHED_VALUES = List.of(values());
+    private final int _priority;
 
-  KafkaAnomalyType(int priority) {
-    _priority = priority;
-  }
+    KafkaAnomalyType(int priority) {
+        _priority = priority;
+    }
 
-  @Override
-  public int priority() {
-    return _priority;
-  }
+    @Override
+    public int priority() {
+        return _priority;
+    }
 
-  /**
-   * Use this instead of values() because values() creates a new array each time.
-   * @return enumerated values in the same order as values()
-   */
-  public static List<KafkaAnomalyType> cachedValues() {
-    return Collections.unmodifiableList(CACHED_VALUES);
-  }
+    /**
+     * Use this instead of values() because values() creates a new array each time.
+     *
+     * @return enumerated values in the same order as values()
+     */
+    public static List<KafkaAnomalyType> cachedValues() {
+        return Collections.unmodifiableList(CACHED_VALUES);
+    }
 }

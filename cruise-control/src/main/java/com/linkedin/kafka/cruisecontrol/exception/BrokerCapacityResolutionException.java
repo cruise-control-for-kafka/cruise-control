@@ -9,11 +9,11 @@ package com.linkedin.kafka.cruisecontrol.exception;
  */
 public class BrokerCapacityResolutionException extends KafkaCruiseControlException {
 
-  public BrokerCapacityResolutionException(String message, Throwable cause) {
-    super(message, cause);
-  }
+    public BrokerCapacityResolutionException(String message, Throwable cause) {
+        super(message, cause);
+    }
 
-  public BrokerCapacityResolutionException(String message) {
-    super(message);
-  }
+    public BrokerCapacityResolutionException(String message) {
+        super(message);
+    }
 }

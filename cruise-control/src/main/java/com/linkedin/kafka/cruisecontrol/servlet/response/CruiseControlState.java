@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import com.google.gson.Gson;
+import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
 import com.linkedin.kafka.cruisecontrol.analyzer.AnalyzerState;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
@@ -13,21 +15,15 @@ import com.linkedin.kafka.cruisecontrol.executor.ExecutionTaskState;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
 import com.linkedin.kafka.cruisecontrol.model.LinearRegressionModelParameters;
 import com.linkedin.kafka.cruisecontrol.monitor.LoadMonitorState;
-import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.CruiseControlStateParameters;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import com.google.gson.Gson;
-import java.util.Set;
-import java.util.StringJoiner;
 import org.apache.commons.math3.linear.SingularMatrixException;
 
+import java.util.*;
+
+import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTask.TaskType;
 import static com.linkedin.kafka.cruisecontrol.executor.ExecutorState.IN_PROGRESS_STATES;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JSON_VERSION;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;
-import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTask.TaskType;
 
 @JsonResponseClass
 public class CruiseControlState extends AbstractCruiseControlResponse {

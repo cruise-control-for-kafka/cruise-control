@@ -4,22 +4,19 @@
 
 package com.linkedin.kafka.cruisecontrol.common;
 
-import org.apache.kafka.clients.ApiVersions;
-import org.apache.kafka.clients.ClientDnsLookup;
-import org.apache.kafka.clients.Metadata;
-import org.apache.kafka.clients.MetadataRecoveryStrategy;
-import org.apache.kafka.clients.NetworkClient;
+import org.apache.kafka.clients.*;
 import org.apache.kafka.common.metrics.Metrics;
 import org.apache.kafka.common.network.ChannelBuilder;
 import org.apache.kafka.common.network.Selectable;
 import org.apache.kafka.common.network.Selector;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.util.NoSuchElementException;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 
 public class KafkaNetworkClientProvider implements NetworkClientProvider {

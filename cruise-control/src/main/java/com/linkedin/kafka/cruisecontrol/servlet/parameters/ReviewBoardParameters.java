@@ -5,12 +5,9 @@
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
+
 import java.io.UnsupportedEncodingException;
-import java.util.Collections;
-import java.util.Map;
-import java.util.Set;
-import java.util.SortedSet;
-import java.util.TreeSet;
+import java.util.*;
 
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REVIEW_IDS_PARAM;
 
@@ -24,36 +21,38 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
  * </pre>
  */
 public class ReviewBoardParameters extends AbstractParameters {
-  protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
-  static {
-    SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-    validParameterNames.add(REVIEW_IDS_PARAM);
-    validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
-    CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
-  }
-  protected Set<Integer> _reviewIds;
+    protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
 
-  public ReviewBoardParameters() {
-    super();
-  }
+    static {
+        SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        validParameterNames.add(REVIEW_IDS_PARAM);
+        validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
+        CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
+    }
 
-  @Override
-  protected void initParameters() throws UnsupportedEncodingException {
-    super.initParameters();
-    _reviewIds = ParameterUtils.reviewIds(_requestContext);
-  }
+    protected Set<Integer> _reviewIds;
 
-  public Set<Integer> reviewIds() {
-    return _reviewIds;
-  }
+    public ReviewBoardParameters() {
+        super();
+    }
 
-  @Override
-  public void configure(Map<String, ?> configs) {
-    super.configure(configs);
-  }
+    @Override
+    protected void initParameters() throws UnsupportedEncodingException {
+        super.initParameters();
+        _reviewIds = ParameterUtils.reviewIds(_requestContext);
+    }
 
-  @Override
-  public SortedSet<String> caseInsensitiveParameterNames() {
-    return CASE_INSENSITIVE_PARAMETER_NAMES;
-  }
+    public Set<Integer> reviewIds() {
+        return _reviewIds;
+    }
+
+    @Override
+    public void configure(Map<String, ?> configs) {
+        super.configure(configs);
+    }
+
+    @Override
+    public SortedSet<String> caseInsensitiveParameterNames() {
+        return CASE_INSENSITIVE_PARAMETER_NAMES;
+    }
 }

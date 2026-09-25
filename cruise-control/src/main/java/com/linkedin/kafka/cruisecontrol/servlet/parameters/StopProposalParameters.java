@@ -6,6 +6,7 @@ package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
+
 import java.io.UnsupportedEncodingException;
 import java.util.Collections;
 import java.util.Map;
@@ -32,57 +33,59 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
  * </pre>
  */
 public class StopProposalParameters extends AbstractParameters {
-  protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
-  static {
-    SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-    validParameterNames.add(REVIEW_ID_PARAM);
-    validParameterNames.add(FORCE_STOP_PARAM);
-    validParameterNames.add(STOP_EXTERNAL_AGENT_PARAM);
-    validParameterNames.add(REASON_PARAM);
-    validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
-    CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
-  }
-  protected Integer _reviewId;
-  protected boolean _forceExecutionStop;
-  protected boolean _stopExternalAgent;
+    protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
 
-  public StopProposalParameters() {
-    super();
-  }
+    static {
+        SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        validParameterNames.add(REVIEW_ID_PARAM);
+        validParameterNames.add(FORCE_STOP_PARAM);
+        validParameterNames.add(STOP_EXTERNAL_AGENT_PARAM);
+        validParameterNames.add(REASON_PARAM);
+        validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
+        CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
+    }
 
-  @Override
-  protected void initParameters() throws UnsupportedEncodingException {
-    super.initParameters();
-    boolean twoStepVerificationEnabled = _config.getBoolean(WebServerConfig.TWO_STEP_VERIFICATION_ENABLED_CONFIG);
-    _reviewId = ParameterUtils.reviewId(_requestContext, twoStepVerificationEnabled);
-    _forceExecutionStop = ParameterUtils.forceExecutionStop(_requestContext);
-    _stopExternalAgent = ParameterUtils.stopExternalAgent(_requestContext);
-  }
+    protected Integer _reviewId;
+    protected boolean _forceExecutionStop;
+    protected boolean _stopExternalAgent;
 
-  @Override
-  public void setReviewId(int reviewId) {
-    _reviewId = reviewId;
-  }
+    public StopProposalParameters() {
+        super();
+    }
 
-  public Integer reviewId() {
-    return _reviewId;
-  }
+    @Override
+    protected void initParameters() throws UnsupportedEncodingException {
+        super.initParameters();
+        boolean twoStepVerificationEnabled = _config.getBoolean(WebServerConfig.TWO_STEP_VERIFICATION_ENABLED_CONFIG);
+        _reviewId = ParameterUtils.reviewId(_requestContext, twoStepVerificationEnabled);
+        _forceExecutionStop = ParameterUtils.forceExecutionStop(_requestContext);
+        _stopExternalAgent = ParameterUtils.stopExternalAgent(_requestContext);
+    }
 
-  public boolean forceExecutionStop() {
-    return _forceExecutionStop;
-  }
+    @Override
+    public void setReviewId(int reviewId) {
+        _reviewId = reviewId;
+    }
 
-  public boolean stopExternalAgent() {
-    return _stopExternalAgent;
-  }
+    public Integer reviewId() {
+        return _reviewId;
+    }
 
-  @Override
-  public void configure(Map<String, ?> configs) {
-    super.configure(configs);
-  }
+    public boolean forceExecutionStop() {
+        return _forceExecutionStop;
+    }
 
-  @Override
-  public SortedSet<String> caseInsensitiveParameterNames() {
-    return CASE_INSENSITIVE_PARAMETER_NAMES;
-  }
+    public boolean stopExternalAgent() {
+        return _stopExternalAgent;
+    }
+
+    @Override
+    public void configure(Map<String, ?> configs) {
+        super.configure(configs);
+    }
+
+    @Override
+    public SortedSet<String> caseInsensitiveParameterNames() {
+        return CASE_INSENSITIVE_PARAMETER_NAMES;
+    }
 }

@@ -9,9 +9,9 @@ package com.linkedin.kafka.cruisecontrol.detector;
  * A plan to rebalance the cluster.
  */
 public class RebalancePlan extends MaintenancePlan {
-  public static final byte LATEST_SUPPORTED_VERSION = 0;
+    public static final byte LATEST_SUPPORTED_VERSION = 0;
 
-  public RebalancePlan(long timeMs, int brokerId) {
-    super(MaintenanceEventType.REBALANCE, timeMs, brokerId, LATEST_SUPPORTED_VERSION);
-  }
+    public RebalancePlan(long timeMs, int brokerId) {
+        super(MaintenanceEventType.REBALANCE, timeMs, brokerId, LATEST_SUPPORTED_VERSION);
+    }
 }

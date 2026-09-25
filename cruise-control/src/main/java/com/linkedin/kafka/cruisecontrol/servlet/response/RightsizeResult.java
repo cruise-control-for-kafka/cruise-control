@@ -10,14 +10,15 @@ import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
 import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionRecommendation;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.detector.ProvisionerState;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Pattern;
 
 import static com.linkedin.cruisecontrol.common.utils.Utils.validateNotNull;
 import static com.linkedin.kafka.cruisecontrol.analyzer.ProvisionStatus.UNDER_PROVISIONED;
-import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JSON_VERSION;
+import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;
 
 
 @JsonResponseClass

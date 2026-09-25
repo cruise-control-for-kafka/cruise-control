@@ -5,6 +5,7 @@
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
+
 import java.io.UnsupportedEncodingException;
 import java.util.Collections;
 import java.util.Map;
@@ -25,6 +26,7 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
 public class UserPermissionsParameters extends AbstractParameters {
     protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
     private static final String ANONYMOUS = "ANONYMOUS";
+
     static {
         SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         validParameterNames.add(REASON_PARAM);

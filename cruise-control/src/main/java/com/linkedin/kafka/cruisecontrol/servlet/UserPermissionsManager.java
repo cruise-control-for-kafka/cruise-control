@@ -4,20 +4,21 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet;
 
-import java.util.Map;
-import java.util.Set;
-import java.util.HashMap;
-import java.util.stream.Collectors;
-import java.util.Collections;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import org.eclipse.jetty.security.PropertyUserStore;
 import org.eclipse.jetty.security.RolePrincipal;
 import org.eclipse.jetty.security.UserStore;
-import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import org.eclipse.jetty.util.resource.Resource;
 import org.eclipse.jetty.util.resource.ResourceFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * The util class for User Permissions
@@ -79,7 +80,8 @@ public class UserPermissionsManager {
         }
     }
 
-    /** Returns the set of roles for a given username
+    /**
+     * Returns the set of roles for a given username
      *
      * @param userName the username
      * @return either Set with roles or an empty set
@@ -88,7 +90,8 @@ public class UserPermissionsManager {
         return _rolesPerUsers.getOrDefault(userName, Collections.emptySet());
     }
 
-    /** Creates UserStore from an external file
+    /**
+     * Creates UserStore from an external file
      *
      * @param privilegesResource a filepath containing user privileges information
      * @return a UserStore object

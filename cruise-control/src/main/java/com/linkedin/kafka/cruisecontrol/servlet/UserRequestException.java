@@ -9,11 +9,11 @@ package com.linkedin.kafka.cruisecontrol.servlet;
  */
 public class UserRequestException extends RuntimeException {
 
-  public UserRequestException(Exception e) {
-    super(e);
-  }
+    public UserRequestException(Exception e) {
+        super(e);
+    }
 
-  public UserRequestException(String message) {
-    super(message);
-  }
+    public UserRequestException(String message) {
+        super(message);
+    }
 }

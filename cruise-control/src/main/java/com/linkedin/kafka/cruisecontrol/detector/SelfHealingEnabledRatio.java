@@ -7,6 +7,7 @@ import com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyType;
 import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseExternalFields;
+
 import java.util.Map;
 import java.util.HashMap;
 
@@ -17,7 +18,7 @@ public class SelfHealingEnabledRatio {
     protected Map<String, Float> _selfHealingEnabledRatioMap;
 
     SelfHealingEnabledRatio(int size) {
-        _selfHealingEnabledRatioMap = new HashMap<>();
+        _selfHealingEnabledRatioMap = new HashMap<>(size);
     }
 
     public void put(AnomalyType anomalyType, Float value) {

@@ -161,14 +161,19 @@ public enum RawMetricType {
   }
 
   private static SortedMap<Byte, Set<RawMetricType>> buildBrokerMetricTypesDiffByVersion() {
-    SortedMap<Byte, Set<RawMetricType>> buildBrokerMetricTypesDiffByVersion = new TreeMap<>();
+    SortedMap<Byte, Set<RawMetricType>> tmpMap = new TreeMap<>();
     for (RawMetricType type : RawMetricType.values()) {
       if (type.metricScope() == BROKER) {
-        buildBrokerMetricTypesDiffByVersion.computeIfAbsent(type.supportedVersionSince(), t -> new HashSet<>()).add(type);
+        tmpMap.computeIfAbsent(type.supportedVersionSince(), t -> new HashSet<>()).add(type);
       }
     }
 
-    return buildBrokerMetricTypesDiffByVersion;
+    // Make the sets unmodifiable and return an unmodifiable sorted map to avoid exposing mutable internal state.
+    SortedMap<Byte, Set<RawMetricType>> result = new TreeMap<>();
+    for (Map.Entry<Byte, Set<RawMetricType>> entry : tmpMap.entrySet()) {
+      result.put(entry.getKey(), Collections.unmodifiableSet(entry.getValue()));
+    }
+    return Collections.unmodifiableSortedMap(result);
   }
 
   private static List<RawMetricType> buildMetricTypeList(MetricScope metricScope) {

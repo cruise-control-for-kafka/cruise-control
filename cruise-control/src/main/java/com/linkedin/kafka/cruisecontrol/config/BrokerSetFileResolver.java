@@ -4,10 +4,12 @@
 
 package com.linkedin.kafka.cruisecontrol.config;
 
+import com.google.gson.Gson;
 import com.linkedin.cruisecontrol.common.utils.Utils;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.exception.BrokerSetResolutionException;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
+
 import java.io.IOException;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
@@ -16,13 +18,12 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
-import com.google.gson.Gson;
 
 
 /**
  * BrokerSet information store implementation based out of File config broker.set.config.file
  * By default the property is set to value of brokerSets.json
- *
+ * <p>
  * Example Broker Set Data File :
  * <pre>
  * {
@@ -40,70 +41,56 @@ import com.google.gson.Gson;
  * </pre>
  */
 public class BrokerSetFileResolver implements BrokerSetResolver {
-  public static final String BROKER_SET_ASSIGNMENT_POLICY_OBJECT_CONFIG = "broker.set.assignment.policy.object";
-  private String _configFile;
-  private BrokerSetAssignmentPolicy _brokerSetAssignmentPolicy;
+    public static final String BROKER_SET_ASSIGNMENT_POLICY_OBJECT_CONFIG = "broker.set.assignment.policy.object";
+    private String _configFile;
+    private BrokerSetAssignmentPolicy _brokerSetAssignmentPolicy;
 
-  @Override
-  public void configure(Map<String, ?> configs) {
-    _configFile = (String) configs.get(AnalyzerConfig.BROKER_SET_CONFIG_FILE_CONFIG);
-    _brokerSetAssignmentPolicy = (BrokerSetAssignmentPolicy) Utils.validateNotNull(
-        configs.get(BROKER_SET_ASSIGNMENT_POLICY_OBJECT_CONFIG),
-        () -> String.format("Missing %s when creating broker set file resolver",
-                            BROKER_SET_ASSIGNMENT_POLICY_OBJECT_CONFIG));
-  }
-
-  @Override
-  public Map<String, Set<Integer>> brokerIdsByBrokerSetId(ClusterModel clusterModel) throws BrokerSetResolutionException {
-    Map<String, Set<Integer>> brokerIdsByBrokerSetId;
-    try {
-      brokerIdsByBrokerSetId = loadBrokerSetData();
-    } catch (IOException e) {
-      throw new BrokerSetResolutionException(e.getMessage());
+    @Override
+    public void configure(Map<String, ?> configs) {
+        _configFile = (String) configs.get(AnalyzerConfig.BROKER_SET_CONFIG_FILE_CONFIG);
+        _brokerSetAssignmentPolicy = (BrokerSetAssignmentPolicy) Utils.validateNotNull(
+                configs.get(BROKER_SET_ASSIGNMENT_POLICY_OBJECT_CONFIG),
+                () -> String.format("Missing %s when creating broker set file resolver",
+                        BROKER_SET_ASSIGNMENT_POLICY_OBJECT_CONFIG));
     }
 
-    return _brokerSetAssignmentPolicy.assignBrokerSetsForUnresolvedBrokers(clusterModel, brokerIdsByBrokerSetId);
-  }
-
-  @Override
-  public Map<String, Set<Integer>> brokerIdsByBrokerSetId(Map<Integer, String> rackIdByBrokerId)
-      throws BrokerSetResolutionException {
-    Map<String, Set<Integer>> brokerIdsByBrokerSetId;
-    try {
-      brokerIdsByBrokerSetId = loadBrokerSetData();
-    } catch (IOException e) {
-      throw new BrokerSetResolutionException(e.getMessage());
+    @Override
+    public Map<String, Set<Integer>> brokerIdsByBrokerSetId(ClusterModel clusterModel) throws BrokerSetResolutionException {
+        return _brokerSetAssignmentPolicy.assignBrokerSetsForUnresolvedBrokers(clusterModel, loadBrokerSetDataOrThrow());
     }
 
-    return _brokerSetAssignmentPolicy.assignBrokerSetsForUnresolvedBrokers(rackIdByBrokerId, brokerIdsByBrokerSetId);
-  }
+    @Override
+    public Map<String, Set<Integer>> brokerIdsByBrokerSetId(Map<Integer, String> rackIdByBrokerId)
+            throws BrokerSetResolutionException {
+        return _brokerSetAssignmentPolicy.assignBrokerSetsForUnresolvedBrokers(rackIdByBrokerId, loadBrokerSetDataOrThrow());
+    }
 
-  private Map<String, Set<Integer>> loadBrokerSetData() throws IOException {
-    try (Reader reader = Files.newBufferedReader(Path.of(_configFile), StandardCharsets.UTF_8)) {
-      Gson gson = new Gson();
-      final BrokerSets brokerSets = gson.fromJson(reader, BrokerSets.class);
-      final Set<BrokerSet> brokerSetSet = brokerSets.brokerSets;
-      final Map<String, Set<Integer>> brokerIdsByBrokerSetId = new HashMap<>();
-      if (brokerSetSet != null) {
-        for (BrokerSet brokerSet : brokerSetSet) {
-          brokerIdsByBrokerSetId.put(brokerSet.brokerSetId, brokerSet.brokerIds);
+    private Map<String, Set<Integer>> loadBrokerSetDataOrThrow() throws BrokerSetResolutionException {
+        try {
+            return loadBrokerSetData();
+        } catch (IOException e) {
+            throw new BrokerSetResolutionException(e.getMessage());
         }
-      }
-      return brokerIdsByBrokerSetId;
     }
-  }
 
-  private static class BrokerSets {
-    private Set<BrokerSetFileResolver.BrokerSet> brokerSets;
-  }
-
-  private static class BrokerSet {
-    private final String brokerSetId;
-    private final Set<Integer> brokerIds;
-
-    BrokerSet(String brokerSetId, Set<Integer> brokerIds) {
-      this.brokerSetId = brokerSetId;
-      this.brokerIds = brokerIds;
+    private Map<String, Set<Integer>> loadBrokerSetData() throws IOException {
+        try (Reader reader = Files.newBufferedReader(Path.of(_configFile), StandardCharsets.UTF_8)) {
+            Gson gson = new Gson();
+            final BrokerSets brokerSets = gson.fromJson(reader, BrokerSets.class);
+            final Set<BrokerSet> brokerSetSet = brokerSets.brokerSets;
+            final Map<String, Set<Integer>> brokerIdsByBrokerSetId = new HashMap<>();
+            if (brokerSetSet != null) {
+                for (BrokerSet brokerSet : brokerSetSet) {
+                    brokerIdsByBrokerSetId.put(brokerSet.brokerSetId, brokerSet.brokerIds);
+                }
+            }
+            return brokerIdsByBrokerSetId;
+        }
     }
-  }
+
+    private record BrokerSets(Set<BrokerSet> brokerSets) {
+    }
+
+    private record BrokerSet(String brokerSetId, Set<Integer> brokerIds) {
+    }
 }

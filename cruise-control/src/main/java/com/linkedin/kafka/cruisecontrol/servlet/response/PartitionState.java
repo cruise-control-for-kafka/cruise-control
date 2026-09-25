@@ -4,15 +4,11 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
+
+import java.util.*;
+import java.util.stream.Collectors;
 
 
 @JsonResponseClass

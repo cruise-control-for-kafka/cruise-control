@@ -12,8 +12,9 @@ import com.linkedin.cruisecontrol.http.CruiseControlRequestContext;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import io.vertx.ext.web.RoutingContext;
-import org.apache.kafka.common.config.AbstractConfig;
 import jakarta.servlet.http.HttpServletResponse;
+import org.apache.kafka.common.config.AbstractConfig;
+
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;

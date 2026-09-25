@@ -9,8 +9,8 @@ package com.linkedin.kafka.cruisecontrol.exception;
  */
 public class ReplicaToBrokerSetMappingException extends OptimizationFailureException {
 
-  public ReplicaToBrokerSetMappingException(String message) {
-    super(message);
-  }
+    public ReplicaToBrokerSetMappingException(String message) {
+        super(message);
+    }
 }
 

@@ -254,9 +254,9 @@ public class AnomalyDetectorManager {
     _maintenanceEventDetector.shutdown();
     _detectorScheduler.shutdown();
     try {
-      _detectorScheduler.awaitTermination(SCHEDULER_SHUTDOWN_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-      if (!_detectorScheduler.isTerminated()) {
-        LOG.warn("The sampling scheduler failed to shutdown in " + SCHEDULER_SHUTDOWN_TIMEOUT_MS + " ms.");
+      boolean terminated = _detectorScheduler.awaitTermination(SCHEDULER_SHUTDOWN_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+      if (!terminated) {
+        LOG.warn("The sampling scheduler failed to shutdown in {} ms.", SCHEDULER_SHUTDOWN_TIMEOUT_MS);
       }
     } catch (InterruptedException e) {
       LOG.warn("Interrupted while waiting for anomaly detector to shutdown.");
@@ -360,12 +360,10 @@ public class AnomalyDetectorManager {
           // If self-healing failed due to an optimization failure, that indicates a hard goal violation; hence there is
           // no further processing anomaly detector can do without human intervention for the anomaly (i.e. other than
           // what has already been done in the {@link #handlePostFixAnomaly(boolean, boolean, String)}).
-          postProcessAnomalyInProgress = false;
         } catch (IllegalStateException ise) {
           LOG.warn("Unexpected state prevents anomaly detector from handling the anomaly {}.", _anomalyInProgress, ise);
           // An illegal state may indicate a transient process blocking self-healing (e.g. an ongoing execution not
           // started by Cruise Control).
-          postProcessAnomalyInProgress = false;
         } catch (Throwable t) {
           LOG.error("Uncaught exception in anomaly handler.", t);
           postProcessAnomalyInProgress = true;
@@ -501,7 +499,7 @@ public class AnomalyDetectorManager {
 
       // Fixing anomalies is possible only when (1) the state is not in and unavailable state ( e.g. loading or
       // bootstrapping) and (2) the completeness requirements are met for all goals.
-      if (!AnomalyUtils.isLoadMonitorReady(loadMonitorTaskRunnerState)) {
+      if (AnomalyUtils.isLoadMonitorReady(loadMonitorTaskRunnerState)) {
         LOG.info("Skipping {} fix because load monitor is in {} state.", anomalyType, loadMonitorTaskRunnerState);
         _anomalyDetectorState.onAnomalyHandle(_anomalyInProgress, AnomalyState.Status.LOAD_MONITOR_NOT_READY);
       } else {

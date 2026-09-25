@@ -10,12 +10,15 @@ import java.util.Map;
  * A no-op notifier for executor.
  */
 public class ExecutorNoopNotifier implements ExecutorNotifier {
-  @Override
-  public void sendNotification(String message) { }
+    @Override
+    public void sendNotification(String message) {
+    }
 
-  @Override
-  public void sendAlert(String alertMessage) { }
+    @Override
+    public void sendAlert(String alertMessage) {
+    }
 
-  @Override
-  public void configure(Map<String, ?> configs) { }
+    @Override
+    public void configure(Map<String, ?> configs) {
+    }
 }

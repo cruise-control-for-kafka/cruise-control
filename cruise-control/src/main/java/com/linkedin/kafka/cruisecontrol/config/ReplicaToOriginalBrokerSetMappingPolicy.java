@@ -15,18 +15,18 @@ import com.linkedin.kafka.cruisecontrol.model.Replica;
  * This means that replica's original broker id already dictates the broker set the replica belongs to.
  */
 public class ReplicaToOriginalBrokerSetMappingPolicy implements ReplicaToBrokerSetMappingPolicy {
-  /**
-   * Maps a replica to its original broker set
-   *
-   * @param replica replica object
-   * @param clusterModel cluster model object
-   * @param brokerSetResolutionHelper broker set resolution helper
-   * @return A broker set Id
-   */
-  @Override
-  public String brokerSetIdForReplica(final Replica replica, final ClusterModel clusterModel,
-                                      final BrokerSetResolutionHelper brokerSetResolutionHelper) throws BrokerSetResolutionException {
-    Broker originalBroker = replica.originalBroker();
-    return brokerSetResolutionHelper.brokerSetId(originalBroker.id());
-  }
+    /**
+     * Maps a replica to its original broker set
+     *
+     * @param replica                   replica object
+     * @param clusterModel              cluster model object
+     * @param brokerSetResolutionHelper broker set resolution helper
+     * @return A broker set Id
+     */
+    @Override
+    public String brokerSetIdForReplica(final Replica replica, final ClusterModel clusterModel,
+                                        final BrokerSetResolutionHelper brokerSetResolutionHelper) throws BrokerSetResolutionException {
+        Broker originalBroker = replica.originalBroker();
+        return brokerSetResolutionHelper.brokerSetId(originalBroker.id());
+    }
 }

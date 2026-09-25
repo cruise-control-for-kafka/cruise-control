@@ -9,13 +9,13 @@ import java.util.SortedSet;
 
 /**
  * A plan to remove brokers.
- *
+ * <p>
  * The desired brokers to remove are indicated using a set of broker ids.
  */
 public class RemoveBrokerPlan extends MaintenancePlanWithBrokers {
-  public static final byte LATEST_SUPPORTED_VERSION = 0;
+    public static final byte LATEST_SUPPORTED_VERSION = 0;
 
-  public RemoveBrokerPlan(long timeMs, int brokerId, SortedSet<Integer> brokers) {
-    super(MaintenanceEventType.REMOVE_BROKER, timeMs, brokerId, LATEST_SUPPORTED_VERSION, brokers);
-  }
+    public RemoveBrokerPlan(long timeMs, int brokerId, SortedSet<Integer> brokers) {
+        super(MaintenanceEventType.REMOVE_BROKER, timeMs, brokerId, LATEST_SUPPORTED_VERSION, brokers);
+    }
 }

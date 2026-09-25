@@ -7,6 +7,7 @@ package com.linkedin.kafka.cruisecontrol.config;
 import com.google.gson.Gson;
 import com.google.gson.stream.JsonReader;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils;
+
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -25,7 +26,7 @@ public abstract class JsonFileTopicConfigProvider implements TopicConfigProvider
     /**
      * Method which will find the file path from the supplied config map using the config key {@link #CLUSTER_CONFIGS_FILE} and
      * load the configs contained in that JSON file into a {@link java.util.Properties} instance.
-     *
+     * <p>
      * The format of the file is JSON, with properties listed as top level key/value pairs:
      *
      * <pre>

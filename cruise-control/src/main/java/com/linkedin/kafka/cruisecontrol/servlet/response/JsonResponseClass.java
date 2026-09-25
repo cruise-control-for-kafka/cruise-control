@@ -12,7 +12,6 @@ import java.lang.annotation.Target;
 
 /**
  * The Annotation to denote that the object of the attached class will be used to build the JSON response for some endpoints.
- *
  * The class annotated with this annotation is expected to either also be annotated with {@link JsonResponseExternalFields} or
  * have some (static) fields annotated with {@link JsonResponseField} or both. {@link JsonResponseExternalFields} and
  * {@link JsonResponseField} mark all the field keys which should be in the JSON response.

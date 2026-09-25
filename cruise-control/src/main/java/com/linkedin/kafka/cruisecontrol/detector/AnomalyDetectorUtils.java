@@ -94,7 +94,7 @@ public final class AnomalyDetectorUtils {
       }
     }
     LoadMonitorTaskRunner.LoadMonitorTaskRunnerState loadMonitorTaskRunnerState = kafkaCruiseControl.getLoadMonitorTaskRunnerState();
-    if (!AnomalyUtils.isLoadMonitorReady(loadMonitorTaskRunnerState)) {
+    if (AnomalyUtils.isLoadMonitorReady(loadMonitorTaskRunnerState)) {
       LOG.info("Skipping anomaly detection because load monitor is in {} state.", loadMonitorTaskRunnerState);
       return AnomalyDetectionStatus.SKIP_LOAD_MONITOR_NOT_READY;
     }

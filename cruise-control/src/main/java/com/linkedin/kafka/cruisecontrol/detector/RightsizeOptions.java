@@ -5,6 +5,7 @@
 package com.linkedin.kafka.cruisecontrol.detector;
 
 import java.util.Map;
+
 import org.apache.kafka.common.annotation.InterfaceStability;
 
 
@@ -13,7 +14,5 @@ import org.apache.kafka.common.annotation.InterfaceStability;
  */
 @InterfaceStability.Evolving
 public final class RightsizeOptions {
-  public RightsizeOptions() {
-
-  }
+    public RightsizeOptions() {}
 }

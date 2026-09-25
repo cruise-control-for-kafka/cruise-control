@@ -21,16 +21,17 @@ import java.util.List;
  * </ul>
  */
 public enum AnomalyDetectionStatus {
-  READY, SKIP_HAS_OFFLINE_REPLICAS, SKIP_LOAD_MONITOR_NOT_READY, SKIP_EXECUTOR_NOT_READY, SKIP_MODEL_GENERATION_NOT_CHANGED,
-  SKIP_HAS_DEAD_BROKERS;
+    READY, SKIP_HAS_OFFLINE_REPLICAS, SKIP_LOAD_MONITOR_NOT_READY, SKIP_EXECUTOR_NOT_READY, SKIP_MODEL_GENERATION_NOT_CHANGED,
+    SKIP_HAS_DEAD_BROKERS;
 
-  private static final List<AnomalyDetectionStatus> CACHED_VALUES = List.of(values());
+    private static final List<AnomalyDetectionStatus> CACHED_VALUES = List.of(values());
 
-  /**
-   * Use this instead of values() because values() creates a new array each time.
-   * @return enumerated values in the same order as values()
-   */
-  public static List<AnomalyDetectionStatus> cachedValues() {
-    return Collections.unmodifiableList(CACHED_VALUES);
-  }
+    /**
+     * Use this instead of values() because values() creates a new array each time.
+     *
+     * @return enumerated values in the same order as values()
+     */
+    public static List<AnomalyDetectionStatus> cachedValues() {
+        return CACHED_VALUES;
+    }
 }

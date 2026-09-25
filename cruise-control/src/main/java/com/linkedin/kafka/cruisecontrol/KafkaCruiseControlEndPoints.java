@@ -15,6 +15,7 @@ import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.UserPermissionsManager;
 import com.linkedin.kafka.cruisecontrol.servlet.UserTaskManager;
 import com.linkedin.kafka.cruisecontrol.servlet.purgatory.Purgatory;
+
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -39,7 +40,7 @@ public class KafkaCruiseControlEndPoints {
         _asyncKafkaCruiseControl = asynckafkaCruiseControl;
         _twoStepVerification = _config.getBoolean(WebServerConfig.TWO_STEP_VERIFICATION_ENABLED_CONFIG);
         _purgatory = _twoStepVerification ? new Purgatory(_config) : null;
-            _userTaskManager = new UserTaskManager(_config, dropwizardMetricRegistry, _successfulRequestExecutionTimer, _purgatory);
+        _userTaskManager = new UserTaskManager(_config, dropwizardMetricRegistry, _successfulRequestExecutionTimer, _purgatory);
         _asyncKafkaCruiseControl.setUserTaskManagerInExecutor(_userTaskManager);
         _asyncOperationStep = new ThreadLocal<>();
         _asyncOperationStep.set(0);
@@ -86,7 +87,7 @@ public class KafkaCruiseControlEndPoints {
      * @return is_twoStepVerification
      */
     public boolean twoStepVerification() {
-        return _twoStepVerification;
+        return !_twoStepVerification;
     }
 
     /**
@@ -102,6 +103,7 @@ public class KafkaCruiseControlEndPoints {
     public List<UserTaskManager.UserTaskInfo> getAllUserTasks() {
         return _userTaskManager.getAllUserTasks();
     }
+
     /**
      * @return the user permissions manager object
      */

@@ -291,27 +291,19 @@ public class BrokerCapacityConfigFileResolver implements BrokerCapacityConfigRes
   }
 
   private void loadCapacities() throws FileNotFoundException {
-    JsonReader reader = null;
-    try {
-      reader = new JsonReader(new InputStreamReader(new FileInputStream(_configFile), StandardCharsets.UTF_8));
-      Gson gson = new Gson();
-      Set<BrokerCapacity> brokerCapacities = ((BrokerCapacities) gson.fromJson(reader, BrokerCapacities.class)).brokerCapacities;
-      capacitiesForBrokers = new HashMap<>();
-      Set<Boolean> numCoresConfigConsistency = new HashSet<>();
-      if (brokerCapacities != null) {
-        for (BrokerCapacity bc : brokerCapacities) {
-          capacitiesForBrokers.put(bc.brokerId, getBrokerCapacityInfo(bc, numCoresConfigConsistency));
-        }
-      }
-    } finally {
-      try {
-        if (reader != null) {
-          reader.close();
-        }
+      try (JsonReader reader = new JsonReader(new InputStreamReader(new FileInputStream(_configFile), StandardCharsets.UTF_8))) {
+          Gson gson = new Gson();
+          Set<BrokerCapacity> brokerCapacities = ((BrokerCapacities) gson.fromJson(reader, BrokerCapacities.class)).brokerCapacities;
+          capacitiesForBrokers = new HashMap<>();
+          Set<Boolean> numCoresConfigConsistency = new HashSet<>();
+          if (brokerCapacities != null) {
+              for (BrokerCapacity bc : brokerCapacities) {
+                  capacitiesForBrokers.put(bc.brokerId, getBrokerCapacityInfo(bc, numCoresConfigConsistency));
+              }
+          }
       } catch (IOException e) {
-        // let it go.
+          // let it go.
       }
-    }
   }
 
   @Override
@@ -319,17 +311,9 @@ public class BrokerCapacityConfigFileResolver implements BrokerCapacityConfigRes
     // nothing to do.
   }
 
-  private static class BrokerCapacities {
-    private Set<BrokerCapacity> brokerCapacities;
+  private record BrokerCapacities(Set<BrokerCapacity> brokerCapacities) {
   }
 
-  private static class BrokerCapacity {
-    private final int brokerId;
-    private final Map<Resource, Object> capacity;
-
-    BrokerCapacity(int brokerId, Map<Resource, Object> capacity) {
-      this.brokerId = brokerId;
-      this.capacity = capacity;
-    }
+  private record BrokerCapacity(int brokerId, Map<Resource, Object> capacity) {
   }
 }

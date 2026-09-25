@@ -5,6 +5,7 @@
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
+
 import java.io.UnsupportedEncodingException;
 import java.util.Collections;
 import java.util.Map;
@@ -12,9 +13,7 @@ import java.util.SortedSet;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.VERBOSE_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.TOPIC_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REASON_PARAM;
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.*;
 
 
 /**
@@ -27,44 +26,46 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
  * </pre>
  */
 public class KafkaClusterStateParameters extends AbstractParameters {
-  protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
-  static {
-    SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-    validParameterNames.add(VERBOSE_PARAM);
-    validParameterNames.add(TOPIC_PARAM);
-    validParameterNames.add(REASON_PARAM);
-    validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
-    CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
-  }
-  protected boolean _isVerbose;
-  protected Pattern _topic;
+    protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
 
-  public KafkaClusterStateParameters() {
-    super();
-  }
+    static {
+        SortedSet<String> validParameterNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        validParameterNames.add(VERBOSE_PARAM);
+        validParameterNames.add(TOPIC_PARAM);
+        validParameterNames.add(REASON_PARAM);
+        validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
+        CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
+    }
 
-  @Override
-  protected void initParameters() throws UnsupportedEncodingException {
-    super.initParameters();
-    _isVerbose = ParameterUtils.isVerbose(_requestContext);
-    _topic = ParameterUtils.topic(_requestContext);
-  }
+    protected boolean _isVerbose;
+    protected Pattern _topic;
 
-  public boolean isVerbose() {
-    return _isVerbose;
-  }
+    public KafkaClusterStateParameters() {
+        super();
+    }
 
-  public Pattern topic() {
-    return _topic;
-  }
+    @Override
+    protected void initParameters() throws UnsupportedEncodingException {
+        super.initParameters();
+        _isVerbose = ParameterUtils.isVerbose(_requestContext);
+        _topic = ParameterUtils.topic(_requestContext);
+    }
 
-  @Override
-  public void configure(Map<String, ?> configs) {
-    super.configure(configs);
-  }
+    public boolean isVerbose() {
+        return _isVerbose;
+    }
 
-  @Override
-  public SortedSet<String> caseInsensitiveParameterNames() {
-    return CASE_INSENSITIVE_PARAMETER_NAMES;
-  }
+    public Pattern topic() {
+        return _topic;
+    }
+
+    @Override
+    public void configure(Map<String, ?> configs) {
+        super.configure(configs);
+    }
+
+    @Override
+    public SortedSet<String> caseInsensitiveParameterNames() {
+        return CASE_INSENSITIVE_PARAMETER_NAMES;
+    }
 }

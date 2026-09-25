@@ -9,11 +9,8 @@ import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+
+import java.util.*;
 
 import static com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricFetcherManager.SUPPORTED_NUM_METRIC_FETCHER;
 
@@ -27,35 +24,35 @@ import static com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricFetcherMan
  */
 public class DefaultMetricSamplerPartitionAssignor implements MetricSamplerPartitionAssignor {
 
-  private static final Logger LOG = LoggerFactory.getLogger(DefaultMetricSamplerPartitionAssignor.class);
+    private static final Logger LOG = LoggerFactory.getLogger(DefaultMetricSamplerPartitionAssignor.class);
 
-  @Override
-  public void configure(Map<String, ?> configs) {
+    @Override
+    public void configure(Map<String, ?> configs) {
 
-  }
-
-  @Override
-  public List<Set<TopicPartition>> assignPartitions(Cluster cluster, int numMetricFetchers) {
-    if (numMetricFetchers != SUPPORTED_NUM_METRIC_FETCHER) {
-      throw new IllegalArgumentException("DefaultMetricSamplerPartitionAssignor supports only a single metric fetcher.");
     }
-    // Create an array to host the assignment of all the metric fetchers.
-    List<Set<TopicPartition>> assignments = new ArrayList<>();
-    assignments.add(assignPartitions(cluster));
-    return assignments;
-  }
 
-  @Override
-  public Set<TopicPartition> assignPartitions(Cluster cluster) {
-    // Create an array to host the assignment of the metric fetcher.
-    Set<TopicPartition> assignment = new HashSet<>();
-    for (String topic : cluster.topics()) {
-      List<PartitionInfo> partitionsForTopic = cluster.partitionsForTopic(topic);
-      for (PartitionInfo partitionInfo : partitionsForTopic) {
-        assignment.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
-      }
+    @Override
+    public List<Set<TopicPartition>> assignPartitions(Cluster cluster, int numMetricFetchers) {
+        if (numMetricFetchers != SUPPORTED_NUM_METRIC_FETCHER) {
+            throw new IllegalArgumentException("DefaultMetricSamplerPartitionAssignor supports only a single metric fetcher.");
+        }
+        // Create an array to host the assignment of all the metric fetchers.
+        List<Set<TopicPartition>> assignments = new ArrayList<>();
+        assignments.add(assignPartitions(cluster));
+        return assignments;
     }
-    LOG.trace("Partition assignment for metric fetcher: {}", assignment);
-    return assignment;
-  }
+
+    @Override
+    public Set<TopicPartition> assignPartitions(Cluster cluster) {
+        // Create an array to host the assignment of the metric fetcher.
+        Set<TopicPartition> assignment = new HashSet<>();
+        for (String topic : cluster.topics()) {
+            List<PartitionInfo> partitionsForTopic = cluster.partitionsForTopic(topic);
+            for (PartitionInfo partitionInfo : partitionsForTopic) {
+                assignment.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
+            }
+        }
+        LOG.trace("Partition assignment for metric fetcher: {}", assignment);
+        return assignment;
+    }
 }

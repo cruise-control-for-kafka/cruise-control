@@ -3,7 +3,6 @@
  */
 package com.linkedin.kafka.cruisecontrol.executor;
 
-import java.util.Collections;
 import java.util.List;
 
 public enum ExecutionTaskState {
@@ -13,9 +12,10 @@ public enum ExecutionTaskState {
 
     /**
      * Use this instead of values() because values() creates a new array each time.
+     *
      * @return enumerated values in the same order as values()
      */
     public static List<ExecutionTaskState> cachedValues() {
-        return Collections.unmodifiableList(CACHED_VALUES);
+        return CACHED_VALUES;
     }
 }

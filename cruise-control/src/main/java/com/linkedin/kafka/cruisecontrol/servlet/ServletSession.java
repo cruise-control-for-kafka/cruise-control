@@ -6,6 +6,7 @@ package com.linkedin.kafka.cruisecontrol.servlet;
 
 import com.linkedin.cruisecontrol.http.CruiseControlHttpSession;
 import jakarta.servlet.http.HttpSession;
+
 import java.util.Objects;
 
 public class ServletSession implements CruiseControlHttpSession {

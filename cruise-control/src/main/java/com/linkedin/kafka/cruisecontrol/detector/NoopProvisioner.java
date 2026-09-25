@@ -5,6 +5,7 @@
 package com.linkedin.kafka.cruisecontrol.detector;
 
 import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionRecommendation;
+
 import java.util.Map;
 
 
@@ -12,12 +13,12 @@ import java.util.Map;
  * A no-op provisioner, which ignores expansion / shrinking requests.
  */
 public class NoopProvisioner implements Provisioner {
-  @Override
-  public ProvisionerState rightsize(Map<String, ProvisionRecommendation> recommendationByRecommender, RightsizeOptions rightsizeOptions) {
-    return null;
-  }
+    @Override
+    public ProvisionerState rightsize(Map<String, ProvisionRecommendation> recommendationByRecommender, RightsizeOptions rightsizeOptions) {
+        return null;
+    }
 
-  @Override
-  public void configure(Map<String, ?> configs) {
-  }
+    @Override
+    public void configure(Map<String, ?> configs) {
+    }
 }

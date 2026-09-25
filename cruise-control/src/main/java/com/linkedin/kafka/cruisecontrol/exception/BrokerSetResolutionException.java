@@ -9,8 +9,8 @@ package com.linkedin.kafka.cruisecontrol.exception;
  */
 public class BrokerSetResolutionException extends OptimizationFailureException {
 
-  public BrokerSetResolutionException(String message) {
-    super(message);
-  }
+    public BrokerSetResolutionException(String message) {
+        super(message);
+    }
 }
 

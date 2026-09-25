@@ -5,7 +5,9 @@
 package com.linkedin.kafka.cruisecontrol.detector;
 
 import com.linkedin.cruisecontrol.common.CruiseControlConfigurable;
+
 import java.util.Set;
+
 import org.apache.kafka.common.annotation.InterfaceStability;
 
 
@@ -15,10 +17,10 @@ import org.apache.kafka.common.annotation.InterfaceStability;
 @InterfaceStability.Evolving
 public interface TopicAnomalyFinder extends CruiseControlConfigurable {
 
-  /**
-   * Get a collection of topic anomalies for topics which are misconfigured or violate user-defined topic properties.
-   *
-   * @return Set of topic anomalies.
-   */
-  Set<TopicAnomaly> topicAnomalies();
+    /**
+     * Get a collection of topic anomalies for topics which are misconfigured or violate user-defined topic properties.
+     *
+     * @return Set of topic anomalies.
+     */
+    Set<TopicAnomaly> topicAnomalies();
 }

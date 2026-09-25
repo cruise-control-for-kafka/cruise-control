@@ -12,21 +12,21 @@ import com.linkedin.kafka.cruisecontrol.common.Resource;
  * super set of the Resources enumeration.
  */
 public enum RawAndDerivedResource {
-  DISK(Resource.DISK),
-  CPU(Resource.CPU),
-  LEADER_NW_IN(Resource.NW_IN),
-  FOLLOWER_NW_IN(Resource.NW_IN),
-  NW_OUT(Resource.NW_OUT),
-  PWN_NW_OUT(Resource.NW_OUT),
-  REPLICAS(null);
+    DISK(Resource.DISK),
+    CPU(Resource.CPU),
+    LEADER_NW_IN(Resource.NW_IN),
+    FOLLOWER_NW_IN(Resource.NW_IN),
+    NW_OUT(Resource.NW_OUT),
+    PWN_NW_OUT(Resource.NW_OUT),
+    REPLICAS(null);
 
-  private final Resource _derivedFrom;
+    private final Resource _derivedFrom;
 
-  RawAndDerivedResource(Resource derivedFrom) {
-    _derivedFrom = derivedFrom;
-  }
+    RawAndDerivedResource(Resource derivedFrom) {
+        _derivedFrom = derivedFrom;
+    }
 
-  public Resource derivedFrom() {
-    return _derivedFrom;
-  }
+    public Resource derivedFrom() {
+        return _derivedFrom;
+    }
 }

@@ -7,46 +7,47 @@ package com.linkedin.kafka.cruisecontrol.servlet.handler.async;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.OperationFuture;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RebalanceRunnable;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.RebalanceParameters;
+
 import java.util.Map;
 
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REBALANCE_PARAMETER_OBJECT_CONFIG;
 import static com.linkedin.cruisecontrol.common.utils.Utils.validateNotNull;
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REBALANCE_PARAMETER_OBJECT_CONFIG;
 
 public class RebalanceRequest extends AbstractAsyncRequest {
-  protected RebalanceParameters _parameters;
-  protected RebalanceRunnable _runnable;
+    protected RebalanceParameters _parameters;
+    protected RebalanceRunnable _runnable;
 
-  public RebalanceRequest() {
-    super();
-  }
+    public RebalanceRequest() {
+        super();
+    }
 
-  public RebalanceRunnable getRunnable() {
-    return _runnable;
-  }
+    public RebalanceRunnable getRunnable() {
+        return _runnable;
+    }
 
-  @Override
-  protected OperationFuture handle(String uuid) {
-    OperationFuture future = new OperationFuture("Rebalance");
-    pending(future.operationProgress());
-    _runnable = new RebalanceRunnable(_asyncKafkaCruiseControl, future, _parameters, uuid);
-    _asyncKafkaCruiseControl.sessionExecutor().execute(_runnable);
-    return future;
-  }
+    @Override
+    protected OperationFuture handle(String uuid) {
+        OperationFuture future = new OperationFuture("Rebalance");
+        pending(future.operationProgress());
+        _runnable = new RebalanceRunnable(_asyncKafkaCruiseControl, future, _parameters, uuid);
+        _asyncKafkaCruiseControl.sessionExecutor().execute(_runnable);
+        return future;
+    }
 
-  @Override
-  public RebalanceParameters parameters() {
-    return _parameters;
-  }
+    @Override
+    public RebalanceParameters parameters() {
+        return _parameters;
+    }
 
-  @Override
-  public String name() {
-    return RebalanceRequest.class.getSimpleName();
-  }
+    @Override
+    public String name() {
+        return RebalanceRequest.class.getSimpleName();
+    }
 
-  @Override
-  public void configure(Map<String, ?> configs) {
-    super.configure(configs);
-    _parameters = (RebalanceParameters) validateNotNull(configs.get(REBALANCE_PARAMETER_OBJECT_CONFIG),
-            "Parameter configuration is missing from the request.");
-  }
+    @Override
+    public void configure(Map<String, ?> configs) {
+        super.configure(configs);
+        _parameters = (RebalanceParameters) validateNotNull(configs.get(REBALANCE_PARAMETER_OBJECT_CONFIG),
+                "Parameter configuration is missing from the request.");
+    }
 }

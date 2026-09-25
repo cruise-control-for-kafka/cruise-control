@@ -6,9 +6,10 @@ package com.linkedin.kafka.cruisecontrol.servlet.response;
 
 import com.google.gson.Gson;
 import com.linkedin.cruisecontrol.detector.AnomalyType;
-import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
+import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.executor.ConcurrencyType;
+
 import java.util.HashMap;
 import java.util.Map;
 

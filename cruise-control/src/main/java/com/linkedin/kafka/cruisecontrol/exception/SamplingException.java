@@ -9,8 +9,8 @@ package com.linkedin.kafka.cruisecontrol.exception;
  */
 public class SamplingException extends KafkaCruiseControlException {
 
-  public SamplingException(String message) {
-    super(message);
-  }
+    public SamplingException(String message) {
+        super(message);
+    }
 
 }

@@ -17,80 +17,81 @@ import com.linkedin.kafka.cruisecontrol.monitor.sampling.holder.PartitionMetricS
  * The sample store will be used by Kafka Cruise Control when it bootstraps.
  */
 public interface SampleStore extends CruiseControlConfigurable {
-  /**
-   * Store all the samples to the sample store.
-   * @param samples the samples to store.
-   */
-  void storeSamples(MetricSampler.Samples samples);
-
-  /**
-   * Load the samples from the sample store.
-   *
-   * @param sampleLoader the sample loader that takes in samples.
-   */
-  void loadSamples(SampleLoader sampleLoader);
-
-  /**
-   * @return The sample loading progress. The return value should be between 0 and 1.
-   */
-  double sampleLoadingProgress();
-
-  /**
-   * This method is called when a workload snapshot window is evicted. The snapshot window timestamp will be
-   * passed to the method.
-   *
-   * @param timestamp the timestamp of the snapshot window that has just been evicted.
-   */
-  void evictSamplesBefore(long timestamp);
-
-  /**
-   * Close the sample store.
-   */
-  void close();
-
-  /**
-   * A class that will be constructed by Kafka Cruise Control and used by sample store during sample loading time.
-   * This class is to simplify user interface.
-   */
-  class SampleLoader {
-    private final KafkaPartitionMetricSampleAggregator _partitionMetricSampleAggregator;
-    private final KafkaBrokerMetricSampleAggregator _brokerMetricSampleAggregator;
-
-    public SampleLoader(KafkaPartitionMetricSampleAggregator partitionMetricSampleAggregator,
-                        KafkaBrokerMetricSampleAggregator brokerMetricSampleAggregator) {
-      _partitionMetricSampleAggregator = partitionMetricSampleAggregator;
-      _brokerMetricSampleAggregator = brokerMetricSampleAggregator;
-    }
+    /**
+     * Store all the samples to the sample store.
+     *
+     * @param samples the samples to store.
+     */
+    void storeSamples(MetricSampler.Samples samples);
 
     /**
-     * Load the given samples to the relevant metric sample aggregators.
+     * Load the samples from the sample store.
      *
-     * @param samples Samples to load.
+     * @param sampleLoader the sample loader that takes in samples.
      */
-    public void loadSamples(MetricSampler.Samples samples) {
-      for (PartitionMetricSample sample : samples.partitionMetricSamples()) {
-        _partitionMetricSampleAggregator.addSample(sample, false);
-      }
-      for (BrokerMetricSample sample : samples.brokerMetricSamples()) {
-        _brokerMetricSampleAggregator.addSample(sample);
-      }
-      ModelParameters.addMetricObservation(samples.brokerMetricSamples());
-    }
+    void loadSamples(SampleLoader sampleLoader);
 
-    public long partitionSampleCount() {
-      return _partitionMetricSampleAggregator.numSamples();
-    }
+    /**
+     * @return The sample loading progress. The return value should be between 0 and 1.
+     */
+    double sampleLoadingProgress();
 
-    public long brokerSampleCount() {
-      return _brokerMetricSampleAggregator.numSamples();
-    }
+    /**
+     * This method is called when a workload snapshot window is evicted. The snapshot window timestamp will be
+     * passed to the method.
+     *
+     * @param timestamp the timestamp of the snapshot window that has just been evicted.
+     */
+    void evictSamplesBefore(long timestamp);
 
-    public long partitionMonitoringPeriodMs() {
-      return _partitionMetricSampleAggregator.monitoringPeriodMs();
-    }
+    /**
+     * Close the sample store.
+     */
+    void close();
 
-    public long brokerMonitoringPeriodMs() {
-      return _brokerMetricSampleAggregator.monitoringPeriodMs();
+    /**
+     * A class that will be constructed by Kafka Cruise Control and used by sample store during sample loading time.
+     * This class is to simplify user interface.
+     */
+    class SampleLoader {
+        private final KafkaPartitionMetricSampleAggregator _partitionMetricSampleAggregator;
+        private final KafkaBrokerMetricSampleAggregator _brokerMetricSampleAggregator;
+
+        public SampleLoader(KafkaPartitionMetricSampleAggregator partitionMetricSampleAggregator,
+                            KafkaBrokerMetricSampleAggregator brokerMetricSampleAggregator) {
+            _partitionMetricSampleAggregator = partitionMetricSampleAggregator;
+            _brokerMetricSampleAggregator = brokerMetricSampleAggregator;
+        }
+
+        /**
+         * Load the given samples to the relevant metric sample aggregators.
+         *
+         * @param samples Samples to load.
+         */
+        public void loadSamples(MetricSampler.Samples samples) {
+            for (PartitionMetricSample sample : samples.partitionMetricSamples()) {
+                _partitionMetricSampleAggregator.addSample(sample, false);
+            }
+            for (BrokerMetricSample sample : samples.brokerMetricSamples()) {
+                _brokerMetricSampleAggregator.addSample(sample);
+            }
+            ModelParameters.addMetricObservation(samples.brokerMetricSamples());
+        }
+
+        public long partitionSampleCount() {
+            return _partitionMetricSampleAggregator.numSamples();
+        }
+
+        public long brokerSampleCount() {
+            return _brokerMetricSampleAggregator.numSamples();
+        }
+
+        public long partitionMonitoringPeriodMs() {
+            return _partitionMetricSampleAggregator.monitoringPeriodMs();
+        }
+
+        public long brokerMonitoringPeriodMs() {
+            return _brokerMetricSampleAggregator.monitoringPeriodMs();
+        }
     }
-  }
 }

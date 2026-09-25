@@ -4,10 +4,12 @@
 
 package com.linkedin.kafka.cruisecontrol.common;
 
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.atomic.AtomicInteger;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class KafkaCruiseControlThreadFactory implements ThreadFactory {
@@ -28,10 +30,10 @@ public class KafkaCruiseControlThreadFactory implements ThreadFactory {
   }
 
   @Override
-  public Thread newThread(Runnable r) {
+  public Thread newThread(@NonNull Runnable r) {
     Thread t = new Thread(r, _name + "-" + _id.getAndIncrement());
     t.setDaemon(_daemon);
-    t.setUncaughtExceptionHandler((t1, e) -> _logger.error("Uncaught exception in " + t1.getName() + ": ", e));
+    t.setUncaughtExceptionHandler((t1, e) -> _logger.error("Uncaught exception in {}: ", t1.getName(), e));
     return t;
   }
 }

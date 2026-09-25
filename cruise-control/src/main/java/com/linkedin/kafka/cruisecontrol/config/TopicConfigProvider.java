@@ -5,9 +5,11 @@
 package com.linkedin.kafka.cruisecontrol.config;
 
 import com.linkedin.cruisecontrol.common.CruiseControlConfigurable;
+
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+
 import org.apache.kafka.common.annotation.InterfaceStability;
 
 
@@ -18,27 +20,29 @@ import org.apache.kafka.common.annotation.InterfaceStability;
 @InterfaceStability.Evolving
 public interface TopicConfigProvider extends CruiseControlConfigurable, AutoCloseable {
 
-  /**
-   * @return Cluster-level configs that applies to a topic if no topic-level config exist for it.
-   */
-  Properties clusterConfigs();
+    /**
+     * @return Cluster-level configs that applies to a topic if no topic-level config exist for it.
+     */
+    Properties clusterConfigs();
 
-  /**
-   * Get topic-level configurations for the requested topic.
-   * @param topic Topic name for which the topic-level configurations are required.
-   * @return A {@link Properties} instance containing the topic-level configuration for the requested topic.
-   */
-  Properties topicConfigs(String topic);
+    /**
+     * Get topic-level configurations for the requested topic.
+     *
+     * @param topic Topic name for which the topic-level configurations are required.
+     * @return A {@link Properties} instance containing the topic-level configuration for the requested topic.
+     */
+    Properties topicConfigs(String topic);
 
-  /**
-   * Get the topic-level configurations for the requested topics.
-   * @param topics The set of topic names for which the topic-level configurations are required.
-   * @return A map from the topic name to a {@link Properties} instance containing that topic's configuration.
-   */
-  Map<String, Properties> topicConfigs(Set<String> topics);
+    /**
+     * Get the topic-level configurations for the requested topics.
+     *
+     * @param topics The set of topic names for which the topic-level configurations are required.
+     * @return A map from the topic name to a {@link Properties} instance containing that topic's configuration.
+     */
+    Map<String, Properties> topicConfigs(Set<String> topics);
 
-  /**
-   * @return Topic-level configs for all topics.
-   */
-  Map<String, Properties> allTopicConfigs();
+    /**
+     * @return Topic-level configs for all topics.
+     */
+    Map<String, Properties> allTopicConfigs();
 }

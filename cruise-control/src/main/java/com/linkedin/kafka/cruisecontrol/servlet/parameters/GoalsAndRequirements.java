@@ -5,6 +5,7 @@
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
 import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
+
 import java.util.Collections;
 import java.util.List;
 
@@ -13,20 +14,20 @@ import java.util.List;
  * A helper class for goals and requirements.
  */
 public class GoalsAndRequirements {
-  protected final List<String> _goals;
-  protected final ModelCompletenessRequirements _requirements;
+    protected final List<String> _goals;
+    protected final ModelCompletenessRequirements _requirements;
 
-  public GoalsAndRequirements(List<String> goals, ModelCompletenessRequirements requirements) {
-    // An empty list indicates the default goals.
-    _goals = goals;
-    _requirements = requirements;
-  }
+    public GoalsAndRequirements(List<String> goals, ModelCompletenessRequirements requirements) {
+        // An empty list indicates the default goals.
+        _goals = goals;
+        _requirements = requirements;
+    }
 
-  public List<String> goals() {
-    return Collections.unmodifiableList(_goals);
-  }
+    public List<String> goals() {
+        return Collections.unmodifiableList(_goals);
+    }
 
-  public ModelCompletenessRequirements requirements() {
-    return _requirements;
-  }
+    public ModelCompletenessRequirements requirements() {
+        return _requirements;
+    }
 }
