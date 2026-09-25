@@ -10,6 +10,7 @@ import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import org.easymock.EasyMock;
 import org.junit.Assert;
 import org.junit.Test;
@@ -165,5 +166,83 @@ public class ParameterUtilsTest {
 
     EasyMock.verify(mockRequest);
     Assert.assertEquals(Long.valueOf(EXECUTION_PROGRESS_CHECK_INTERVAL_STRING), executionProgressCheckIntervalMs);
+  }
+
+  @Test
+  public void testEndPointValidPath() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    EasyMock.expect(mockRequest.getMethod()).andReturn("GET");
+    EasyMock.expect(mockRequest.getPathInfo()).andReturn("/state");
+    EasyMock.replay(mockRequest);
+
+    CruiseControlEndPoint result = ParameterUtils.endPoint(mockRequest);
+    Assert.assertEquals(CruiseControlEndPoint.STATE, result);
+    EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testEndPointNullPathInfo() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    EasyMock.expect(mockRequest.getMethod()).andReturn("GET");
+    EasyMock.expect(mockRequest.getPathInfo()).andReturn(null);
+    EasyMock.replay(mockRequest);
+
+    Assert.assertNull(ParameterUtils.endPoint(mockRequest));
+    EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testEndPointUnrecognized() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    EasyMock.expect(mockRequest.getMethod()).andReturn("GET");
+    EasyMock.expect(mockRequest.getPathInfo()).andReturn("/nonexistent");
+    EasyMock.replay(mockRequest);
+
+    Assert.assertNull(ParameterUtils.endPoint(mockRequest));
+    EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testEndPointCaseInsensitive() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    EasyMock.expect(mockRequest.getMethod()).andReturn("POST");
+    EasyMock.expect(mockRequest.getPathInfo()).andReturn("/ADMIN");
+    EasyMock.replay(mockRequest);
+
+    Assert.assertEquals(CruiseControlEndPoint.ADMIN, ParameterUtils.endPoint(mockRequest));
+    EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testEndPointRejectsExtraPathSegments() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    EasyMock.expect(mockRequest.getMethod()).andReturn("POST");
+    EasyMock.expect(mockRequest.getPathInfo()).andReturn("/x/admin");
+    EasyMock.replay(mockRequest);
+
+    Assert.assertNull(ParameterUtils.endPoint(mockRequest));
+    EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testEndPointRejectsDeepNestedPath() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    EasyMock.expect(mockRequest.getMethod()).andReturn("POST");
+    EasyMock.expect(mockRequest.getPathInfo()).andReturn("/a/b/c/rebalance");
+    EasyMock.replay(mockRequest);
+
+    Assert.assertNull(ParameterUtils.endPoint(mockRequest));
+    EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testEndPointTrailingSlash() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    EasyMock.expect(mockRequest.getMethod()).andReturn("GET");
+    EasyMock.expect(mockRequest.getPathInfo()).andReturn("/state/");
+    EasyMock.replay(mockRequest);
+
+    Assert.assertEquals(CruiseControlEndPoint.STATE, ParameterUtils.endPoint(mockRequest));
+    EasyMock.verify(mockRequest);
   }
 }

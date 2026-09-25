@@ -7,13 +7,11 @@ package com.linkedin.kafka.cruisecontrol.servlet.security.jwt;
 import com.nimbusds.jwt.SignedJWT;
 import org.eclipse.jetty.http.HttpCookie;
 import org.eclipse.jetty.http.HttpHeader;
-import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.http.HttpURI;
 import org.eclipse.jetty.security.AuthenticationState;
 import org.eclipse.jetty.security.UserIdentity;
 import org.eclipse.jetty.security.authentication.LoginAuthenticator;
-import org.eclipse.jetty.security.internal.DeferredAuthenticationState;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
 import org.eclipse.jetty.util.Callback;
@@ -90,10 +88,6 @@ public class JwtAuthenticator extends LoginAuthenticator {
     JWT_LOGGER.trace("Authentication request received for " + request.toString());
 
     String serializedJWT;
-    // we'll skip the authentication for CORS preflight requests
-    if (HttpMethod.OPTIONS.name().equalsIgnoreCase(request.getMethod())) {
-      return new DeferredAuthenticationState(this);
-    }
     serializedJWT = getJwtFromBearerAuthorization(request);
     if (serializedJWT == null) {
       serializedJWT = getJwtFromCookie(request);

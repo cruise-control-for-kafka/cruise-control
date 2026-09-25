@@ -60,6 +60,7 @@ public class JwtSecurityProviderIntegrationTest extends CruiseControlIntegration
   private static final String TEST_USERNAME = "ccTestUser";
   private static final String TEST_PASSWORD = "TestPwd123";
   private static final String ORIGIN = "origin";
+  private static final String TEST_CORS_ORIGIN = "https://cruise-control.example.com";
   public static final String JWT_TOKEN_COOKIE_NAME = "jwt_token";
 
   private final TokenGenerator.TokenAndKeys _tokenAndKeys;
@@ -148,6 +149,8 @@ public class JwtSecurityProviderIntegrationTest extends CruiseControlIntegration
         Objects.requireNonNull(this.getClass().getClassLoader().getResource(AUTH_CREDENTIALS_FILE)).getPath());
     securityConfigs.put(WebServerConfig.JWT_COOKIE_NAME_CONFIG, JWT_TOKEN_COOKIE_NAME);
     securityConfigs.put(WebServerConfig.JWT_AUTH_CERTIFICATE_LOCATION_CONFIG, _publicKeyFile.getAbsolutePath());
+    securityConfigs.put(WebServerConfig.WEBSERVER_HTTP_CORS_ENABLED_CONFIG, true);
+    securityConfigs.put(WebServerConfig.WEBSERVER_HTTP_CORS_ORIGIN_CONFIG, TEST_CORS_ORIGIN);
 
     return securityConfigs;
   }
@@ -161,6 +164,27 @@ public class JwtSecurityProviderIntegrationTest extends CruiseControlIntegration
         .resolve(CRUISE_CONTROL_STATE_ENDPOINT).toURL().openConnection();
     stateEndpointConnection.setRequestProperty(HttpHeader.COOKIE.asString(), cookie);
     assertEquals(HttpServletResponse.SC_OK, stateEndpointConnection.getResponseCode());
+  }
+
+  @Test
+  public void testCorsPreflightDoesNotRequireAuthentication() throws Exception {
+    HttpURLConnection connection = (HttpURLConnection) new URI(_app.serverUrl())
+        .resolve(CRUISE_CONTROL_STATE_ENDPOINT).toURL().openConnection();
+    connection.setRequestMethod("OPTIONS");
+    connection.setRequestProperty("Origin", TEST_CORS_ORIGIN);
+    connection.setRequestProperty("Access-Control-Request-Method", "GET");
+
+    assertEquals(HttpServletResponse.SC_OK, connection.getResponseCode());
+    assertEquals(TEST_CORS_ORIGIN, connection.getHeaderField("Access-Control-Allow-Origin"));
+  }
+
+  @Test
+  public void testUnauthenticatedGetRedirectsToLogin() throws Exception {
+    HttpURLConnection connection = (HttpURLConnection) new URI(_app.serverUrl())
+        .resolve(CRUISE_CONTROL_STATE_ENDPOINT).toURL().openConnection();
+    connection.setInstanceFollowRedirects(false);
+
+    assertEquals(HttpServletResponse.SC_FOUND, connection.getResponseCode());
   }
 
   private File createCertificate(TokenGenerator.TokenAndKeys tokenAndKeys) throws Exception {

@@ -8,7 +8,6 @@ import org.easymock.EasyMock;
 import org.eclipse.jetty.http.HttpCookie;
 import org.eclipse.jetty.http.HttpFields;
 import org.eclipse.jetty.http.HttpHeader;
-import org.eclipse.jetty.http.HttpMethod;
 import org.eclipse.jetty.http.HttpStatus;
 import org.eclipse.jetty.http.HttpURI;
 import org.eclipse.jetty.security.AuthenticationState;
@@ -110,7 +109,6 @@ public class JwtAuthenticatorTest {
 
     Request request = mock(Request.class);
     HttpFields headers = mock(HttpFields.class);
-    expect(request.getMethod()).andReturn(HttpMethod.GET.asString()).anyTimes();
     expect(request.getHeaders()).andReturn(headers).anyTimes();
     expect(headers.get(HttpHeader.AUTHORIZATION.asString())).andReturn(null);
     expect(request.getAttribute(Request.COOKIE_ATTRIBUTE)).andReturn(List.of());
@@ -146,7 +144,6 @@ public class JwtAuthenticatorTest {
 
     Request request = niceMock(Request.class);
     HttpFields headers = mock(HttpFields.class);
-    expect(request.getMethod()).andReturn(HttpMethod.GET.asString());
     expect(request.getHeaders()).andReturn(headers);
     expect(headers.get(HttpHeader.AUTHORIZATION.asString())).andReturn(null);
     expect(request.setAttribute(JwtAuthenticator.JWT_TOKEN_REQUEST_ATTRIBUTE, tokenAndKeys.token())).andReturn(null);
@@ -186,7 +183,6 @@ public class JwtAuthenticatorTest {
 
     Request request = niceMock(Request.class);
     HttpFields headers = mock(HttpFields.class);
-    expect(request.getMethod()).andReturn(HttpMethod.GET.asString());
     expect(request.getHeaders()).andReturn(headers);
     expect(headers.get(HttpHeader.AUTHORIZATION.asString())).andReturn(null);
     expect(request.setAttribute(JwtAuthenticator.JWT_TOKEN_REQUEST_ATTRIBUTE, tokenAndKeys.token())).andReturn(null);
@@ -225,7 +221,6 @@ public class JwtAuthenticatorTest {
 
     Request request = niceMock(Request.class);
     HttpFields headers = mock(HttpFields.class);
-    expect(request.getMethod()).andReturn(HttpMethod.GET.asString());
     expect(request.getHeaders()).andReturn(headers);
     expect(headers.get(HttpHeader.AUTHORIZATION.asString())).andReturn(null);
     expect(request.setAttribute(JwtAuthenticator.JWT_TOKEN_REQUEST_ATTRIBUTE, tokenAndKeys2.token())).andReturn(null);

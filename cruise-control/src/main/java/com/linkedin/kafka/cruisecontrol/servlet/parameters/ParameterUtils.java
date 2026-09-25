@@ -29,8 +29,18 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -47,131 +57,277 @@ import static jakarta.servlet.http.HttpServletResponse.SC_BAD_REQUEST;
  * The util class for Kafka Cruise Control parameters.
  */
 public final class ParameterUtils {
-    public static final String JSON_PARAM = "json";
-    public static final String GET_RESPONSE_SCHEMA = "get_response_schema";
-    public static final String START_MS_PARAM = "start";
-    public static final String END_MS_PARAM = "end";
-    public static final String ENTRIES_PARAM = "entries";
-    public static final String ALLOW_CAPACITY_ESTIMATION_PARAM = "allow_capacity_estimation";
-    public static final String STOP_ONGOING_EXECUTION_PARAM = "stop_ongoing_execution";
-    public static final String CLEAR_METRICS_PARAM = "clearmetrics";
-    public static final String TIME_PARAM = "time";
-    public static final String VERBOSE_PARAM = "verbose";
-    public static final String SUPER_VERBOSE_PARAM = "super_verbose";
-    public static final String RESOURCE_PARAM = "resource";
-    public static final String REASON_PARAM = "reason";
-    public static final String DATA_FROM_PARAM = "data_from";
-    public static final String KAFKA_ASSIGNER_MODE_PARAM = "kafka_assigner";
-    public static final String MAX_LOAD_PARAM = "max_load";
-    public static final String AVG_LOAD_PARAM = "avg_load";
-    public static final String GOALS_PARAM = "goals";
-    public static final String BROKER_ID_PARAM = "brokerid";
-    public static final String DROP_RECENTLY_REMOVED_BROKERS_PARAM = "drop_recently_removed_brokers";
-    public static final String DROP_RECENTLY_DEMOTED_BROKERS_PARAM = "drop_recently_demoted_brokers";
-    public static final String DESTINATION_BROKER_IDS_PARAM = "destination_broker_ids";
-    public static final String REVIEW_ID_PARAM = "review_id";
-    public static final String REVIEW_IDS_PARAM = "review_ids";
-    public static final String TOPIC_PARAM = "topic";
-    public static final String PARTITION_PARAM = "partition";
-    public static final String DRY_RUN_PARAM = "dryrun";
-    public static final String THROTTLE_ADDED_BROKER_PARAM = "throttle_added_broker";
-    public static final String THROTTLE_REMOVED_BROKER_PARAM = "throttle_removed_broker";
-    public static final String REPLICATION_THROTTLE_PARAM = "replication_throttle";
-    public static final String IGNORE_PROPOSAL_CACHE_PARAM = "ignore_proposal_cache";
-    public static final String USE_READY_DEFAULT_GOALS_PARAM = "use_ready_default_goals";
-    public static final String EXECUTION_PROGRESS_CHECK_INTERVAL_MS_PARAM = "execution_progress_check_interval_ms";
-    public static final String CONCURRENT_PARTITION_MOVEMENTS_PER_BROKER_PARAM = "concurrent_partition_movements_per_broker";
-    public static final String MAX_PARTITION_MOVEMENTS_IN_CLUSTER_PARAM = "max_partition_movements_in_cluster";
-    public static final String CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_PARAM = "concurrent_intra_broker_partition_movements";
-    public static final String CONCURRENT_LEADER_MOVEMENTS_PARAM = "concurrent_leader_movements";
-    public static final String BROKER_CONCURRENT_LEADER_MOVEMENTS_PARAM = "broker_concurrent_leader_movements";
-    public static final String DEFAULT_PARTITION_LOAD_RESOURCE = "disk";
-    public static final String SUBSTATES_PARAM = "substates";
-    public static final String MIN_VALID_PARTITION_RATIO_PARAM = "min_valid_partition_ratio";
-    public static final String SKIP_HARD_GOAL_CHECK_PARAM = "skip_hard_goal_check";
-    public static final String EXCLUDED_TOPICS_PARAM = "excluded_topics";
-    public static final String USER_TASK_IDS_PARAM = "user_task_ids";
-    public static final String CLIENT_IDS_PARAM = "client_ids";
-    public static final String ENDPOINTS_PARAM = "endpoints";
-    public static final String TYPES_PARAM = "types";
-    public static final String SKIP_URP_DEMOTION_PARAM = "skip_urp_demotion";
-    public static final String EXCLUDE_FOLLOWER_DEMOTION_PARAM = "exclude_follower_demotion";
-    public static final String DISABLE_SELF_HEALING_FOR_PARAM = "disable_self_healing_for";
-    public static final String ENABLE_SELF_HEALING_FOR_PARAM = "enable_self_healing_for";
-    public static final String DISABLE_CONCURRENCY_ADJUSTER_FOR_PARAM = "disable_concurrency_adjuster_for";
-    public static final String ENABLE_CONCURRENCY_ADJUSTER_FOR_PARAM = "enable_concurrency_adjuster_for";
-    public static final String MIN_ISR_BASED_CONCURRENCY_ADJUSTMENT_PARAM = "min_isr_based_concurrency_adjustment";
-    public static final String EXCLUDE_RECENTLY_DEMOTED_BROKERS_PARAM = "exclude_recently_demoted_brokers";
-    public static final String EXCLUDE_RECENTLY_REMOVED_BROKERS_PARAM = "exclude_recently_removed_brokers";
-    public static final String REPLICA_MOVEMENT_STRATEGIES_PARAM = "replica_movement_strategies";
-    public static final String APPROVE_PARAM = "approve";
-    public static final String DISCARD_PARAM = "discard";
-    public static final String REBALANCE_DISK_MODE_PARAM = "rebalance_disk";
-    public static final String POPULATE_DISK_INFO_PARAM = "populate_disk_info";
-    public static final String CAPACITY_ONLY_PARAM = "capacity_only";
-    public static final String BROKER_ID_AND_LOGDIRS_PARAM = "brokerid_and_logdirs";
-    public static final String REPLICATION_FACTOR_PARAM = "replication_factor";
-    public static final String SKIP_RACK_AWARENESS_CHECK_PARAM = "skip_rack_awareness_check";
-    public static final String FETCH_COMPLETED_TASK_PARAM = "fetch_completed_task";
-    public static final String FORCE_STOP_PARAM = "force_stop";
-    public static final String FAST_MODE_PARAM = "fast_mode";
-    public static final String STOP_EXTERNAL_AGENT_PARAM = "stop_external_agent";
-    public static final String DEVELOPER_MODE_PARAM = "developer_mode";
-    private static final int MAX_REASON_LENGTH = 50;
-    private static final String DELIMITER_BETWEEN_BROKER_ID_AND_LOGDIR = "-";
-    public static final long DEFAULT_START_TIME_FOR_CLUSTER_MODEL = -1L;
-    public static final String TOPIC_BY_REPLICATION_FACTOR = "topic_by_replication_factor";
-    public static final String NO_REASON_PROVIDED = "No reason provided";
-    public static final String DO_AS = "doAs";
-    public static final String NUM_BROKERS_TO_ADD = "num_brokers_to_add";
-    public static final String PARTITION_COUNT = "partition_count";
+  public static final String JSON_PARAM = "json";
+  public static final String GET_RESPONSE_SCHEMA = "get_response_schema";
+  public static final String START_MS_PARAM = "start";
+  public static final String END_MS_PARAM = "end";
+  public static final String ENTRIES_PARAM = "entries";
+  public static final String ALLOW_CAPACITY_ESTIMATION_PARAM = "allow_capacity_estimation";
+  public static final String STOP_ONGOING_EXECUTION_PARAM = "stop_ongoing_execution";
+  public static final String CLEAR_METRICS_PARAM = "clearmetrics";
+  public static final String TIME_PARAM = "time";
+  public static final String VERBOSE_PARAM = "verbose";
+  public static final String SUPER_VERBOSE_PARAM = "super_verbose";
+  public static final String RESOURCE_PARAM = "resource";
+  public static final String REASON_PARAM = "reason";
+  public static final String DATA_FROM_PARAM = "data_from";
+  public static final String KAFKA_ASSIGNER_MODE_PARAM = "kafka_assigner";
+  public static final String MAX_LOAD_PARAM = "max_load";
+  public static final String AVG_LOAD_PARAM = "avg_load";
+  public static final String GOALS_PARAM = "goals";
+  public static final String BROKER_ID_PARAM = "brokerid";
+  public static final String DROP_RECENTLY_REMOVED_BROKERS_PARAM = "drop_recently_removed_brokers";
+  public static final String DROP_RECENTLY_DEMOTED_BROKERS_PARAM = "drop_recently_demoted_brokers";
+  public static final String DESTINATION_BROKER_IDS_PARAM = "destination_broker_ids";
+  public static final String REVIEW_ID_PARAM = "review_id";
+  public static final String REVIEW_IDS_PARAM = "review_ids";
+  public static final String TOPIC_PARAM = "topic";
+  public static final String PARTITION_PARAM = "partition";
+  public static final String DRY_RUN_PARAM = "dryrun";
+  public static final String THROTTLE_ADDED_BROKER_PARAM = "throttle_added_broker";
+  public static final String THROTTLE_REMOVED_BROKER_PARAM = "throttle_removed_broker";
+  public static final String REPLICATION_THROTTLE_PARAM = "replication_throttle";
+  public static final String IGNORE_PROPOSAL_CACHE_PARAM = "ignore_proposal_cache";
+  public static final String USE_READY_DEFAULT_GOALS_PARAM = "use_ready_default_goals";
+  public static final String EXECUTION_PROGRESS_CHECK_INTERVAL_MS_PARAM = "execution_progress_check_interval_ms";
+  public static final String CONCURRENT_PARTITION_MOVEMENTS_PER_BROKER_PARAM = "concurrent_partition_movements_per_broker";
+  public static final String MAX_PARTITION_MOVEMENTS_IN_CLUSTER_PARAM = "max_partition_movements_in_cluster";
+  public static final String CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_PARAM = "concurrent_intra_broker_partition_movements";
+  public static final String CONCURRENT_LEADER_MOVEMENTS_PARAM = "concurrent_leader_movements";
+  public static final String BROKER_CONCURRENT_LEADER_MOVEMENTS_PARAM = "broker_concurrent_leader_movements";
+  public static final String DEFAULT_PARTITION_LOAD_RESOURCE = "disk";
+  public static final String SUBSTATES_PARAM = "substates";
+  public static final String MIN_VALID_PARTITION_RATIO_PARAM = "min_valid_partition_ratio";
+  public static final String SKIP_HARD_GOAL_CHECK_PARAM = "skip_hard_goal_check";
+  public static final String EXCLUDED_TOPICS_PARAM = "excluded_topics";
+  public static final String USER_TASK_IDS_PARAM = "user_task_ids";
+  public static final String CLIENT_IDS_PARAM = "client_ids";
+  public static final String ENDPOINTS_PARAM = "endpoints";
+  public static final String TYPES_PARAM = "types";
+  public static final String SKIP_URP_DEMOTION_PARAM = "skip_urp_demotion";
+  public static final String EXCLUDE_FOLLOWER_DEMOTION_PARAM = "exclude_follower_demotion";
+  public static final String DISABLE_SELF_HEALING_FOR_PARAM = "disable_self_healing_for";
+  public static final String ENABLE_SELF_HEALING_FOR_PARAM = "enable_self_healing_for";
+  public static final String DISABLE_CONCURRENCY_ADJUSTER_FOR_PARAM = "disable_concurrency_adjuster_for";
+  public static final String ENABLE_CONCURRENCY_ADJUSTER_FOR_PARAM = "enable_concurrency_adjuster_for";
+  public static final String MIN_ISR_BASED_CONCURRENCY_ADJUSTMENT_PARAM = "min_isr_based_concurrency_adjustment";
+  public static final String EXCLUDE_RECENTLY_DEMOTED_BROKERS_PARAM = "exclude_recently_demoted_brokers";
+  public static final String EXCLUDE_RECENTLY_REMOVED_BROKERS_PARAM = "exclude_recently_removed_brokers";
+  public static final String REPLICA_MOVEMENT_STRATEGIES_PARAM = "replica_movement_strategies";
+  public static final String APPROVE_PARAM = "approve";
+  public static final String DISCARD_PARAM = "discard";
+  public static final String REBALANCE_DISK_MODE_PARAM = "rebalance_disk";
+  public static final String POPULATE_DISK_INFO_PARAM = "populate_disk_info";
+  public static final String CAPACITY_ONLY_PARAM = "capacity_only";
+  public static final String BROKER_ID_AND_LOGDIRS_PARAM = "brokerid_and_logdirs";
+  public static final String REPLICATION_FACTOR_PARAM = "replication_factor";
+  public static final String SKIP_RACK_AWARENESS_CHECK_PARAM = "skip_rack_awareness_check";
+  public static final String FETCH_COMPLETED_TASK_PARAM = "fetch_completed_task";
+  public static final String FORCE_STOP_PARAM = "force_stop";
+  public static final String FAST_MODE_PARAM = "fast_mode";
+  public static final String STOP_EXTERNAL_AGENT_PARAM = "stop_external_agent";
+  public static final String DEVELOPER_MODE_PARAM = "developer_mode";
+  private static final int MAX_REASON_LENGTH = 50;
+  private static final String DELIMITER_BETWEEN_BROKER_ID_AND_LOGDIR = "-";
+  public static final long DEFAULT_START_TIME_FOR_CLUSTER_MODEL = -1L;
+  public static final String TOPIC_BY_REPLICATION_FACTOR = "topic_by_replication_factor";
+  public static final String NO_REASON_PROVIDED = "No reason provided";
+  public static final String DO_AS = "doAs";
+  public static final String NUM_BROKERS_TO_ADD = "num_brokers_to_add";
+  public static final String PARTITION_COUNT = "partition_count";
 
-    public static final String STOP_PROPOSAL_PARAMETER_OBJECT_CONFIG = "stop.proposal.parameter.object";
-    public static final String BOOTSTRAP_PARAMETER_OBJECT_CONFIG = "bootstrap.parameter.object";
-    public static final String TRAIN_PARAMETER_OBJECT_CONFIG = "train.parameter.object";
-    public static final String LOAD_PARAMETER_OBJECT_CONFIG = "load.parameter.object";
-    public static final String PARTITION_LOAD_PARAMETER_OBJECT_CONFIG = "partition.load.parameter.object";
-    public static final String PROPOSALS_PARAMETER_OBJECT_CONFIG = "proposals.parameter.object";
-    public static final String STATE_PARAMETER_OBJECT_CONFIG = "state.parameter.object";
-    public static final String KAFKA_CLUSTER_STATE_PARAMETER_OBJECT_CONFIG = "kafka.cluster.state.parameter.object";
-    public static final String USER_TASKS_PARAMETER_OBJECT_CONFIG = "user.tasks.parameter.object";
-    public static final String REVIEW_BOARD_PARAMETER_OBJECT_CONFIG = "review.board.parameter.object";
-    public static final String ADD_BROKER_PARAMETER_OBJECT_CONFIG = "add.broker.parameter.object";
-    public static final String REMOVE_BROKER_PARAMETER_OBJECT_CONFIG = "remove.broker.parameter.object";
-    public static final String FIX_OFFLINE_REPLICAS_PARAMETER_OBJECT_CONFIG = "fix.offline.replicas.parameter.object";
-    public static final String REBALANCE_PARAMETER_OBJECT_CONFIG = "rebalance.parameter.object";
-    public static final String PAUSE_RESUME_PARAMETER_OBJECT_CONFIG = "pause.resume.parameter.object";
-    public static final String DEMOTE_BROKER_PARAMETER_OBJECT_CONFIG = "demote.broker.parameter.object";
-    public static final String ADMIN_PARAMETER_OBJECT_CONFIG = "admin.parameter.object";
-    public static final String REVIEW_PARAMETER_OBJECT_CONFIG = "review.parameter.object";
-    public static final String TOPIC_CONFIGURATION_PARAMETER_OBJECT_CONFIG = "topic.configuration.parameter.object";
-    public static final String RIGHTSIZE_PARAMETER_OBJECT_CONFIG = "rightsize.parameter.object";
-    public static final String PERMISSIONS_PARAMETER_OBJECT_CONFIG = "permissions.parameter.object";
-    public static final String REMOVE_DISKS_PARAMETER_OBJECT_CONFIG = "remove.disks.parameter.object";
+  public static final String STOP_PROPOSAL_PARAMETER_OBJECT_CONFIG = "stop.proposal.parameter.object";
+  public static final String BOOTSTRAP_PARAMETER_OBJECT_CONFIG = "bootstrap.parameter.object";
+  public static final String TRAIN_PARAMETER_OBJECT_CONFIG = "train.parameter.object";
+  public static final String LOAD_PARAMETER_OBJECT_CONFIG = "load.parameter.object";
+  public static final String PARTITION_LOAD_PARAMETER_OBJECT_CONFIG = "partition.load.parameter.object";
+  public static final String PROPOSALS_PARAMETER_OBJECT_CONFIG = "proposals.parameter.object";
+  public static final String STATE_PARAMETER_OBJECT_CONFIG = "state.parameter.object";
+  public static final String KAFKA_CLUSTER_STATE_PARAMETER_OBJECT_CONFIG = "kafka.cluster.state.parameter.object";
+  public static final String USER_TASKS_PARAMETER_OBJECT_CONFIG = "user.tasks.parameter.object";
+  public static final String REVIEW_BOARD_PARAMETER_OBJECT_CONFIG = "review.board.parameter.object";
+  public static final String ADD_BROKER_PARAMETER_OBJECT_CONFIG = "add.broker.parameter.object";
+  public static final String REMOVE_BROKER_PARAMETER_OBJECT_CONFIG = "remove.broker.parameter.object";
+  public static final String FIX_OFFLINE_REPLICAS_PARAMETER_OBJECT_CONFIG = "fix.offline.replicas.parameter.object";
+  public static final String REBALANCE_PARAMETER_OBJECT_CONFIG = "rebalance.parameter.object";
+  public static final String PAUSE_RESUME_PARAMETER_OBJECT_CONFIG = "pause.resume.parameter.object";
+  public static final String DEMOTE_BROKER_PARAMETER_OBJECT_CONFIG = "demote.broker.parameter.object";
+  public static final String ADMIN_PARAMETER_OBJECT_CONFIG = "admin.parameter.object";
+  public static final String REVIEW_PARAMETER_OBJECT_CONFIG = "review.parameter.object";
+  public static final String TOPIC_CONFIGURATION_PARAMETER_OBJECT_CONFIG = "topic.configuration.parameter.object";
+  public static final String RIGHTSIZE_PARAMETER_OBJECT_CONFIG = "rightsize.parameter.object";
+  public static final String PERMISSIONS_PARAMETER_OBJECT_CONFIG = "permissions.parameter.object";
+  public static final String REMOVE_DISKS_PARAMETER_OBJECT_CONFIG = "remove.disks.parameter.object";
 
-    private ParameterUtils() {
+  private ParameterUtils() {
+  }
+
+  /**
+   * @param requestContext The Http request.
+   * @return The endpoint specified in the given request.
+   */
+  public static CruiseControlEndPoint endPoint(CruiseControlRequestContext requestContext) {
+    List<CruiseControlEndPoint> supportedEndpoints;
+    switch (requestContext.getMethod()) {
+      case GET_METHOD:
+        supportedEndpoints = CruiseControlEndPoint.getEndpoints();
+        break;
+      case POST_METHOD:
+        supportedEndpoints = CruiseControlEndPoint.postEndpoints();
+        break;
+      default:
+        throw new UserRequestException("Unsupported request method: " + requestContext.getMethod() + ".");
+    }
+    String pathInfo = requestContext.getPathInfo();
+    if (pathInfo == null || !pathInfo.startsWith("/")) {
+      // URL does not have any extra path information
+      return null;
+    }
+    // Skip the first character '/'
+    String endpointName = pathInfo.substring(1);
+    if (endpointName.endsWith("/")) {
+      endpointName = endpointName.substring(0, endpointName.length() - 1);
+    }
+    if (endpointName.isEmpty() || endpointName.contains("/")) {
+      return null;
+    }
+    for (CruiseControlEndPoint endPoint : supportedEndpoints) {
+      if (endPoint.toString().equalsIgnoreCase(endpointName)) {
+        return endPoint;
+      }
+    }
+    return null;
+  }
+
+  static void handleParameterParseException(Exception e,
+                                            CruiseControlRequestContext requestContext,
+                                            String errorMessage,
+                                            boolean json,
+                                            boolean wantJsonSchema) throws IOException {
+    writeErrorResponse(requestContext, e, errorMessage, SC_BAD_REQUEST, json, wantJsonSchema);
+  }
+
+  /**
+   * Check whether the request has valid parameter names. If not, populate the HTTP response with the corresponding
+   * error message and return {@code false}, return {@code true} otherwise.
+   *
+   * @param requestContext the request context.
+   * @param parameters Request parameters
+   * @return {@code true} if the request has valid parameter names, {@code false} otherwise (and response is populated).
+   */
+  public static boolean hasValidParameterNames(CruiseControlRequestContext requestContext,
+                                               CruiseControlParameters parameters) throws IOException {
+    CruiseControlEndPoint endPoint = endPoint(requestContext);
+    Set<String> validParamNames = parameters.caseInsensitiveParameterNames();
+    Set<String> userParams = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+    userParams.addAll(requestContext.getParameterMap().keySet());
+    if (validParamNames != null) {
+      userParams.removeAll(validParamNames);
     }
 
-    /**
-     * @param requestContext The Http request.
-     * @return The endpoint specified in the given request.
-     */
-    public static CruiseControlEndPoint endPoint(CruiseControlRequestContext requestContext) {
-        List<CruiseControlEndPoint> supportedEndpoints;
-        switch (requestContext.getMethod()) {
-            case GET_METHOD:
-                supportedEndpoints = CruiseControlEndPoint.getEndpoints();
-                break;
-            case POST_METHOD:
-                supportedEndpoints = CruiseControlEndPoint.postEndpoints();
-                break;
-            default:
-                throw new UserRequestException("Unsupported request method: " + requestContext.getMethod() + ".");
-        }
-        String pathInfo = requestContext.getPathInfo();
-        if (pathInfo == null) {
-            // URL does not have any extra path information
-            return null;
+    if (!userParams.isEmpty()) {
+      // User request specifies parameters that are not a subset of the valid parameters.
+      String errorMessage = String.format("Unrecognized endpoint parameters in %s %s request: %s.",
+              endPoint, requestContext.getMethod(), userParams);
+      writeErrorResponse(requestContext, null, errorMessage, SC_BAD_REQUEST, wantJSON(requestContext), wantResponseSchema(requestContext));
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * @param parameterMap Parameter map
+   * @param parameter Parameter to parse from the parameter map.
+   * @return The case sensitive request parameter name, or <code>null</code> if the parameter does not exist.
+   */
+  public static String caseSensitiveParameterName(Map<String, String[]> parameterMap, String parameter) {
+    return parameterMap.keySet().stream().filter(parameter::equalsIgnoreCase).findFirst().orElse(null);
+  }
+
+  /**
+   * Get the boolean parameter.
+   *
+   * @param requestContext the request context.
+   * @param parameter Parameter to parse from the request.
+   * @param defaultIfMissing Default value to set if the request does not contain the parameter.
+   * @return The specified value for the parameter, or defaultIfMissing if the parameter is missing.
+   */
+  public static boolean getBooleanParam(CruiseControlRequestContext requestContext, String parameter, boolean defaultIfMissing) {
+    String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), parameter);
+    return parameterString == null ? defaultIfMissing : Boolean.parseBoolean(requestContext.getParameter(parameterString));
+  }
+
+  /**
+   * Get the long parameter parameter.
+   *
+   * @param requestContext HTTP request received by Cruise Control.
+   * @param parameter Parameter to parse from the request.
+   * @param defaultIfMissing Default value to set if the request does not contain the parameter.
+   * @return The specified value for the parameter, or defaultIfMissing if the parameter is missing.
+   */
+  public static Long getLongParam(CruiseControlRequestContext requestContext, String parameter, @Nullable Long defaultIfMissing) {
+    String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), parameter);
+    return parameterString == null ? defaultIfMissing : Long.valueOf(requestContext.getParameter(parameterString));
+  }
+
+  /**
+   * Get the {@link List} parameter.
+   *
+   * @param requestContext the request context.
+   * @param parameter Parameter to parse from the request.
+   * @return The specified value for the parameter, or empty List if the parameter is missing.
+   */
+  public static List<String> getListParam(CruiseControlRequestContext requestContext, String parameter) throws UnsupportedEncodingException {
+    String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), parameter);
+    List<String> retList = parameterString == null ? new ArrayList<>()
+            : Arrays.asList(urlDecode(requestContext.getParameter(parameterString)).split(","));
+    retList.removeIf(String::isEmpty);
+    return Collections.unmodifiableList(retList);
+  }
+
+  /**
+   * Get the {@link List} parameter.
+   * @param requestContext the request context.
+   * @return The specified value for the parameter, or empty List if the parameter is missing.
+   */
+
+  public static boolean wantJSON(CruiseControlRequestContext requestContext) {
+    return getBooleanParam(requestContext, JSON_PARAM, false);
+  }
+
+  public static boolean wantResponseSchema(CruiseControlRequestContext requestContext) {
+    return getBooleanParam(requestContext, GET_RESPONSE_SCHEMA, false);
+  }
+
+  static boolean allowCapacityEstimation(CruiseControlRequestContext requestContext) {
+    return getBooleanParam(requestContext, ALLOW_CAPACITY_ESTIMATION_PARAM, true);
+  }
+
+  static boolean skipRackAwarenessCheck(CruiseControlRequestContext requestContext) {
+    return getBooleanParam(requestContext, SKIP_RACK_AWARENESS_CHECK_PARAM, false);
+  }
+
+  static boolean stopOngoingExecution(CruiseControlRequestContext requestContext) {
+    return getBooleanParam(requestContext, STOP_ONGOING_EXECUTION_PARAM, false);
+  }
+
+  private static boolean excludeBrokers(CruiseControlRequestContext requestContext, String parameter, boolean defaultIfMissing) {
+    boolean isKafkaAssignerMode = isKafkaAssignerMode(requestContext);
+    boolean excludeBrokers = getBooleanParam(requestContext, parameter, defaultIfMissing);
+    if (isKafkaAssignerMode && excludeBrokers) {
+      throw new UserRequestException("Kafka assigner mode does not support excluding brokers.");
+    }
+
+    return excludeBrokers;
+  }
+
+  private static boolean getBooleanExcludeGiven(CruiseControlRequestContext requestContext, String getParameter, Set<String> excludeParameters) {
+    boolean booleanParam = getBooleanParam(requestContext, getParameter, false);
+    if (booleanParam) {
+      for (String excludeParameter : excludeParameters) {
+        if (caseSensitiveParameterName(requestContext.getParameterMap(), excludeParameter) != null) {
+          throw new UserRequestException("Cannot set " + getParameter + " parameter to true when explicitly specifying "
+                                         + excludeParameter + " in the request.");
         }
         // Skip the first character '/'
         Path path = Path.of(pathInfo).getFileName();
