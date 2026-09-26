@@ -650,8 +650,8 @@ public class Broker implements Serializable, Comparable<Broker> {
 
   @Override
   public String toString() {
-    return String.format("Broker[id=%d,rack=%s,state=%s,replicaCount=%d,logdirs=%s]",
-                         _id, rack().id(), _state, _replicas.size(), _diskByLogdir.keySet());
+    return String.format("Broker[id=%d,rack=%s,state=%s,replicaCount=%d,logdirs=%s,leaderCount=%d]",
+                         _id, rack().id(), _state, _replicas.size(), _diskByLogdir.keySet(), _leaderReplicas.size());
   }
 
   /**
