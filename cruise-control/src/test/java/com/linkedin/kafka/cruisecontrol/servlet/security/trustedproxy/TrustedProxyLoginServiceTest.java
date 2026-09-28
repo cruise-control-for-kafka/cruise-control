@@ -353,6 +353,30 @@ public class TrustedProxyLoginServiceTest {
     assertEquals(TEST_USER, doAsIdentity.getUserPrincipal().getName());
   }
 
+  @Test
+  public void testRealmQualifiedDoAsUser() {
+    SPNEGOUserPrincipal servicePrincipal = new SPNEGOUserPrincipal(TEST_SERVICE_USER, ENCODED_TOKEN);
+    UserIdentity serviceDelegate = mock(UserIdentity.class);
+    Subject subject = new Subject(true, Collections.singleton(servicePrincipal), Collections.emptySet(), Collections.emptySet());
+    RoleDelegateUserIdentity result = new RoleDelegateUserIdentity(subject, servicePrincipal, serviceDelegate);
+    expect(_mockSpnegoLoginService.login(anyString(), anyObject(), anyObject(), anyObject())).andReturn(result);
+
+    addTestUser(TEST_USER);
+    String realmQualifiedUser = TEST_USER + "@EXAMPLE.COM";
+    Request mockRequest = mockRequestWithDoAs(realmQualifiedUser, "10.0.0.1");
+    IdentityService mockIdentityService = mock(IdentityService.class);
+    expect(mockIdentityService.newUserIdentity(anyObject(), anyObject(), anyObject())).andReturn(serviceDelegate);
+    replay(_mockSpnegoLoginService, mockIdentityService);
+
+    TrustedProxyLoginService trustedProxyLoginService = new TrustedProxyLoginService(_mockSpnegoLoginService, _mockFallbackLoginService,
+        _adminUserStore, _serviceUserStore, false);
+    Whitebox.setInternalState(trustedProxyLoginService, "_identityService", mockIdentityService);
+
+    UserIdentity doAsIdentity = trustedProxyLoginService.login(null, ENCODED_TOKEN, mockRequest, null);
+    assertTrue(((RoleDelegateUserIdentity) doAsIdentity).isEstablished());
+    assertEquals(realmQualifiedUser, doAsIdentity.getUserPrincipal().getName());
+  }
+
   private Request mockRequestWithDoAs(String doAsUser, String remoteAddr) {
     Request mockRequest = mock(Request.class);
     Context mockContext = mock(Context.class);

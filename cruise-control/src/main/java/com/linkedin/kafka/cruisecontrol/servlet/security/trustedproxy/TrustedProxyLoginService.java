@@ -204,18 +204,19 @@ public class TrustedProxyLoginService extends ContainerLifeCycle implements Logi
   }
 
   private UserIdentity getUserIdentity(Request request, String name) {
-    // SpnegoLoginService may pass names in servicename/host format but we only store the servicename
     int nameHostSeparatorIndex = name.indexOf('/');
-    String serviceName = nameHostSeparatorIndex > 0 ? name.substring(0, nameHostSeparatorIndex) : name;
-    UserPrincipal user = _userStore.getUserPrincipal(serviceName);
-    List<RolePrincipal> roles = _userStore.getRolePrincipals(serviceName);
+    String shortName = nameHostSeparatorIndex > 0 ? name.substring(0, nameHostSeparatorIndex) : name;
+    int nameRealmSeparatorIndex = shortName.indexOf('@');
+    shortName = nameRealmSeparatorIndex > 0 ? shortName.substring(0, nameRealmSeparatorIndex) : shortName;
+    UserPrincipal user = _userStore.getUserPrincipal(shortName);
+    List<RolePrincipal> roles = _userStore.getRolePrincipals(shortName);
     if (user == null) {
       return null;
     }
     UserIdentity serviceIdentity = _identityService.newUserIdentity(
         createSubject(user, roles), 
-        _userStore.getUserPrincipal(serviceName),
-        _userStore.getRolePrincipals(serviceName).stream()
+        _userStore.getUserPrincipal(shortName),
+        _userStore.getRolePrincipals(shortName).stream()
             .map(RolePrincipal::getName)
             .toArray(String[]::new)
     );
