@@ -655,6 +655,8 @@ public class KafkaCruiseControl {
    * @param uuid UUID of the execution.
    * @param skipInterBrokerReplicaConcurrencyAdjustment {@code true} to skip auto adjusting concurrency of inter-broker
    * replica movements even if the concurrency adjuster is enabled, {@code false} otherwise.
+   * @param intraBrokerMovementsBrokerByBroker {@code true} to execute intra-broker replica movements one broker at a time,
+   * {@code false} to execute them on all brokers in parallel.
    */
   public void executeProposals(Set<ExecutionProposal> proposals,
                                Set<Integer> unthrottledBrokers,
@@ -669,12 +671,14 @@ public class KafkaCruiseControl {
                                Long replicationThrottle,
                                boolean isTriggeredByUserRequest,
                                String uuid,
-                               boolean skipInterBrokerReplicaConcurrencyAdjustment) throws OngoingExecutionException {
+                               boolean skipInterBrokerReplicaConcurrencyAdjustment,
+                               boolean intraBrokerMovementsBrokerByBroker) throws OngoingExecutionException {
     if (hasProposalsToExecute(proposals, uuid)) {
       _executor.executeProposals(proposals, unthrottledBrokers, null, _loadMonitor, concurrentInterBrokerPartitionMovements,
                                  maxInterBrokerPartitionMovements, concurrentIntraBrokerPartitionMovements, clusterConcurrentLeaderMovements,
                                  brokerConcurrentLeaderMovements, executionProgressCheckIntervalMs, replicaMovementStrategy, replicationThrottle,
-                                 isTriggeredByUserRequest, uuid, isKafkaAssignerMode, skipInterBrokerReplicaConcurrencyAdjustment);
+                                 isTriggeredByUserRequest, uuid, isKafkaAssignerMode, skipInterBrokerReplicaConcurrencyAdjustment,
+                                 intraBrokerMovementsBrokerByBroker);
     } else {
       failGeneratingProposalsForExecution(uuid);
     }

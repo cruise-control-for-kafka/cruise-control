@@ -318,6 +318,7 @@ public class AnomalyDetectorManagerTest {
                                               EasyMock.eq(null),
                                               EasyMock.eq(false),
                                               EasyMock.anyString(),
+                                              EasyMock.eq(false),
                                               EasyMock.eq(false));
 
       EasyMock.expect(mockAnomalyNotifier.onGoalViolation(EasyMock.isA(GoalViolations.class))).andReturn(AnomalyNotificationResult.fix());
@@ -352,6 +353,7 @@ public class AnomalyDetectorManagerTest {
                                               EasyMock.eq(null),
                                               EasyMock.eq(false),
                                               EasyMock.anyString(),
+                                              EasyMock.eq(false),
                                               EasyMock.eq(false));
 
       EasyMock.expect(mockKafkaCruiseControl.acquireForModelGeneration(EasyMock.anyObject())).andReturn(null);
@@ -418,7 +420,8 @@ public class AnomalyDetectorManagerTest {
                                               EasyMock.eq(null),
                                               EasyMock.eq(false),
                                               EasyMock.anyString(),
-                                              EasyMock.eq(true));
+                                              EasyMock.eq(true),
+                                              EasyMock.eq(false));
       EasyMock.expect(mockAnomalyNotifier.onTopicAnomaly(EasyMock.isA(TopicAnomaly.class))).andReturn(AnomalyNotificationResult.fix());
     }
     EasyMock.expect(mockKafkaCruiseControl.meetCompletenessRequirements(Collections.emptyList())).andReturn(true);

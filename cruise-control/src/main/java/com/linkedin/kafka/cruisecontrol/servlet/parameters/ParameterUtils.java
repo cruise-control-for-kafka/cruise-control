@@ -121,6 +121,7 @@ public final class ParameterUtils {
   public static final String APPROVE_PARAM = "approve";
   public static final String DISCARD_PARAM = "discard";
   public static final String REBALANCE_DISK_MODE_PARAM = "rebalance_disk";
+  public static final String REBALANCE_DISK_BROKER_BY_BROKER_PARAM = "rebalance_disk_broker_by_broker";
   public static final String POPULATE_DISK_INFO_PARAM = "populate_disk_info";
   public static final String CAPACITY_ONLY_PARAM = "capacity_only";
   public static final String BROKER_ID_AND_LOGDIRS_PARAM = "brokerid_and_logdirs";
@@ -378,6 +379,20 @@ public final class ParameterUtils {
 
   static boolean isRebalanceDiskMode(CruiseControlRequestContext requestContext) {
     return getBooleanParam(requestContext, REBALANCE_DISK_MODE_PARAM, false);
+  }
+
+  /**
+   * Default: {@code false}.
+   * @param requestContext The request context.
+   * @return The value of {@link #REBALANCE_DISK_BROKER_BY_BROKER_PARAM} parameter.
+   */
+  static boolean isRebalanceDiskBrokerByBroker(CruiseControlRequestContext requestContext) {
+    boolean isRebalanceDiskBrokerByBroker = getBooleanParam(requestContext, REBALANCE_DISK_BROKER_BY_BROKER_PARAM, false);
+    if (isRebalanceDiskBrokerByBroker && !isRebalanceDiskMode(requestContext)) {
+      throw new UserRequestException(String.format("%s requires %s to be set to true.", REBALANCE_DISK_BROKER_BY_BROKER_PARAM,
+                                                   REBALANCE_DISK_MODE_PARAM));
+    }
+    return isRebalanceDiskBrokerByBroker;
   }
 
   static boolean populateDiskInfo(CruiseControlRequestContext requestContext) {

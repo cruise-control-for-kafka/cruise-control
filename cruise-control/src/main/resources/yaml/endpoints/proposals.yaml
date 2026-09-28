@@ -11,7 +11,8 @@ ProposalsEndpoint:
           default: false
       - name: destination_broker_ids
         in: query
-        description: Specify brokers to move replicas to.
+        description: Specify brokers to move replicas to. If rebalance_disk is true, limits the disk rebalance to the
+          specified brokers.
         schema:
           type: array
           items:

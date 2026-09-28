@@ -28,12 +28,12 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.SortedSet;
-import java.util.TreeSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static com.linkedin.kafka.cruisecontrol.analyzer.ActionAcceptance.ACCEPT;
 import static com.linkedin.kafka.cruisecontrol.analyzer.ActionAcceptance.REPLICA_REJECT;
+import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.aliveBrokersForIntraBrokerGoal;
 import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.averageDiskUtilizationPercentage;
 import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.diskUtilizationPercentage;
 import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.replicaSortName;
@@ -52,6 +52,8 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
   private static final Resource RESOURCE = Resource.DISK;
   private final Map<Broker, Double> _balanceUpperThresholdByBroker;
   private final Map<Broker, Double> _balanceLowerThresholdByBroker;
+  // Ids of brokers to limit the rebalance to (if empty, all alive brokers are rebalanced).
+  private Set<Integer> _requestedBrokerIds = Collections.emptySet();
 
   /**
    * Constructor for Resource Distribution Goal.
@@ -85,6 +87,7 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
    */
   @Override
   protected void initGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions) {
+    _requestedBrokerIds = optimizationOptions.requestedDestinationBrokerIds();
     double balancePercentageWithMargin = (_balancingConstraint.resourceBalancePercentage(RESOURCE) - 1) * BALANCE_MARGIN;
     for (Broker broker : brokersToBalance(clusterModel)) {
       double averageDiskUtilization = averageDiskUtilizationPercentage(broker);
@@ -149,6 +152,7 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
    * Get brokers in the cluster so that the rebalance process will go over to apply balancing actions to replicas
    * they contain.
    * Note this goal moves replica between disks within broker, therefore it is unable to heal dead broker.
+   * If {@link OptimizationOptions#requestedDestinationBrokerIds()} is non-empty, only the requested alive brokers are balanced.
    *
    * @param clusterModel The state of the cluster.
    * @return A collection of brokers that the rebalance process will go over to apply balancing actions to replicas
@@ -156,7 +160,7 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
    */
   @Override
   protected SortedSet<Broker> brokersToBalance(ClusterModel clusterModel) {
-    return new TreeSet<>(clusterModel.aliveBrokers());
+    return aliveBrokersForIntraBrokerGoal(clusterModel, _requestedBrokerIds);
   }
 
   /**
@@ -177,8 +181,8 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
     Broker broker = clusterModel.broker(action.sourceBrokerId());
     Disk sourceDisk = broker.disk(action.sourceBrokerLogdir());
     Disk destinationDisk = broker.disk(action.destinationBrokerLogdir());
-    if (sourceUtilizationDelta == 0) {
-      // No change in terms of load.
+    if (sourceUtilizationDelta == 0 || !_balanceUpperThresholdByBroker.containsKey(broker)) {
+      // No change in terms of load, or the broker is not balanced by this goal.
       return ACCEPT;
     }
     if (isChangeViolatingLimit(sourceUtilizationDelta, sourceDisk, destinationDisk)) {

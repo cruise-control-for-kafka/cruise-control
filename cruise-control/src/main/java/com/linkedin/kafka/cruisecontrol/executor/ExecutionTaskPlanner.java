@@ -287,6 +287,19 @@ public class ExecutionTaskPlanner {
   }
 
   /**
+   * @return Ids of brokers that have remaining (i.e. not yet started) intra-broker replica movement tasks.
+   */
+  public SortedSet<Integer> brokersWithRemainingIntraBrokerReplicaMovements() {
+    SortedSet<Integer> brokers = new TreeSet<>();
+    _intraPartMoveTasksByBrokerId.forEach((brokerId, tasks) -> {
+      if (!tasks.isEmpty()) {
+        brokers.add(brokerId);
+      }
+    });
+    return brokers;
+  }
+
+  /**
    * @return The remaining leadership movements.
    */
   public Collection<ExecutionTask> remainingLeadershipMovements() {
