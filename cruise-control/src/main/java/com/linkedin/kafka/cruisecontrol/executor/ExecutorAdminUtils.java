@@ -114,6 +114,53 @@ public final class ExecutorAdminUtils {
   }
 
   /**
+   * Cancel (i.e. rollback) the ongoing intra-broker replica movements of the given tasks by sending alterReplicaLogDirs
+   * request to move each subject replica back to its current logdir. Upon receiving such a request, the broker removes
+   * the future replica (i.e. stops the ongoing movement) because the requested logdir differs from the destination of
+   * the ongoing movement, and does not start a new movement because the requested logdir is the current logdir.
+   *
+   * @param tasksToCancel The intra-broker replica movement tasks to cancel.
+   * @param logdirInfoByTask Replica logdir information by task. Tasks whose subject replica has no known current logdir
+   *                         are skipped, as there is no logdir to rollback the movement to.
+   * @param adminClient The adminClient to send alterReplicaLogDirs request.
+   * @param config The config object that holds all the Cruise Control related configs
+   * @return Tasks for which the cancellation request has been accepted by the broker.
+   */
+  static Set<ExecutionTask> cancelIntraBrokerReplicaMovements(Collection<ExecutionTask> tasksToCancel,
+                                                              Map<ExecutionTask, ReplicaLogDirInfo> logdirInfoByTask,
+                                                              Admin adminClient,
+                                                              KafkaCruiseControlConfig config) {
+    Map<TopicPartitionReplica, String> replicaAssignment = new HashMap<>();
+    Map<TopicPartitionReplica, ExecutionTask> replicaToTask = new HashMap<>();
+    for (ExecutionTask task : tasksToCancel) {
+      ReplicaLogDirInfo info = logdirInfoByTask.get(task);
+      if (info == null || info.getCurrentReplicaLogDir() == null) {
+        LOG.warn("Skip cancelling task {} because the current logdir of the replica is unknown.", task);
+        continue;
+      }
+      TopicPartitionReplica tpr = new TopicPartitionReplica(task.proposal().topic(), task.proposal().partitionId(), task.brokerId());
+      replicaAssignment.put(tpr, info.getCurrentReplicaLogDir());
+      replicaToTask.put(tpr, task);
+    }
+
+    Set<ExecutionTask> cancelledTasks = new HashSet<>();
+    if (replicaAssignment.isEmpty()) {
+      return cancelledTasks;
+    }
+    for (Map.Entry<TopicPartitionReplica, KafkaFuture<Void>> entry: adminClient.alterReplicaLogDirs(replicaAssignment).values().entrySet()) {
+      ExecutionTask task = replicaToTask.get(entry.getKey());
+      try {
+        entry.getValue().get(config.getLong(LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG), TimeUnit.MILLISECONDS);
+        cancelledTasks.add(task);
+      } catch (InterruptedException | ExecutionException | TimeoutException | LogDirNotFoundException | KafkaStorageException
+          | ReplicaNotAvailableException e) {
+        LOG.warn("Encounter exception {} when trying to cancel task {}.", e.getMessage(), task);
+      }
+    }
+    return cancelledTasks;
+  }
+
+  /**
    * Check whether there is ongoing intra-broker replica movement.
    * @param adminClient The adminClient to send describeLogDirs request.
    * @param config The config object that holds all the Cruise Control related configs
