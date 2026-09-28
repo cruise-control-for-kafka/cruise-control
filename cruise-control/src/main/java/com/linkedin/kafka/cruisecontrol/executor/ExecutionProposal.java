@@ -32,6 +32,10 @@ public class ExecutionProposal {
   private static final String OLD_REPLICAS = "oldReplicas";
   @JsonResponseField
   private static final String NEW_REPLICAS = "newReplicas";
+  @JsonResponseField(required = false)
+  private static final String OLD_REPLICA_LOGDIRS = "oldReplicaLogdirs";
+  @JsonResponseField(required = false)
+  private static final String NEW_REPLICA_LOGDIRS = "newReplicaLogdirs";
 
   private final TopicPartition _tp;
   private final long _partitionSize;
@@ -261,19 +265,50 @@ public class ExecutionProposal {
   }
 
   /**
-   * @return An object that can be further used to encode into JSON.
+   * @return {@code true} if the proposal involves an intra-broker replica movement (i.e. moving replicas between disks
+   *         of the same broker), {@code false} otherwise.
+   */
+  public boolean hasIntraBrokerReplicaAction() {
+    return !_replicasToMoveBetweenDisksByBroker.isEmpty();
+  }
+
+  /**
+   * @return An object that can be further used to encode into JSON. For proposals with intra-broker replica movements,
+   * the logdirs of old and new replicas are included as well, in the same order as the corresponding replica lists.
    */
   public Map<String, Object> getJsonStructure() {
-    return Map.of(TOPIC_PARTITION, _tp, OLD_LEADER, _oldLeader.brokerId(),
-                  OLD_REPLICAS, _oldReplicas.stream().mapToInt(ReplicaPlacementInfo::brokerId).boxed().collect(Collectors.toList()),
-                  NEW_REPLICAS, _newReplicas.stream().mapToInt(ReplicaPlacementInfo::brokerId).boxed().collect(Collectors.toList()));
+    Map<String, Object> jsonStructure = new HashMap<>();
+    jsonStructure.put(TOPIC_PARTITION, _tp);
+    jsonStructure.put(OLD_LEADER, _oldLeader.brokerId());
+    jsonStructure.put(OLD_REPLICAS, brokerIds(_oldReplicas));
+    jsonStructure.put(NEW_REPLICAS, brokerIds(_newReplicas));
+    if (hasIntraBrokerReplicaAction()) {
+      jsonStructure.put(OLD_REPLICA_LOGDIRS, _oldReplicas.stream().map(ReplicaPlacementInfo::logdir).collect(Collectors.toList()));
+      jsonStructure.put(NEW_REPLICA_LOGDIRS, _newReplicas.stream().map(ReplicaPlacementInfo::logdir).collect(Collectors.toList()));
+    }
+    return jsonStructure;
+  }
+
+  private static List<Integer> brokerIds(List<ReplicaPlacementInfo> replicas) {
+    return replicas.stream().mapToInt(ReplicaPlacementInfo::brokerId).boxed().collect(Collectors.toList());
+  }
+
+  /**
+   * Describe the given replicas. For proposals with intra-broker replica movements, each replica is described with its
+   * broker id and logdir (e.g. {@code 0-/disk1}), otherwise only with its broker id.
+   *
+   * @param replicas Replicas to describe.
+   * @return Description of the given replicas.
+   */
+  private List<String> describe(List<ReplicaPlacementInfo> replicas) {
+    boolean includeLogdir = hasIntraBrokerReplicaAction();
+    return replicas.stream().map(r -> includeLogdir ? String.format("%d-%s", r.brokerId(), r.logdir()) : String.valueOf(r.brokerId()))
+                   .collect(Collectors.toList());
   }
 
   @Override
   public String toString() {
-    return String.format("{%s, oldLeader: %d, %s -> %s}", _tp, _oldLeader.brokerId(),
-                         _oldReplicas.stream().mapToInt(ReplicaPlacementInfo::brokerId).boxed().collect(Collectors.toList()),
-                         _newReplicas.stream().mapToInt(ReplicaPlacementInfo::brokerId).boxed().collect(Collectors.toList()));
+    return String.format("{%s, oldLeader: %d, %s -> %s}", _tp, _oldLeader.brokerId(), describe(_oldReplicas), describe(_newReplicas));
   }
 
   @Override

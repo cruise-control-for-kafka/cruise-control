@@ -21,3 +21,13 @@ ExecutionProposal:
       items:
         type: integer
         format: int32
+    oldReplicaLogdirs:
+      description: Logdirs of the old replicas, in the same order as oldReplicas. Only present for intra-broker (disk) movements.
+      type: array
+      items:
+        type: string
+    newReplicaLogdirs:
+      description: Logdirs of the new replicas, in the same order as newReplicas. Only present for intra-broker (disk) movements.
+      type: array
+      items:
+        type: string

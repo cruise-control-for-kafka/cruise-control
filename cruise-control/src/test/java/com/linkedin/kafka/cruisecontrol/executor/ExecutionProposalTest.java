@@ -7,6 +7,8 @@ package com.linkedin.kafka.cruisecontrol.executor;
 import com.linkedin.kafka.cruisecontrol.model.ReplicaPlacementInfo;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -58,6 +60,32 @@ public class ExecutionProposalTest {
   public void testIntraBrokerReplicaMovements() {
     ExecutionProposal p = new ExecutionProposal(TP, 0, _r0d0, Arrays.asList(_r0d0, _r1d1), Arrays.asList(_r0d1, _r1d1));
     Assert.assertEquals(1, p.replicasToMoveBetweenDisksByBroker().size());
+  }
+
+  @Test
+  public void testIntraBrokerReplicaMovementDescribesLogdirs() {
+    ExecutionProposal p = new ExecutionProposal(TP, 0, _r0d0, Arrays.asList(_r0d0, _r1d1), Arrays.asList(_r0d1, _r1d1));
+    assertTrue(p.hasIntraBrokerReplicaAction());
+    Assert.assertEquals("{topic-0, oldLeader: 0, [0-tmp0, 1-tmp1] -> [0-tmp1, 1-tmp1]}", p.toString());
+
+    Map<String, Object> json = p.getJsonStructure();
+    Assert.assertEquals(List.of(0, 1), json.get("oldReplicas"));
+    Assert.assertEquals(List.of(0, 1), json.get("newReplicas"));
+    Assert.assertEquals(List.of("tmp0", "tmp1"), json.get("oldReplicaLogdirs"));
+    Assert.assertEquals(List.of("tmp1", "tmp1"), json.get("newReplicaLogdirs"));
+  }
+
+  @Test
+  public void testInterBrokerReplicaMovementOmitsLogdirs() {
+    ExecutionProposal p = new ExecutionProposal(TP, 0, _r0, Arrays.asList(_r0, _r1), Arrays.asList(_r0, _r2));
+    assertFalse(p.hasIntraBrokerReplicaAction());
+    Assert.assertEquals("{topic-0, oldLeader: 0, [0, 1] -> [0, 2]}", p.toString());
+
+    Map<String, Object> json = p.getJsonStructure();
+    Assert.assertEquals(List.of(0, 1), json.get("oldReplicas"));
+    Assert.assertEquals(List.of(0, 2), json.get("newReplicas"));
+    assertFalse(json.containsKey("oldReplicaLogdirs"));
+    assertFalse(json.containsKey("newReplicaLogdirs"));
   }
 
   @Test (expected = IllegalArgumentException.class)
