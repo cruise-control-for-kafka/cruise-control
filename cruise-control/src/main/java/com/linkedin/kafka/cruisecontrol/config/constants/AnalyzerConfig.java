@@ -70,6 +70,16 @@ public final class AnalyzerConfig {
       + " of all the brokers.";
 
   /**
+   * <code>intra.broker.disk.balance.threshold</code>
+   */
+  public static final String INTRA_BROKER_DISK_BALANCE_THRESHOLD_CONFIG = "intra.broker.disk.balance.threshold";
+  public static final Double DEFAULT_INTRA_BROKER_DISK_BALANCE_THRESHOLD = null;
+  public static final String INTRA_BROKER_DISK_BALANCE_THRESHOLD_DOC = "The maximum allowed extent of unbalance for disk utilization "
+      + "across the disks of the same broker, used by intra-broker disk goals (e.g. IntraBrokerDiskUsageDistributionGoal). "
+      + "For example, 1.10 means the highest disk usage of a disk should not be above 1.10x of average disk utilization of "
+      + "all the disks of its broker. If not set, the value of " + DISK_BALANCE_THRESHOLD_CONFIG + " is used.";
+
+  /**
    * <code>network.inbound.balance.threshold</code>
    */
   public static final String NETWORK_INBOUND_BALANCE_THRESHOLD_CONFIG = "network.inbound.balance.threshold";
@@ -482,6 +492,16 @@ public final class AnalyzerConfig {
                             atLeast(1),
                             ConfigDef.Importance.HIGH,
                             DISK_BALANCE_THRESHOLD_DOC)
+                    .define(INTRA_BROKER_DISK_BALANCE_THRESHOLD_CONFIG,
+                            ConfigDef.Type.DOUBLE,
+                            DEFAULT_INTRA_BROKER_DISK_BALANCE_THRESHOLD,
+                            ConfigDef.LambdaValidator.with((name, value) -> {
+                              if (value != null) {
+                                atLeast(1).ensureValid(name, value);
+                              }
+                            }, () -> "null or " + atLeast(1)),
+                            ConfigDef.Importance.MEDIUM,
+                            INTRA_BROKER_DISK_BALANCE_THRESHOLD_DOC)
                     .define(NETWORK_INBOUND_BALANCE_THRESHOLD_CONFIG,
                             ConfigDef.Type.DOUBLE,
                             DEFAULT_NETWORK_INBOUND_BALANCE_THRESHOLD,
