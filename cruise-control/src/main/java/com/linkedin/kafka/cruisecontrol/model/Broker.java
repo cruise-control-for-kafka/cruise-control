@@ -540,6 +540,28 @@ public class Broker implements Serializable, Comparable<Broker> {
   }
 
   /**
+   * Remove the given disk from the broker and deduct its capacity from the broker capacity.
+   * This is used in cluster model initialization to drop disks that are configured in the capacity config but are not
+   * among the logdirs reported by Kafka for this broker.
+   *
+   * @param logdir Log directory of the disk.
+   * @return The capacity of the removed disk.
+   */
+  double removeDisk(String logdir) {
+    Disk disk = _diskByLogdir.get(logdir);
+    if (disk == null) {
+      throw new IllegalArgumentException("Disk " + logdir + " does not exist on broker " + _id + ".");
+    }
+    if (!disk.replicas().isEmpty()) {
+      throw new IllegalStateException("Cannot remove disk " + logdir + " on broker " + _id + " as it hosts replicas.");
+    }
+    _diskByLogdir.remove(logdir);
+    double diskCapacity = disk.capacity();
+    _brokerCapacity[Resource.DISK.id()] -= diskCapacity;
+    return diskCapacity;
+  }
+
+  /**
    * Clear the content of monitoring data at each replica in the broker.
    */
   void clearLoad() {

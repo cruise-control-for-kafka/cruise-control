@@ -1,0 +1,44 @@
+{
+  "brokerCapacities": [
+    {
+      "brokerId": "-1",
+      "capacity": {
+        "DISK": {"/tmp/kafka-logs-1": "400000", "/tmp/kafka-logs-2": "200000", "/tmp/kafka-logs-3": "200000",
+          "/tmp/kafka-logs-4": "200000", "/tmp/kafka-logs-5": "200000", "/tmp/kafka-logs-6": "200000",
+          "/tmp/kafka-logs-7": "200000", "/tmp/kafka-logs-8": "200000", "/tmp/kafka-logs-9": "200000",
+          "/tmp/kafka-logs-10": "200000"},
+        "CPU": "100",
+        "NW_IN": "100000",
+        "NW_OUT": "100000"
+      }
+    },
+    {
+      "brokerId": "0",
+      "capacity": {
+        "DISK": {"/tmp/kafka-logs": "2000000"},
+        "CPU": "200",
+        "NW_IN": "200000",
+        "NW_OUT": "200000"
+      }
+    },
+    {
+      "brokerId": "1",
+      "capacity": {
+        "DISK": {"/tmp/kafka-logs-1": "350000", "/tmp/kafka-logs-2": "550000", "/tmp/kafka-logs-3": "250000"},
+        "CPU": "300",
+        "NW_IN": "300000",
+        "NW_OUT": "200000"
+      }
+    },
+    {
+      "brokerId": "2",
+      "capacity": {
+        "DISK": {"/tmp/kafka-logs-1": "350000", "/tmp/kafka-logs-2": "550000", "/tmp/kafka-logs-3": "750000",
+                 "/tmp/kafka-logs-4": "950000"},
+        "CPU": "300",
+        "NW_IN": "300000",
+        "NW_OUT": "200000"
+      }
+    }
+  ]
+}

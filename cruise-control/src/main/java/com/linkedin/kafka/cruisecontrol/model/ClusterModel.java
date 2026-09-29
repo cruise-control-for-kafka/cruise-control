@@ -353,6 +353,25 @@ public class ClusterModel implements Serializable {
   }
 
   /**
+   * Remove the given disk from the broker and deduct its capacity from the cluster model.
+   * This is used during cluster model initialization to ignore disks that are configured in the broker capacity config
+   * but are not among the logdirs reported by Kafka for the broker (e.g. a disk excluded from Kafka logdirs after a
+   * failure).
+   * The disk must not host any replicas.
+   *
+   * @param brokerId Id of the broker on which the disk resides.
+   * @param logdir   Log directory of the disk.
+   */
+  public void removeDisk(int brokerId, String logdir) {
+    Broker broker = broker(brokerId);
+    if (broker == null) {
+      throw new IllegalArgumentException("Broker " + brokerId + " does not exist.");
+    }
+    broker.rack().removeDisk(brokerId, logdir);
+    refreshCapacity();
+  }
+
+  /**
    * For replica movement across the disks of the same broker.
    *
    * @param tp                Partition Info of the replica to be relocated.
