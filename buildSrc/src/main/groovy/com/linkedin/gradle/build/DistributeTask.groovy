@@ -1,52 +1,59 @@
 package com.linkedin.gradle.build
 
 import groovy.json.JsonBuilder
+import org.apache.http.HttpResponse
 import org.apache.http.client.fluent.Request
 import org.apache.http.entity.ContentType
 import org.gradle.api.DefaultTask
 import org.gradle.api.tasks.TaskAction
 import org.jfrog.gradle.plugin.artifactory.dsl.ArtifactoryPluginConvention
 
+/**
+ * Publishes a build's artifacts to the configured Artifactory repository.
+ */
 class DistributeTask extends DefaultTask {
 
   @TaskAction
   void distributeBuild() {
     ArtifactoryPluginConvention convention = project.convention.plugins.artifactory
-    def buildNumber = convention.clientConfig.info.buildNumber
-    def buildName = convention.clientConfig.info.buildName
-    def context = convention.clientConfig.publisher.contextUrl
-    def password = convention.clientConfig.publisher.password
+    String buildNumber = convention.clientConfig.info.buildNumber
+    String buildName = convention.clientConfig.info.buildName
+    String context = convention.clientConfig.publisher.contextUrl
+    String password = convention.clientConfig.publisher.password
 
-    if (password == null || password == "") {
-      throw new IllegalArgumentException("password not set")
+    if (password == null || password == '') {
+      throw new IllegalArgumentException('password not set')
     }
 
-    def body = [
-        "publish"              : "true",
-        "overrideExistingFiles": "false",
-        "async"                : "true",
-        "targetRepo"           : "maven",
-        "sourceRepos"          : ["cruise-control"],
-        "dryRun"               : "false"
+    String falseValue = Boolean.FALSE
+    String trueValue = Boolean.TRUE
+    Map<String, Object> body = [
+        'publish'              : trueValue,
+        'overrideExistingFiles': falseValue,
+        'async'                : trueValue,
+        'targetRepo'           : 'maven',
+        'sourceRepos'          : ['cruise-control'],
+        'dryRun'               : falseValue
     ]
 
-    def bodyString = new JsonBuilder(body).toString()
+    String bodyString = new JsonBuilder(body)
 
-    def url = "$context/api/build/distribute/$buildName/$buildNumber"
-    logger.lifecycle("url {}", url)
-    def response = Request.Post(url)
+    String url = "$context/api/build/distribute/$buildName/$buildNumber"
+    logger.lifecycle('url {}', url)
+    HttpResponse response = Request.Post(url)
         .bodyString(bodyString, ContentType.APPLICATION_JSON)
-        .addHeader("X-JFrog-Art-Api", password)
+        .addHeader('X-JFrog-Art-Api', password)
         .execute()
         .returnResponse()
 
-    def bout = new ByteArrayOutputStream()
-    response.getEntity().writeTo(bout)
+    ByteArrayOutputStream bout = new ByteArrayOutputStream()
+    response.entity.writeTo(bout)
     String errMsg = new String(bout.toByteArray())
-    logger.lifecycle("Distribute Response: {} {}", response, errMsg)
+    logger.lifecycle('Distribute Response: {} {}', response, errMsg)
 
-    if (!Integer.toString(response.getStatusLine().getStatusCode()).startsWith("2")) {
-      throw new IOException("http post failed")
+    if (!Integer.toString(response.statusLine.statusCode).startsWith('2')) {
+      throw new IOException('http post failed')
     }
   }
+
 }
