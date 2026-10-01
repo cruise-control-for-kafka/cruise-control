@@ -59,7 +59,7 @@ Cruise Control for Apache Kafka
 * `message.format.version` `0.10.0` and above is needed.
 * The `kafka_2_0_to_2_3` and `kafka_0_11_and_1_0` branches compile with `Scala 2.11`.
 * The branch `migrate_to_kafka_2_4` compiles with `Scala 2.12`.
-* The branch `migrate_to_kafka_2_5` compile with `Scala 2.13`.
+* The branch `migrate_to_kafka_2_5` compiles with `Scala 2.13`.
 * This project requires Java 17.
 
 #### Known Compatibility Issues ####
