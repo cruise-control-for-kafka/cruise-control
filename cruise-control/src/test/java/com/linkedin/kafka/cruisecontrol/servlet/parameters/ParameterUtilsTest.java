@@ -197,6 +197,37 @@ public class ParameterUtilsTest {
   }
 
   @Test
+  public void testParseRequestedReplicationThrottle() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+
+    Map<String, String[]> paramMap = Collections.singletonMap(
+        ParameterUtils.REPLICATION_THROTTLE_PARAM,
+        new String[]{ParameterUtils.REPLICATION_THROTTLE_PARAM});
+
+    EasyMock.expect(mockRequest.getParameterMap()).andReturn(paramMap).once();
+    EasyMock.expect(mockRequest.getParameter(ParameterUtils.REPLICATION_THROTTLE_PARAM)).andReturn(REPLICATION_THROTTLE_STRING).once();
+
+    EasyMock.replay(mockRequest);
+
+    Long replicationThrottle = ParameterUtils.requestedReplicationThrottle(mockRequest);
+    Assert.assertEquals(Long.valueOf(REPLICATION_THROTTLE_STRING), replicationThrottle);
+    EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testParseRequestedReplicationThrottleWithoutValueDoesNotFallBackToDefault() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    // No parameter string value in the parameter map -- the requested replication throttle should be null rather than
+    // falling back to the default replication throttle config.
+    EasyMock.expect(mockRequest.getParameterMap()).andReturn(Collections.emptyMap()).once();
+
+    EasyMock.replay(mockRequest);
+
+    Assert.assertNull(ParameterUtils.requestedReplicationThrottle(mockRequest));
+    EasyMock.verify(mockRequest);
+  }
+
+  @Test
   public void testParseExecutionProgressCheckIntervalMsNoValue() {
     CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
     EasyMock.expect(mockRequest.getParameterMap()).andReturn(Collections.emptyMap()).once();

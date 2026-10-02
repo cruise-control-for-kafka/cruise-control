@@ -446,6 +446,21 @@ public final class ParameterUtils {
     return value;
   }
 
+  /**
+   * Get the requested replication throttle from the request, without falling back to
+   * {@link ExecutorConfig#DEFAULT_REPLICATION_THROTTLE_CONFIG} -- i.e. an absent parameter indicates no requested change.
+   *
+   * @param requestContext The request context.
+   * @return The value of {@link #REPLICATION_THROTTLE_PARAM} parameter, or {@code null} if the parameter is absent.
+   */
+  static Long requestedReplicationThrottle(CruiseControlRequestContext requestContext) {
+    Long value = getLongParam(requestContext, REPLICATION_THROTTLE_PARAM, null);
+    if (value != null && value < 0) {
+      throw new UserRequestException(String.format("Requested replication throttle must be non-negative (Requested: %s).", value));
+    }
+    return value;
+  }
+
   static Long time(CruiseControlRequestContext requestContext) {
     String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), TIME_PARAM);
     if (parameterString == null) {

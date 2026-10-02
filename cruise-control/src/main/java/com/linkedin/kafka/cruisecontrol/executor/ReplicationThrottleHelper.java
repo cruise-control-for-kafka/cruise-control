@@ -44,7 +44,7 @@ class ReplicationThrottleHelper {
   static final int RETRIES = 30;
 
   private final Admin _adminClient;
-  private final Long _throttleRate;
+  private volatile Long _throttleRate;
   private final int _retries;
   private final Set<Integer> _deadBrokers;
 
@@ -69,6 +69,20 @@ class ReplicationThrottleHelper {
     this._throttleRate = throttleRate;
     this._retries = retries;
     this._deadBrokers = deadBrokers;
+  }
+
+  /**
+   * Dynamically update the throttle rate used by this helper. The new rate is applied to the brokers the next time
+   * throttles are set for them -- e.g. via {@link #setThrottles(List)}.
+   *
+   * @param throttleRate The new replication throttle rate in bytes per second.
+   */
+  void setThrottleRate(Long throttleRate) {
+    _throttleRate = throttleRate;
+  }
+
+  Long throttleRate() {
+    return _throttleRate;
   }
 
   void setThrottles(List<ExecutionProposal> replicaMovementProposals)

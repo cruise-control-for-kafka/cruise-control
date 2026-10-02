@@ -427,6 +427,18 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
   }
 
   @Test
+  public void testUpdateOngoingExecutionReplicationThrottle() {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getExecutorProperties());
+    Executor executor = new Executor(config, null, new MetricRegistry(), null, EasyMock.mock(MetadataAdminClient.class),
+                                     null, EasyMock.mock(AnomalyDetectorManager.class));
+
+    // The requested replication throttle must be non-negative.
+    assertThrows(IllegalArgumentException.class, () -> executor.updateOngoingExecutionReplicationThrottle(-1L));
+    // Without an ongoing execution with inter-broker replica movements, the replication throttle cannot be updated.
+    assertFalse(executor.updateOngoingExecutionReplicationThrottle(100L));
+  }
+
+  @Test
   public void testExecutionKnobs() {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getExecutorProperties());
     assertThrows(IllegalStateException.class,

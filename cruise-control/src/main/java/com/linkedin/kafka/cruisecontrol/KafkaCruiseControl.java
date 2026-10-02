@@ -516,6 +516,17 @@ public class KafkaCruiseControl {
   }
 
   /**
+   * Dynamically update the replication throttle of the ongoing execution (if any).
+   *
+   * @param replicationThrottle The new replication throttle rate in bytes per second.
+   * @return {@code true} if the replication throttle of the ongoing execution has been updated, {@code false} if
+   * there is no ongoing execution with remaining inter-broker replica movements to throttle.
+   */
+  public boolean updateOngoingExecutionReplicationThrottle(long replicationThrottle) {
+    return _executor.updateOngoingExecutionReplicationThrottle(replicationThrottle);
+  }
+
+  /**
    * Resume the activities of the load monitor.
    *
    * @param reason The reason for resuming metric sampling.

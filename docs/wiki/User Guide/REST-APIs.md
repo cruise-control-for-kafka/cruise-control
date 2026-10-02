@@ -631,6 +631,7 @@ Note sometimes the topic regex can be too long to put at POST request head, in t
 ### Change Cruise Control configuration
 Some Cruise Control configs can be changed dynamically via `admin` endpoint, which includes
 * Dynamically change the partition and leadership concurrency and the interval between checking and updating (if needed) the progress of an ongoing execution.
+* Dynamically change the replication throttle applied to the inter-broker replica movements of an ongoing execution.
 * Enable/disable self-healing for the specified anomaly types.
 * Drop selected recently removed/demoted brokers.
 * Enable/disable the specified concurrency adjusters.
@@ -646,6 +647,7 @@ Supported parameters are:
 | max_partition_movements_in_cluster            | integer   | upper bound of max replica movements into/out of brokers across cluster   | N/A                   | yes       |                                                            
 | concurrent_intra_broker_partition_movements   | integer   | upper bound of ongoing replica movements between disks within a broker    | N/A                   | yes       |
 | concurrent_leader_movements                   | integer   | upper bound of ongoing leadership movements                               | N/A                   | yes       |
+| replication_throttle                          | long      | replication throttle (bytes/second) for the ongoing execution             | N/A                   | yes       |
 | drop_recently_removed_brokers                 | list      | list of id of recently removed brokers to be dropped                      | N/A                   | yes       |
 | drop_recently_demoted_brokers                 | list      | list of id of recently demoted brokers to be dropped                      | N/A                   | yes       |
 | doAs                                          | string    | propagated user by the trusted proxy service                              | null                  | yes       | 
@@ -667,6 +669,12 @@ Supported anomaly types are `broker_failure`, `goal_violation`, `intra_broker_go
 To increase/decrease execution concurrency, send POST request like:
 
      POST /kafkacruisecontrol/admin?concurrent_partition_movements_per_broker=[integer]
+
+To change the replication throttle of an ongoing execution, send POST request like:
+
+     POST /kafkacruisecontrol/admin?replication_throttle=[bytes_per_second]
+
+The new throttle rate is applied right away to the brokers participating in the in-progress inter-broker replica movements, and picked up by the upcoming inter-broker replica movements of the ongoing execution. It has no effect if there is no ongoing inter-broker replica movement.
 
 To drop recently removed/demoted brokers, send POST request like:
 

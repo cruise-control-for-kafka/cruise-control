@@ -18,6 +18,7 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.CONCURRENT_LEADER_MOVEMENTS_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.BROKER_CONCURRENT_LEADER_MOVEMENTS_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.MAX_PARTITION_MOVEMENTS_IN_CLUSTER_PARAM;
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REPLICATION_THROTTLE_PARAM;
 
 
 /**
@@ -34,6 +35,7 @@ public class ChangeExecutionConcurrencyParameters extends AbstractParameters {
     validParameterNames.add(CONCURRENT_LEADER_MOVEMENTS_PARAM);
     validParameterNames.add(BROKER_CONCURRENT_LEADER_MOVEMENTS_PARAM);
     validParameterNames.add(MAX_PARTITION_MOVEMENTS_IN_CLUSTER_PARAM);
+    validParameterNames.add(REPLICATION_THROTTLE_PARAM);
     validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
     CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
   }
@@ -43,6 +45,7 @@ public class ChangeExecutionConcurrencyParameters extends AbstractParameters {
   protected Integer _clusterLeaderMovementConcurrency;
   protected Integer _brokerLeaderMovementConcurrency;
   protected Integer _maxInterBrokerPartitionMovements;
+  protected Long _replicationThrottle;
 
   protected ChangeExecutionConcurrencyParameters() {
     super();
@@ -57,6 +60,7 @@ public class ChangeExecutionConcurrencyParameters extends AbstractParameters {
     _clusterLeaderMovementConcurrency = ParameterUtils.concurrentMovements(_requestContext, ConcurrencyType.LEADERSHIP_CLUSTER);
     _brokerLeaderMovementConcurrency = ParameterUtils.concurrentMovements(_requestContext, ConcurrencyType.LEADERSHIP_BROKER);
     _maxInterBrokerPartitionMovements = ParameterUtils.maxPartitionMovements(_requestContext);
+    _replicationThrottle = ParameterUtils.requestedReplicationThrottle(_requestContext);
   }
 
   /**
@@ -76,7 +80,8 @@ public class ChangeExecutionConcurrencyParameters extends AbstractParameters {
         && changeExecutionConcurrencyParameters.concurrentIntraBrokerPartitionMovements() == null
         && changeExecutionConcurrencyParameters.clusterLeaderMovementConcurrency() == null
         && changeExecutionConcurrencyParameters.brokerLeaderMovementConcurrency() == null
-        && changeExecutionConcurrencyParameters.maxInterBrokerPartitionMovements() == null) {
+        && changeExecutionConcurrencyParameters.maxInterBrokerPartitionMovements() == null
+        && changeExecutionConcurrencyParameters.replicationThrottle() == null) {
       return null;
     }
     return changeExecutionConcurrencyParameters;
@@ -104,6 +109,10 @@ public class ChangeExecutionConcurrencyParameters extends AbstractParameters {
 
   public Integer maxInterBrokerPartitionMovements() {
     return _maxInterBrokerPartitionMovements;
+  }
+
+  public Long replicationThrottle() {
+    return _replicationThrottle;
   }
 
   @Override

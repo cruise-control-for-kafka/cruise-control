@@ -68,6 +68,13 @@ AdminEndpoint:
           type: integer
           format: int32
           minimum: 1
+      - name: replication_throttle
+        in: query
+        description: Change the replication throttle (bytes/second) applied to the inter-broker replica movements of the ongoing execution.
+        schema:
+          type: integer
+          format: int64
+          minimum: 0
       - name: drop_recently_removed_brokers
         in: query
         description: Drop broker ids from recently removed broker list so that Cruise Control can move replicas to these brokers.
