@@ -54,7 +54,6 @@ import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.metrics.KafkaMetric;
 import org.apache.kafka.common.metrics.MetricsReporter;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.apache.kafka.common.utils.KafkaThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.yammer.metrics.core.Metric;
@@ -72,7 +71,7 @@ public class CruiseControlMetricsReporter implements MetricsReporter, Runnable {
   // KafkaYammerMetrics class in Kafka 2.5-
   private static final String YAMMER_METRICS_IN_KAFKA_2_5_AND_EARLIER = "com.yammer.metrics.Metrics";
   private final Map<org.apache.kafka.common.MetricName, KafkaMetric> _interestedMetrics = new ConcurrentHashMap<>();
-  private KafkaThread _metricsReporterRunner;
+  private Thread _metricsReporterRunner;
   private KafkaProducer<String, CruiseControlMetric> _producer;
   private String _cruiseControlMetricsTopic;
   private long _reportingIntervalMs;
@@ -98,7 +97,11 @@ public class CruiseControlMetricsReporter implements MetricsReporter, Runnable {
       addMetricIfInterested(kafkaMetric);
     }
     LOG.info("Added {} Kafka metrics for Cruise Control metrics during initialization.", _interestedMetrics.size());
-    _metricsReporterRunner = new KafkaThread("CruiseControlMetricsReporterRunner", this, true);
+
+    _metricsReporterRunner = new Thread(this, "CruiseControlMetricsReporterRunner");
+    _metricsReporterRunner.setDaemon(true);
+    _metricsReporterRunner.setUncaughtExceptionHandler((t, e) -> LOG.error("Uncaught exception in thread '{}':", t.getName(), e));
+
     _yammerMetricProcessor = new YammerMetricProcessor();
     _metricsReporterRunner.start();
     _metricsRegistry = metricsRegistry();
