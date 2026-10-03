@@ -15,7 +15,7 @@ dependencies {
 
   implementation 'org.ajoberstar:grgit:1.7.2'
   implementation 'org.apache.httpcomponents:fluent-hc:4.5.13'
-  implementation('org.jfrog.buildinfo:build-info-extractor-gradle:4.24.14') {
+  implementation('org.jfrog.buildinfo:build-info-extractor-gradle:5.2.4') {
     exclude module: 'groovy-all'
   }
 }
