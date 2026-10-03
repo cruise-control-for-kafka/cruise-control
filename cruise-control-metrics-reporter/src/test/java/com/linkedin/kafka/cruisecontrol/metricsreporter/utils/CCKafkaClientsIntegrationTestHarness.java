@@ -5,7 +5,11 @@
 package com.linkedin.kafka.cruisecontrol.metricsreporter.utils;
 
 import java.io.File;
+import java.util.List;
+import java.util.Map;
 import java.util.Properties;
+import com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporter;
+import com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.Producer;
@@ -13,13 +17,53 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.common.security.auth.SecurityProtocol;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.junit.After;
+
+import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG;
+import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_TOPIC_CONFIG;
 
 
 public abstract class CCKafkaClientsIntegrationTestHarness extends CCKafkaIntegrationTestHarness {
+  protected static final String TOPIC = "CruiseControlMetricsReporterTest";
+  protected CCContainerizedKraftCluster _cluster;
+  protected List<Map<Object, Object>> _brokerConfigs;
 
   @Override
   public void setUp() {
-    super.setUp();
+    Properties adminClientProps = new Properties();
+    setSecurityConfigs(adminClientProps, "admin");
+
+    _brokerConfigs = buildBrokerConfigs();
+    _cluster = new CCContainerizedKraftCluster(2, _brokerConfigs, adminClientProps);
+    _cluster.start();
+    _bootstrapUrl = _cluster.getExternalBootstrapAddress();
+  }
+
+  /**
+   * Tear down the unit test.
+   */
+  @After
+  public void tearDown() {
+    if (_cluster != null) {
+      _cluster.close();
+    }
+  }
+
+  @Override
+  public Properties overridingProps() {
+    Properties props = new Properties();
+    props.setProperty(CommonClientConfigs.METRIC_REPORTER_CLASSES_CONFIG, CruiseControlMetricsReporter.class.getName());
+    props.setProperty(CruiseControlMetricsReporterConfig.config(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG),
+       "localhost:" + CCContainerizedKraftCluster.CONTAINER_INTERNAL_LISTENER_PORT);
+    props.put("listener.security.protocol.map", String.join(",",
+      CCContainerizedKraftCluster.CONTROLLER_LISTENER_NAME + ":PLAINTEXT",
+      CCContainerizedKraftCluster.INTERNAL_LISTENER_NAME + ":PLAINTEXT",
+      CCContainerizedKraftCluster.EXTERNAL_LISTENER_NAME + ":PLAINTEXT"));
+    props.setProperty(CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG, "100");
+    props.setProperty(CRUISE_CONTROL_METRICS_TOPIC_CONFIG, TOPIC);
+    props.setProperty(KafkaServerConfigs.OFFSETS_TOPIC_REPLICATION_FACTOR_CONFIG, "1");
+    props.setProperty(KafkaServerConfigs.DEFAULT_REPLICATION_FACTOR_CONFIG, "2");
+    return props;
   }
 
   @javax.annotation.Nonnull
