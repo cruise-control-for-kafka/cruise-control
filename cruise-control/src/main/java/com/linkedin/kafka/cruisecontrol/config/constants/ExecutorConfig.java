@@ -447,6 +447,13 @@ public final class ExecutorConfig {
       + "can dynamically set the execution progress check interval to.";
 
   /**
+   * <code>prefer.broker.roundrobin.in.execution</code>
+   */
+  public static final String PREFER_BROKER_ROUND_ROBIN_CONFIG = "prefer.broker.roundrobin.in.execution";
+  public static final boolean DEFAULT_PREFER_BROKER_ROUND_ROBIN = true;
+  public static final String PREFER_BROKER_ROUND_ROBIN_DOC = "whether to prefer round-robin of brokers in rebalance execution.";
+
+  /**
    * <code>slow.task.alerting.backoff.ms</code>
    */
   public static final String SLOW_TASK_ALERTING_BACKOFF_TIME_MS_CONFIG = "slow.task.alerting.backoff.ms";
@@ -797,6 +804,11 @@ public final class ExecutorConfig {
                             ConfigDef.Type.BOOLEAN,
                             DEFAULT_AUTO_STOP_EXTERNAL_AGENT,
                             ConfigDef.Importance.MEDIUM,
-                            AUTO_STOP_EXTERNAL_AGENT_DOC);
+                            AUTO_STOP_EXTERNAL_AGENT_DOC)
+                    .define(PREFER_BROKER_ROUND_ROBIN_CONFIG,
+                            ConfigDef.Type.BOOLEAN,
+                            DEFAULT_PREFER_BROKER_ROUND_ROBIN,
+                            ConfigDef.Importance.MEDIUM,
+                            PREFER_BROKER_ROUND_ROBIN_DOC);
   }
 }

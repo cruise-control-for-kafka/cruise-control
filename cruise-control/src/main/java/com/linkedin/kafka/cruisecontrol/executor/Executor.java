@@ -81,6 +81,7 @@ import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTaskTracker.Exe
 import static com.linkedin.kafka.cruisecontrol.executor.ExecutorAdminUtils.*;
 import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUtils.UNIT_INTERVAL_TO_PERCENTAGE;
 import static com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricSampler.SamplingMode.*;
+import static com.linkedin.kafka.cruisecontrol.servlet.UserTaskManager.TaskState.COMPLETED;
 import static org.apache.kafka.clients.admin.DescribeReplicaLogDirsResult.ReplicaLogDirInfo;
 import static com.linkedin.cruisecontrol.common.utils.Utils.validateNotNull;
 
@@ -835,6 +836,10 @@ public class Executor {
                             requestedIntraBrokerPartitionMovementConcurrency, requestedClusterLeadershipMovementConcurrency,
                             requestedBrokerLeadershipMovementConcurrency, requestedExecutionProgressCheckIntervalMs, replicaMovementStrategy,
                             isTriggeredByUserRequest, loadMonitor);
+      if (removedBrokers != null && !removedBrokers.isEmpty()) {
+        int[] numTasks = getNumTasksUnrelatedToBrokerRemoval(removedBrokers, proposals);
+        LOG.info("User task {}: {} of {} partition move proposals are unrelated to removed brokers.", uuid, numTasks[0], numTasks[1]);
+      }
       startExecution(loadMonitor, null, removedBrokers, replicationThrottle, isTriggeredByUserRequest);
     } catch (Exception e) {
       if (e instanceof OngoingExecutionException) {
@@ -845,6 +850,32 @@ public class Executor {
       processExecuteProposalsFailure();
       throw e;
     }
+  }
+
+  /**
+   * Get the number of tasks unrelated to broker removal.
+   * @param removedBrokers removed brokers
+   * @param proposals proposals to execute
+   * @return an array of two integers, the first one is the number of tasks unrelated to broker removal,
+   *  the second one is the total number of tasks.
+   */
+  private int[] getNumTasksUnrelatedToBrokerRemoval(Set<Integer> removedBrokers, Collection<ExecutionProposal> proposals) {
+    int[] numTasks = new int[2];
+    int unrelatedCount = 0;
+    int totalCount = 0;
+    for (ExecutionProposal proposal: proposals) {
+      Set<Integer> oldBrokers = proposal.oldReplicasBrokerIdSet();
+      Set<Integer> newBrokers = proposal.newReplicasBrokerIdSet();
+      if (!oldBrokers.equals(newBrokers)) {
+        totalCount++;
+        if (oldBrokers.stream().noneMatch(removedBrokers::contains) && newBrokers.stream().noneMatch(removedBrokers::contains)) {
+          unrelatedCount++;
+        }
+      }
+    }
+    numTasks[0] = unrelatedCount;
+    numTasks[1] = totalCount;
+    return numTasks;
   }
 
   private void sanityCheckExecuteProposals(LoadMonitor loadMonitor, String uuid) throws OngoingExecutionException {
@@ -1364,8 +1395,8 @@ public class Executor {
     public void run() {
       LOG.info("User task {}: Starting executing balancing proposals.", _uuid);
       final long start = System.currentTimeMillis();
+      UserTaskManager.UserTaskInfo userTaskInfo = initExecution();
       try {
-        UserTaskManager.UserTaskInfo userTaskInfo = initExecution();
         execute(userTaskInfo);
       } catch (Exception e) {
         LOG.error("User task {}: ProposalExecutionRunnable got exception during run", _uuid, e);
@@ -1383,7 +1414,12 @@ public class Executor {
         if (_executionException != null) {
           LOG.info("User task {}: Execution failed: {}. Exception: {}", _uuid, executionStatusString, _executionException.getMessage());
         } else {
-          LOG.info("User task {}: Execution succeeded: {}. ", _uuid, executionStatusString);
+          String status = "succeeded";
+          if (userTaskInfo != null && userTaskInfo.state() != COMPLETED) {
+            // The task may be in state of COMPLETED_WITH_ERROR if the user requested to stop the execution.
+            status = userTaskInfo.state().toString();
+          }
+          LOG.info("User task {}: Execution {}: {}. ", _uuid, status, executionStatusString);
         }
         // Clear completed execution.
         clearCompletedExecution();
@@ -1613,6 +1649,12 @@ public class Executor {
       long totalDataToMoveInMB = _executionTaskManager.remainingInterBrokerDataToMoveInMB();
       long startTime = System.currentTimeMillis();
       LOG.info("User task {}: Starting {} inter-broker partition movements.", _uuid, numTotalPartitionMovements);
+      Map<Integer, Integer> map = _executionTaskManager.getSortedBrokerIdToInterBrokerMoveTaskCountMap();
+      LOG.info("User task {}: Broker Id to Execution Task Count Map: {}", _uuid, map);
+      if (!map.isEmpty()) {
+        LOG.info("User task {}: Degree of task count skew towards the largest single broker", _uuid,
+            map.entrySet().iterator().next().getValue() / (float) numTotalPartitionMovements);
+      }
 
       int partitionsToMove = numTotalPartitionMovements;
       // Exhaust all the pending partition movements.

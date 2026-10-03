@@ -24,6 +24,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.Set;
+import java.util.SortedSet;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.DescribeReplicaLogDirsResult;
 import org.apache.kafka.common.Cluster;
@@ -353,11 +354,63 @@ public class ExecutionTaskPlannerTest {
     readyBrokers.put(4, 5);
     readyBrokers.put(5, 6);
     prioritizeOneAboveMinIsrMovementPlanner.addExecutionProposals(proposals, strategyOptions, null);
+    Map<Integer, Integer> countMap = prioritizeOneAboveMinIsrMovementPlanner.getSortedBrokerIdToInterBrokerMoveTaskCountMap();
+    Map<Integer, SortedSet<ExecutionTask>> taskMap = prioritizeOneAboveMinIsrMovementPlanner.getInterPartMoveTasksByBrokerId();
+    for (Map.Entry<Integer, Integer> entry : countMap.entrySet()) {
+      int brokerId = entry.getKey();
+      int count = entry.getValue();
+      assertEquals(taskMap.get(brokerId).size(), count);
+    }
     List<ExecutionTask> partitionMovementTasks
         = prioritizeOneAboveMinIsrMovementPlanner.getInterBrokerReplicaMovementTasks(readyBrokers, Collections.emptySet(), _defaultPartitionsMaxCap);
     assertEquals("First task", _rf4PartitionMovement2, partitionMovementTasks.get(0).proposal());
     assertEquals("Second task", _rf4PartitionMovement3, partitionMovementTasks.get(1).proposal());
     assertEquals("Third task", _rf4PartitionMovement1, partitionMovementTasks.get(2).proposal());
+    assertEquals("Fourth task", _rf4PartitionMovement0, partitionMovementTasks.get(3).proposal());
+  }
+
+  @Test
+  public void testGetInterBrokerPartitionMovementWithMinIsrNoRoundRobinTasks() {
+    List<ExecutionProposal> proposals = new ArrayList<>();
+    proposals.add(_rf4PartitionMovement0);
+    proposals.add(_rf4PartitionMovement1);
+    proposals.add(_rf4PartitionMovement2);
+    proposals.add(_rf4PartitionMovement3);
+    // Test PrioritizeOneAboveMinIsrWithOfflineReplicasStrategy execution strategies.
+    // Create prioritizeOneAboveMinIsrMovementPlanner, chain after prioritizeMinIsr strategy
+    Properties prioritizeOneAboveMinIsrMovementProps = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
+    prioritizeOneAboveMinIsrMovementProps.setProperty(ExecutorConfig.DEFAULT_REPLICA_MOVEMENT_STRATEGIES_CONFIG,
+        String.format("%s,%s", PrioritizeMinIsrWithOfflineReplicasStrategy.class.getName(),
+            PrioritizeOneAboveMinIsrWithOfflineReplicasStrategy.class.getName()));
+    prioritizeOneAboveMinIsrMovementProps.setProperty(ExecutorConfig.PREFER_BROKER_ROUND_ROBIN_CONFIG, "false");
+    ExecutionTaskPlanner prioritizeOneAboveMinIsrMovementPlanner
+        = new ExecutionTaskPlanner(null, new KafkaCruiseControlConfig(prioritizeOneAboveMinIsrMovementProps));
+
+    Set<PartitionInfo> partitions = new HashSet<>();
+    partitions.add(generatePartitionInfo(_rf4PartitionMovement0, false));
+    partitions.add(generatePartitionInfoWithUrpHavingOfflineReplica(_rf4PartitionMovement1, 2));
+    partitions.add(generatePartitionInfoWithUrpHavingOfflineReplica(_rf4PartitionMovement2, 3));
+    partitions.add(generatePartitionInfoWithUrpHavingOfflineReplica(_rf4PartitionMovement3, 1));
+
+    Cluster expectedCluster = new Cluster(null, _rf4ExpectedNodes, partitions, Collections.emptySet(), Collections.emptySet());
+    // Setting topic min ISR to 2
+    Map<String, MinIsrWithTime> minIsrWithTimeByTopic
+        = Collections.singletonMap(TOPIC3, new MinIsrWithTime((short) 2, 0));
+    StrategyOptions strategyOptions = new StrategyOptions.Builder(expectedCluster).minIsrWithTimeByTopic(minIsrWithTimeByTopic).build();
+
+    Map<Integer, Integer> readyBrokers = new HashMap<>();
+    readyBrokers.put(0, 5);
+    readyBrokers.put(1, 6);
+    readyBrokers.put(2, 6);
+    readyBrokers.put(3, 6);
+    readyBrokers.put(4, 5);
+    readyBrokers.put(5, 6);
+    prioritizeOneAboveMinIsrMovementPlanner.addExecutionProposals(proposals, strategyOptions, null);
+    List<ExecutionTask> partitionMovementTasks
+        = prioritizeOneAboveMinIsrMovementPlanner.getInterBrokerReplicaMovementTasks(readyBrokers, Collections.emptySet(), _defaultPartitionsMaxCap);
+    assertEquals("First task", _rf4PartitionMovement2, partitionMovementTasks.get(0).proposal());
+    assertEquals("Second task", _rf4PartitionMovement1, partitionMovementTasks.get(1).proposal());
+    assertEquals("Third task", _rf4PartitionMovement3, partitionMovementTasks.get(2).proposal());
     assertEquals("Fourth task", _rf4PartitionMovement0, partitionMovementTasks.get(3).proposal());
   }
 
