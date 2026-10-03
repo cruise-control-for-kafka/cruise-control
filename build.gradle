@@ -293,6 +293,12 @@ project(':cruise-control') {
       exclude group: 'log4j', module: 'log4j'
       exclude group: 'ch.qos.logback'
     }
+    configurations.runtimeClasspath {
+      exclude group: 'com.google.code.findbugs', module: 'jsr305'
+      exclude group: 'com.google.errorprone', module: 'error_prone_annotations'
+      exclude group: 'com.google.j2objc', module: 'j2objc-annotations'
+      exclude group: 'org.checkerframework', module: 'checker-qual'
+    }
 
     api project(':cruise-control-metrics-reporter')
     api project(':cruise-control-core')
