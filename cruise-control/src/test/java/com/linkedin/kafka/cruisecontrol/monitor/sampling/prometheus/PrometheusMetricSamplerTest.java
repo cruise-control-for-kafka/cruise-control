@@ -271,7 +271,7 @@ public class PrometheusMetricSamplerTest {
         config.put(PROMETHEUS_SERVER_ENDPOINT_CONFIG, "kafka-cluster-1.org:9090");
         addCapacityConfig(config);
         _prometheusMetricSampler.configure(config);
-        String expectedQuery = "1 - avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[2m]))";
+        String expectedQuery = "avg by (instance) (rate(process_cpu_seconds_total[2m]))";
         assertEquals(expectedQuery, _prometheusMetricSampler._metricToPrometheusQueryMap.get(RawMetricType.BROKER_CPU_UTIL));
     }
 
@@ -282,7 +282,7 @@ public class PrometheusMetricSamplerTest {
         config.put(DefaultPrometheusQuerySupplier.PROMETHEUS_BROKER_METRICS_SCRAPING_INTERVAL_SECONDS, "45");
         addCapacityConfig(config);
         _prometheusMetricSampler.configure(config);
-        String expectedQuery = "1 - avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[2m]))";
+        String expectedQuery = "avg by (instance) (rate(process_cpu_seconds_total[2m]))";
         assertEquals(expectedQuery, _prometheusMetricSampler._metricToPrometheusQueryMap.get(RawMetricType.BROKER_CPU_UTIL));
     }
 
@@ -293,7 +293,7 @@ public class PrometheusMetricSamplerTest {
         config.put(DefaultPrometheusQuerySupplier.PROMETHEUS_BROKER_METRICS_SCRAPING_INTERVAL_SECONDS, "90");
         addCapacityConfig(config);
         _prometheusMetricSampler.configure(config);
-        String expectedQuery = "1 - avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[3m]))";
+        String expectedQuery = "avg by (instance) (rate(process_cpu_seconds_total[3m]))";
         assertEquals(expectedQuery, _prometheusMetricSampler._metricToPrometheusQueryMap.get(RawMetricType.BROKER_CPU_UTIL));
     }
 
@@ -304,7 +304,7 @@ public class PrometheusMetricSamplerTest {
         config.put(DefaultPrometheusQuerySupplier.PROMETHEUS_BROKER_METRICS_SCRAPING_INTERVAL_SECONDS, "91");
         addCapacityConfig(config);
         _prometheusMetricSampler.configure(config);
-        String expectedQuery = "1 - avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[4m]))";
+        String expectedQuery = "avg by (instance) (rate(process_cpu_seconds_total[4m]))";
         assertEquals(expectedQuery, _prometheusMetricSampler._metricToPrometheusQueryMap.get(RawMetricType.BROKER_CPU_UTIL));
     }
 
