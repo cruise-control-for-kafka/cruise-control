@@ -34,6 +34,7 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -48,7 +49,10 @@ public class AuthenticationIntegrationTest extends CruiseControlIntegrationTestH
   private static final String TEST_BAD_PASSWORD = "bad_password";
   private static final String ADMIN_ROLE = "admin";
   private static final String CRUISE_CONTROL_STATE_ENDPOINT = "kafkacruisecontrol/" + STATE;
-  private static final String ANY_PATH = "/*";
+  private static final String UPPERCASE_CRUISE_CONTROL_STATE_ENDPOINT = "KAFKACRUISECONTROL/" + STATE;
+  private static final String EVIL_STATE_ENDPOINT = "kafkacruisecontrol/evil/" + STATE;
+  private static final String UPPERCASE_EVIL_STATE_ENDPOINT = "KAFKACRUISECONTROL/EVIL/" + STATE;
+  private static final String STATE_PATH_SPEC = "/kafkacruisecontrol/" + STATE.toString().toLowerCase(Locale.ROOT);
 
   @Before
   public void setup() throws Exception {
@@ -86,6 +90,49 @@ public class AuthenticationIntegrationTest extends CruiseControlIntegrationTestH
     assertEquals(HttpServletResponse.SC_UNAUTHORIZED, connection.getResponseCode());
   }
 
+  @Test
+  public void testCaseInsensitiveAuthenticationPath() throws IOException, URISyntaxException {
+    HttpURLConnection connection = (HttpURLConnection) new URI(_app.serverUrl())
+        .resolve(UPPERCASE_CRUISE_CONTROL_STATE_ENDPOINT).toURL().openConnection();
+    String encoded = Base64.getEncoder().encodeToString((TEST_USER + ":" + TEST_PASSWORD).getBytes(StandardCharsets.UTF_8));
+    connection.setRequestProperty(HttpHeader.AUTHORIZATION.asString(), "Basic " + encoded);
+    assertEquals(HttpServletResponse.SC_OK, connection.getResponseCode());
+  }
+
+  @Test
+  public void testCaseInsensitiveAuthenticationPathWithBadPassword() throws IOException, URISyntaxException {
+    HttpURLConnection connection = (HttpURLConnection) new URI(_app.serverUrl())
+        .resolve(UPPERCASE_CRUISE_CONTROL_STATE_ENDPOINT).toURL().openConnection();
+    String encoded = Base64.getEncoder().encodeToString((TEST_USER + ":" + TEST_BAD_PASSWORD).getBytes(StandardCharsets.UTF_8));
+    connection.setRequestProperty(HttpHeader.AUTHORIZATION.asString(), "Basic " + encoded);
+    assertEquals(HttpServletResponse.SC_UNAUTHORIZED, connection.getResponseCode());
+  }
+
+  @Test
+  public void testCaseInsensitiveAuthenticationPathWithoutCredentials() throws IOException, URISyntaxException {
+    HttpURLConnection connection = (HttpURLConnection) new URI(_app.serverUrl())
+        .resolve(UPPERCASE_CRUISE_CONTROL_STATE_ENDPOINT).toURL().openConnection();
+    assertEquals(HttpServletResponse.SC_UNAUTHORIZED, connection.getResponseCode());
+  }
+
+  @Test
+  public void testExtraPathSegmentIsNotRoutedAsEndpoint() throws IOException, URISyntaxException {
+    HttpURLConnection connection = (HttpURLConnection) new URI(_app.serverUrl())
+        .resolve(EVIL_STATE_ENDPOINT).toURL().openConnection();
+    String encoded = Base64.getEncoder().encodeToString((TEST_USER + ":" + TEST_PASSWORD).getBytes(StandardCharsets.UTF_8));
+    connection.setRequestProperty(HttpHeader.AUTHORIZATION.asString(), "Basic " + encoded);
+    assertEquals(HttpServletResponse.SC_NOT_FOUND, connection.getResponseCode());
+  }
+
+  @Test
+  public void testUppercaseExtraPathSegmentIsNotRoutedAsEndpoint() throws IOException, URISyntaxException {
+    HttpURLConnection connection = (HttpURLConnection) new URI(_app.serverUrl())
+        .resolve(UPPERCASE_EVIL_STATE_ENDPOINT).toURL().openConnection();
+    String encoded = Base64.getEncoder().encodeToString((TEST_USER + ":" + TEST_PASSWORD).getBytes(StandardCharsets.UTF_8));
+    connection.setRequestProperty(HttpHeader.AUTHORIZATION.asString(), "Basic " + encoded);
+    assertEquals(HttpServletResponse.SC_NOT_FOUND, connection.getResponseCode());
+  }
+
   public static class DummySecurityProvider implements SecurityProvider {
 
     @Override
@@ -100,7 +147,7 @@ public class AuthenticationIntegrationTest extends CruiseControlIntegrationTestH
           .authorization(Constraint.Authorization.SPECIFIC_ROLE)
           .build();
       mapping.setConstraint(constraint);
-      mapping.setPathSpec(ANY_PATH);
+      mapping.setPathSpec(STATE_PATH_SPEC);
 
       return Collections.singletonList(mapping);
     }
