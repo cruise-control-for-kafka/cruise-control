@@ -75,6 +75,8 @@ public class UserTaskManagerTest {
 
     HttpServletRequest mockHttpServletRequest2 = prepareServletRequest(mockHttpSession, testUserTaskId.toString());
     EasyMock.reset(mockHttpServletResponse);
+    requestContext.setHeader(EasyMock.capture(userTaskHeader), EasyMock.capture(userTaskHeaderValue));
+    EasyMock.replay(mockHttpServletResponse);
     // test-case: get future back using user-task-id
     ServletRequestContext requestContext1 = new ServletRequestContext(mockHttpServletRequest2, mockHttpServletResponse, cruiseControlConfigMock);
     OperationFuture future3 =
@@ -85,6 +87,8 @@ public class UserTaskManagerTest {
     Assert.assertEquals(future, future3);
 
     EasyMock.reset(mockHttpServletResponse);
+    requestContext.setHeader(EasyMock.capture(userTaskHeader), EasyMock.capture(userTaskHeaderValue));
+    EasyMock.replay(mockHttpServletResponse);
 
     // test-case: for sync task, UserTaskManager does not create mapping between request URL and UUID.
     HttpServletRequest mockHttpServletRequest3 = prepareServletRequest(null, null, "test_sync_request", Collections.emptyMap());
@@ -100,6 +104,8 @@ public class UserTaskManagerTest {
     Assert.assertEquals(future4, future);
 
     EasyMock.reset(mockHttpServletResponse);
+    requestContext2.setHeader(EasyMock.capture(userTaskHeader), EasyMock.capture(userTaskHeaderValue));
+    EasyMock.replay(mockHttpServletResponse);
     OperationFuture future5 =
             userTaskManager.getOrCreateUserTask(requestContext2, uuid -> future, 0, true, null).get(0);
     savedUUID = userTaskManager.getUserTaskId(requestContext2);
