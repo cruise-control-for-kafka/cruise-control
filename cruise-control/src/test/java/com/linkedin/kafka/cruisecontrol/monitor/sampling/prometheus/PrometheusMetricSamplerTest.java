@@ -169,6 +169,44 @@ public class PrometheusMetricSamplerTest {
         _prometheusMetricSampler.configure(config);
     }
 
+    @Test
+    public void testGetSamplesCustomPrometheusQueryFile() throws Exception {
+        Map<String, Object> config = new HashMap<>();
+        config.put(PROMETHEUS_SERVER_ENDPOINT_CONFIG, "http://kafka-cluster-1.org:9090");
+        addCapacityConfig(config);
+        config.put(PROMETHEUS_QUERY_FILE_CONFIG, this.getClass().getClassLoader().getResource("prometheusQueriesTest.properties").getFile());
+        _prometheusMetricSampler.configure(config);
+
+        MetricSamplerOptions metricSamplerOptions = buildMetricSamplerOptions(TEST_TOPIC);
+        _prometheusMetricSampler._prometheusAdapter = _prometheusAdapter;
+
+        expect(_prometheusAdapter.queryMetric(eq(TestQuerySupplier.TEST_QUERY), anyLong(), anyLong()))
+                .andReturn(buildBrokerResults());
+        replay(_prometheusAdapter);
+
+        _prometheusMetricSampler.getSamples(metricSamplerOptions);
+
+        verify(_prometheusAdapter);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testGetSamplesCustomPrometheusQueryFileNotFoundFile() throws Exception {
+        Map<String, Object> config = new HashMap<>();
+        config.put(PROMETHEUS_SERVER_ENDPOINT_CONFIG, "http://kafka-cluster-1.org:9090");
+        addCapacityConfig(config);
+        config.put(PROMETHEUS_QUERY_FILE_CONFIG, "/a/b/file.properties");
+        _prometheusMetricSampler.configure(config);
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void testGetSamplesCustomPrometheusQueryFileUnknownMetricType() throws Exception {
+        Map<String, Object> config = new HashMap<>();
+        config.put(PROMETHEUS_SERVER_ENDPOINT_CONFIG, "http://kafka-cluster-1.org:9090");
+        addCapacityConfig(config);
+        config.put(PROMETHEUS_QUERY_FILE_CONFIG, this.getClass().getClassLoader().getResource("prometheusQueriesTestFailing.properties").getFile());
+        _prometheusMetricSampler.configure(config);
+    }
+
     private static MetricSamplerOptions buildMetricSamplerOptions(String topic) {
 
         return new MetricSamplerOptions(
