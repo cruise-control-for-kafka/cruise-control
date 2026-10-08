@@ -55,6 +55,10 @@ public class ExecutionTaskTracker {
   public static final String METER_INTRA_BROKER_PARTITION_MOVEMENT_RATE = "intra-broker-partition-movement-rate";
   public static final String METER_LEADERSHIP_MOVEMENT_RATE = "leadership-movement-rate";
   public static final String METER_PARTITION_DATA_MOVEMENT_RATE = "partition-data-movement-rate-MB";
+  public static final String GAUGE_ONGOING_EXECUTION_TOTAL_DATA_TO_MOVE = "ongoing-execution-inter_broker_data_movement_total_bytes";
+  public static final String GAUGE_ONGOING_EXECUTION_FINISHED_DATA_TO_MOVE = "ongoing-execution-inter_broker_data_movement_completed_bytes";
+  public static final String GAUGE_ONGOING_EXECUTION_DATA_MOVEMENT = "ongoing-execution-inter_broker_data_movement_moving_bytes";
+  public static final String GAUGE_ONGOING_EXECUTION_REMAINING_DATA_TO_MOVE = "ongoing-execution-inter_broker_data_movement_remaining_bytes";
 
   ExecutionTaskTracker(MetricRegistry dropwizardMetricRegistry, Time time) {
     List<ExecutionTaskState> states = ExecutionTaskState.cachedValues();
@@ -111,6 +115,18 @@ public class ExecutionTaskTracker {
     dropwizardMetricRegistry.register(MetricRegistry.name(EXECUTOR_SENSOR, GAUGE_ONGOING_EXECUTION_IN_NON_KAFKA_ASSIGNER_MODE),
                                       (Gauge<Integer>) () -> !_isKafkaAssignerMode
                                                              && !inExecutionTasks(TaskType.cachedValues()).isEmpty() ? 1 : 0);
+
+     // expose rebalance metrics
+    dropwizardMetricRegistry.register(MetricRegistry.name(EXECUTOR_SENSOR, GAUGE_ONGOING_EXECUTION_TOTAL_DATA_TO_MOVE),
+            (Gauge<Long>) () -> ( finishedInterBrokerDataMovementInMB()
+                    + inExecutionInterBrokerDataMovementInMB()
+                    + remainingInterBrokerDataToMoveInMB() ) * 1024 * 1024 );
+    dropwizardMetricRegistry.register(MetricRegistry.name(EXECUTOR_SENSOR, GAUGE_ONGOING_EXECUTION_FINISHED_DATA_TO_MOVE),
+            (Gauge<Long>) () -> finishedInterBrokerDataMovementInMB() * 1024 * 1024 );
+    dropwizardMetricRegistry.register(MetricRegistry.name(EXECUTOR_SENSOR, GAUGE_ONGOING_EXECUTION_DATA_MOVEMENT),
+            (Gauge<Long>) () -> inExecutionInterBrokerDataMovementInMB() * 1024 * 1024 );
+    dropwizardMetricRegistry.register(MetricRegistry.name(EXECUTOR_SENSOR, GAUGE_ONGOING_EXECUTION_REMAINING_DATA_TO_MOVE),
+            (Gauge<Long>) () -> remainingInterBrokerDataToMoveInMB() * 1024 * 1024 );
   }
 
   private void registerMeterSensors(MetricRegistry dropwizardMetricRegistry) {
