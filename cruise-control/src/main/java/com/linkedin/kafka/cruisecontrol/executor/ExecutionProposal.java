@@ -44,6 +44,8 @@ public class ExecutionProposal {
   private final Set<ReplicaPlacementInfo> _replicasToRemove;
   // Replicas to move between disks are the replicas which are to be hosted by a different disk of the same broker.
   private final Map<Integer, ReplicaPlacementInfo> _replicasToMoveBetweenDisksByBroker;
+  private final Set<Integer> _oldReplicasSet;
+  private final Set<Integer> _newReplicasSet;
 
   /**
    * Construct an execution proposals.
@@ -69,10 +71,10 @@ public class ExecutionProposal {
     validate();
 
     // Populate replicas to add, to remove and to move across disk.
-    Set<Integer> newBrokerList = _newReplicas.stream().mapToInt(ReplicaPlacementInfo::brokerId).boxed().collect(Collectors.toSet());
-    Set<Integer> oldBrokerList = _oldReplicas.stream().mapToInt(ReplicaPlacementInfo::brokerId).boxed().collect(Collectors.toSet());
-    _replicasToAdd = _newReplicas.stream().filter(r -> !oldBrokerList.contains(r.brokerId())).collect(Collectors.toSet());
-    _replicasToRemove = _oldReplicas.stream().filter(r -> !newBrokerList.contains(r.brokerId())).collect(Collectors.toSet());
+    _newReplicasSet = _newReplicas.stream().mapToInt(ReplicaPlacementInfo::brokerId).boxed().collect(Collectors.toSet());
+    _oldReplicasSet = _oldReplicas.stream().mapToInt(ReplicaPlacementInfo::brokerId).boxed().collect(Collectors.toSet());
+    _replicasToAdd = _newReplicas.stream().filter(r -> !_oldReplicasSet.contains(r.brokerId())).collect(Collectors.toSet());
+    _replicasToRemove = _oldReplicas.stream().filter(r -> !_newReplicasSet.contains(r.brokerId())).collect(Collectors.toSet());
     _replicasToMoveBetweenDisksByBroker = new HashMap<>();
     newReplicas.stream().filter(r -> !_replicasToAdd.contains(r) && !_oldReplicas.contains(r))
                .forEach(r -> _replicasToMoveBetweenDisksByBroker.put(r.brokerId(), r));
@@ -175,6 +177,20 @@ public class ExecutionProposal {
    */
   public List<ReplicaPlacementInfo> oldReplicas() {
     return Collections.unmodifiableList(_oldReplicas);
+  }
+
+  /**
+   * @return The broker ID set of the partitions before executing the proposal.
+   */
+  public Set<Integer> oldReplicasBrokerIdSet() {
+    return Collections.unmodifiableSet(_oldReplicasSet);
+  }
+
+  /**
+   * @return The broker ID set of the partitions after executing the proposal.
+   */
+  public Set<Integer> newReplicasBrokerIdSet() {
+    return Collections.unmodifiableSet(_newReplicasSet);
   }
 
   /**

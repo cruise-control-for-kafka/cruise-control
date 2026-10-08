@@ -767,6 +767,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
     UserTaskManager.UserTaskInfo mockUserTaskInfo = EasyMock.mock(UserTaskManager.UserTaskInfo.class);
     // Run it any times to enable consecutive executions in tests.
     EasyMock.expect(mockUserTaskInfo.requestUrl()).andReturn("mock-request").anyTimes();
+    expect(mockUserTaskInfo.state()).andReturn(UserTaskManager.TaskState.COMPLETED).anyTimes();
     return mockUserTaskInfo;
   }
 

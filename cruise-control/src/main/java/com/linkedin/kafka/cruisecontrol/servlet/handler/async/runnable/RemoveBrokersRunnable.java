@@ -96,7 +96,12 @@ public class RemoveBrokersRunnable extends GoalBasedOperationRunnable {
 
   @Override
   protected OptimizationResult getResult() throws Exception {
-    return new OptimizationResult(computeResult(), _kafkaCruiseControl.config());
+    try {
+      return new OptimizationResult(computeResult(), _kafkaCruiseControl.config());
+    } catch (Exception e) {
+      LOG.error("User task {}: failed to remove brokers due to {}", _uuid, e);
+      throw e;
+    }
   }
 
   @Override

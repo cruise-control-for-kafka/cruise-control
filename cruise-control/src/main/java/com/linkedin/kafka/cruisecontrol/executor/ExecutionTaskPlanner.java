@@ -21,6 +21,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
@@ -39,11 +40,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig.DEFAULT_REPLICA_MOVEMENT_STRATEGIES_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig.LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig.TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig.INTER_BROKER_REPLICA_MOVEMENT_RATE_ALERTING_THRESHOLD_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig.INTRA_BROKER_REPLICA_MOVEMENT_RATE_ALERTING_THRESHOLD_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTask.TaskType.*;
+import static com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig.LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG;
+import static com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig.PREFER_BROKER_ROUND_ROBIN_CONFIG;
+import static com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig.TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG;
+import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTask.TaskType.INTER_BROKER_REPLICA_ACTION;
+import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTask.TaskType.INTRA_BROKER_REPLICA_ACTION;
+import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTask.TaskType.LEADER_ACTION;
 import static org.apache.kafka.clients.admin.DescribeReplicaLogDirsResult.ReplicaLogDirInfo;
 
 /**
@@ -80,6 +84,7 @@ public class ExecutionTaskPlanner {
   private final long _taskExecutionAlertingThresholdMs;
   private final double _interBrokerReplicaMovementRateAlertingThreshold;
   private final double _intraBrokerReplicaMovementRateAlertingThreshold;
+  private final boolean _preferRoundRobin;
   private static final int PRIORITIZE_BROKER_1 = -1;
   private static final int PRIORITIZE_BROKER_2 = 1;
   private static final int PRIORITIZE_NONE = 0;
@@ -120,6 +125,7 @@ public class ExecutionTaskPlanner {
 
       _defaultReplicaMovementTaskStrategy = _defaultReplicaMovementTaskStrategy.chainBaseReplicaMovementStrategyIfAbsent();
     }
+    _preferRoundRobin = config.getBoolean(PREFER_BROKER_ROUND_ROBIN_CONFIG);
   }
 
   /**
@@ -379,11 +385,13 @@ public class ExecutionTaskPlanner {
           break;
         }
         // If this broker has already involved in this round, skip it.
-        if (brokerInvolved.contains(brokerId)) {
+        if (_preferRoundRobin && brokerInvolved.contains(brokerId)) {
           continue;
         }
         // Check the available balancing proposals of this broker to see if we can find one ready to execute.
-        SortedSet<ExecutionTask> proposalsForBroker = _interPartMoveTasksByBrokerId.get(brokerId);
+        // Make a TreeSet copy of the proposals for this broker to avoid ConcurrentModificationException and
+        // keep the same order of proposals.
+        SortedSet<ExecutionTask> proposalsForBroker = new TreeSet<>(_interPartMoveTasksByBrokerId.get(brokerId));
         LOG.trace("Execution task for broker {} are {}", brokerId, proposalsForBroker);
         for (ExecutionTask task : proposalsForBroker) {
           // Break if max cap reached
@@ -398,8 +406,8 @@ public class ExecutionTaskPlanner {
           int sourceBroker = task.proposal().oldLeader().brokerId();
           Set<Integer> destinationBrokers = task.proposal().replicasToAdd().stream().mapToInt(ReplicaPlacementInfo::brokerId)
                                                 .boxed().collect(Collectors.toSet());
-          if (brokerInvolved.contains(sourceBroker)
-              || KafkaCruiseControlUtils.containsAny(brokerInvolved, destinationBrokers)) {
+          if (_preferRoundRobin && (brokerInvolved.contains(sourceBroker)
+              || KafkaCruiseControlUtils.containsAny(brokerInvolved, destinationBrokers))) {
             continue;
           }
           TopicPartition tp = task.proposal().topicPartition();
@@ -429,8 +437,10 @@ public class ExecutionTaskPlanner {
             newTaskAdded = true;
             numInProgressPartitions++;
             LOG.debug("Found ready task {} for broker {}. Broker concurrency state: {}", task, brokerId, readyBrokers);
-            // We can stop the check for proposals for this broker because we have found a proposal.
-            break;
+            if (_preferRoundRobin) {
+              // We can stop the check for proposals for this broker because we have found a proposal.
+              break;
+            }
           }
         }
       }
@@ -536,5 +546,35 @@ public class ExecutionTaskPlanner {
                                     : taskSet1Size != taskSet2Size ? taskSet2Size - taskSet1Size
                                                                    : broker1 - broker2;
     };
+  }
+
+  Map<Integer, Integer> getSortedBrokerIdToInterBrokerMoveTaskCountMap() {
+    if (_interPartMoveTasksByBrokerId == null || _interPartMoveTasksByBrokerId.isEmpty()) {
+      return Collections.emptyMap();
+    }
+    Map<Integer, Integer> resultMap = _interPartMoveTasksByBrokerId.entrySet()
+        .stream()
+        .collect(Collectors.toMap(
+            Map.Entry::getKey,
+            entry -> entry.getValue().size()
+        ))
+        .entrySet()
+        .stream()
+        .sorted((e1, e2) -> e2.getValue().compareTo(e1.getValue()))
+        .collect(Collectors.toMap(
+            Map.Entry::getKey,
+            Map.Entry::getValue,
+            (e1, e2) -> e1,
+            // maintain the order of the sorted map.
+            LinkedHashMap::new
+        ));
+    return resultMap;
+  }
+
+  /*
+   * Package private for testing.
+   */
+  Map<Integer, SortedSet<ExecutionTask>> getInterPartMoveTasksByBrokerId() {
+    return _interPartMoveTasksByBrokerId;
   }
 }
