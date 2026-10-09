@@ -139,8 +139,8 @@ For more details about how Cruise Control achieves that, see
 To read more about the configurations. Check the 
 [configurations wiki page](https://github.com/linkedin/cruise-control/wiki/Configurations).
 
-### Artifactory ###
-Published at [Jfrog Artifactory](https://linkedin.jfrog.io/linkedin/webapp/#/artifacts/browse/tree/General/cruise-control). See [available releases](https://github.com/linkedin/cruise-control/releases). 
+### Maven Central ###
+Published at [Maven Central](https://central.sonatype.com/namespace/io.cruise-control). See [available releases](https://github.com/cruise-control-for-kafka/cruise-control/releases).
 
 ### Pluggable Components ###
 More about pluggable components can be found in the 
