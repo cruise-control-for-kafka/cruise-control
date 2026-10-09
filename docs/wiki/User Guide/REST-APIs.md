@@ -521,13 +521,17 @@ For example, to remove two disks from broker `101`:
 
 Supported parameters are:
 
-| PARAMETER                 | TYPE      | DESCRIPTION                                                                                       | DEFAULT               | OPTIONAL  |
-|---------------------------|-----------|---------------------------------------------------------------------------------------------------|-----------------------|-----------|
-| brokerid_and_logdirs      | list      | list of broker id and logdir pairs for disks to remove from the cluster                           | N/A                   | **no**    |
-| dryrun                    | boolean   | whether dry-run the request or not                                                                | true                  | yes       |
-| stop_ongoing_execution    | boolean   | whether to stop the ongoing execution (if any) and start executing the given request              | false                 | yes       |
-| reason                    | string    | reason for the request                                                                            | "No reason provided"  | yes       |
-| json                      | boolean   | return in JSON format or not                                                                      | false                 | yes       |
+| PARAMETER                  | TYPE      | DESCRIPTION                                                                                  | DEFAULT               | OPTIONAL  |
+|----------------------------|-----------|----------------------------------------------------------------------------------------------|-----------------------|-----------|
+| brokerid_and_logdirs       | list      | list of broker id and logdir pairs for disks to remove from the cluster                      | N/A                   | **no**    |
+| dryrun                     | boolean   | whether dry-run the request or not                                                           | true                  | yes       |
+| stop_ongoing_execution     | boolean   | whether to stop the ongoing execution (if any) and start executing the given request        | false                 | yes       |
+| allow_capacity_estimation  | boolean   | whether to allow broker capacity to be estimated                                             | true                  | yes       |
+| json                       | boolean   | return in JSON format or not                                                                 | false                 | yes       |
+| verbose                    | boolean   | return the proposed replica movements and the load before the disk removal                  | false                 | yes       |
+| reason                     | string    | reason for the request                                                                       | "No reason provided"  | yes       |
+| get_response_schema        | boolean   | return JSON schema in response header or not                                                 | false                 | yes       |
+| doAs                       | string    | propagated user by the trusted proxy service                                                 | null                  | yes       |
 
 Note that `brokerid_and_logdirs` takes comma as delimiter between two broker id and logdir pairs — i.e. we assume a valid logdir name contains no comma. Each pair uses a hyphen (`-`) as the delimiter between broker id and logdir name (e.g. `101-/tmp/kafka-logs-1`).
 
@@ -536,9 +540,13 @@ Unlike most other optimization endpoints, `remove_disks` does not accept a `goal
 Before generating proposals, Cruise Control validates that:
 * Each specified logdir exists on the corresponding broker.
 * At least one logdir remains on each affected broker.
-* The remaining disk capacity on each affected broker is sufficient to absorb the load from the disks being removed (based on the configured disk capacity threshold).
+* The remaining disk capacity on each affected broker is sufficient to absorb the load from the disks being removed (based on the configured disk capacity threshold, see `disk.capacity.threshold`).
 
 Replica movements are limited to disks within the same broker — there is no inter-broker replica movement. `stop_ongoing_execution` and `dryrun` cannot both be set to `true`.
+
+If `verbose` is set to `true`, the response also shows the proposed replica movements -- including the log directories
+that each replica moves between -- and the load before the disk removal. The load after the disk removal shows the
+removed disks as empty, and the disk capacity of the brokers without the removed disks.
 
 ### Stop the current proposal execution task
 The following POST request will let Cruise Control stop an ongoing `rebalance`, `add_broker`,  `remove_broker`, `fix_offline_replica`, `topic_configuration`, `demote_broker` or `remove_disks` operation:

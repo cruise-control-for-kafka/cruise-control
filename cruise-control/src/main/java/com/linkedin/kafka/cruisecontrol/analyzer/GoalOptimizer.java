@@ -438,8 +438,36 @@ public class GoalOptimizer implements Runnable {
                                        Map<TopicPartition, List<ReplicaPlacementInfo>> initReplicaDistributionForProposalGeneration,
                                        OptimizationOptions optimizationOptions)
       throws KafkaCruiseControlException {
+    return optimizations(clusterModel, goalsByPriority, operationProgress, initReplicaDistributionForProposalGeneration,
+                         optimizationOptions, null);
+  }
+
+  /**
+   * See {@link GoalOptimizer#optimizations(ClusterModel, List, OperationProgress, Map, OptimizationOptions)}.
+   *
+   * @param clusterModel The state of the cluster over which the balancing proposal will be applied. Function execution
+   *                     updates the cluster state with balancing proposals.
+   * @param goalsByPriority the goals ordered by priority.
+   * @param operationProgress to report the job progress.
+   * @param initReplicaDistributionForProposalGeneration The initial replica distribution of the cluster, if the passed in
+   *                                                     clusterModel is not the original cluster model, otherwise it is null.
+   * @param optimizationOptions Optimization options.
+   * @param initBrokerStats The broker stats of the initial cluster state, to report as the load before optimization. This is
+   *                        only needed if the passed in clusterModel has been modified in a way that is not supposed to be
+   *                        reflected in the load before optimization, otherwise it is null. One case explicitly specifying the
+   *                        initial broker stats is to remove disks, in which case the disks to remove are marked for removal
+   *                        (i.e. their capacity is dropped) in cluster model before passing it in to generate proposals.
+   * @return Results of optimization containing the proposals and stats.
+   */
+  public OptimizerResult optimizations(ClusterModel clusterModel,
+                                       List<Goal> goalsByPriority,
+                                       OperationProgress operationProgress,
+                                       Map<TopicPartition, List<ReplicaPlacementInfo>> initReplicaDistributionForProposalGeneration,
+                                       OptimizationOptions optimizationOptions,
+                                       BrokerStats initBrokerStats)
+      throws KafkaCruiseControlException {
     LOG.trace("Cluster before optimization is {}", clusterModel);
-    BrokerStats brokerStatsBeforeOptimization = clusterModel.brokerStats(null);
+    BrokerStats brokerStatsBeforeOptimization = initBrokerStats != null ? initBrokerStats : clusterModel.brokerStats(null);
     Map<TopicPartition, List<ReplicaPlacementInfo>> initReplicaDistribution = clusterModel.getReplicaDistribution();
     Map<TopicPartition, ReplicaPlacementInfo> initLeaderDistribution = clusterModel.getLeaderDistribution();
     boolean isSelfHealing = !clusterModel.selfHealingEligibleReplicas().isEmpty();

@@ -606,6 +606,31 @@ public class KafkaCruiseControl {
   }
 
   /**
+   * See {@link GoalOptimizer#optimizations(ClusterModel, List, OperationProgress, Map, OptimizationOptions, BrokerStats)}.
+   *
+   * @param clusterModel The state of the cluster.
+   * @param goalsByPriority the goals ordered by priority.
+   * @param operationProgress to report the job progress.
+   * @param initReplicaDistribution The initial replica distribution of the cluster, if the passed in clusterModel is not the
+   *                                original cluster model, otherwise it is null.
+   * @param optimizationOptions Optimization options.
+   * @param initBrokerStats The broker stats of the initial cluster state, if the passed in clusterModel has been modified in a
+   *                        way that is not supposed to be reflected in the load before optimization (e.g. disks are marked
+   *                        for removal), otherwise it is null.
+   * @return Results of optimization containing the proposals and stats.
+   */
+  public synchronized OptimizerResult optimizations(ClusterModel clusterModel,
+                                                    List<Goal> goalsByPriority,
+                                                    OperationProgress operationProgress,
+                                                    Map<TopicPartition, List<ReplicaPlacementInfo>> initReplicaDistribution,
+                                                    OptimizationOptions optimizationOptions,
+                                                    BrokerStats initBrokerStats)
+      throws KafkaCruiseControlException {
+    return _goalOptimizer.optimizations(clusterModel, goalsByPriority, operationProgress, initReplicaDistribution, optimizationOptions,
+                                        initBrokerStats);
+  }
+
+  /**
    * See {@link GoalOptimizer#excludedTopics(ClusterModel, Pattern)}.
    * @param clusterModel The state of the cluster.
    * @param requestedExcludedTopics Pattern used to exclude topics, or {@code null} to use the default excluded topics.

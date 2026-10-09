@@ -540,6 +540,24 @@ public class Broker implements Serializable, Comparable<Broker> {
   }
 
   /**
+   * Mark the disk for removal and drop its capacity from the broker capacity.
+   *
+   * @param logdir Log directory of the disk.
+   * @return Disk capacity dropped due to the disk removal.
+   */
+  double markDiskForRemoval(String logdir) {
+    Disk disk = _diskByLogdir.get(logdir);
+    if (disk == null) {
+      throw new IllegalArgumentException(String.format("Broker %d does not have disk %s.", _id, logdir));
+    }
+    // The capacity of a dead disk is already dropped from the broker capacity.
+    double capacityToDrop = disk.isAlive() && !disk.isMarkedForRemoval() ? disk.capacity() : 0.0;
+    _brokerCapacity[Resource.DISK.id()] -= capacityToDrop;
+    disk.markDiskForRemoval();
+    return capacityToDrop;
+  }
+
+  /**
    * Clear the content of monitoring data at each replica in the broker.
    */
   void clearLoad() {

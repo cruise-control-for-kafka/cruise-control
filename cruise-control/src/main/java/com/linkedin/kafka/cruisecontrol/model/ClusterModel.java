@@ -353,6 +353,22 @@ public class ClusterModel implements Serializable {
   }
 
   /**
+   * Mark the given disk for removal: drop its capacity from the capacity of its broker, host, rack and cluster, and set
+   * its capacity to 0, so that goals move all replicas off the disk.
+   *
+   * @param brokerId Id of the broker on which the disk resides.
+   * @param logdir   Log directory of the disk.
+   */
+  public void markDiskForRemoval(int brokerId, String logdir) {
+    Broker broker = broker(brokerId);
+    if (broker == null) {
+      throw new IllegalArgumentException("Broker " + brokerId + " does not exist.");
+    }
+    broker.rack().markDiskForRemoval(brokerId, logdir);
+    refreshCapacity();
+  }
+
+  /**
    * For replica movement across the disks of the same broker.
    *
    * @param tp                Partition Info of the replica to be relocated.

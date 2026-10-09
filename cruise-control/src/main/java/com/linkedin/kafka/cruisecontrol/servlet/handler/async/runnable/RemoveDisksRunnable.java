@@ -19,6 +19,7 @@ import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import com.linkedin.kafka.cruisecontrol.model.Disk;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.RemoveDisksParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.response.OptimizationResult;
+import com.linkedin.kafka.cruisecontrol.servlet.response.stats.BrokerStats;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.Set;
@@ -88,8 +89,10 @@ public class RemoveDisksRunnable extends GoalBasedOperationRunnable {
 
         checkCanRemoveDisks(_brokerIdAndLogdirs, clusterModel);
 
+        // Marking disks for removal drops their capacity, hence the load before the disk removal is taken beforehand.
+        BrokerStats brokerStatsBeforeRemoval = clusterModel.brokerStats(null);
         _brokerIdAndLogdirs.forEach((brokerId, logDirsToRemove) ->
-                logDirsToRemove.forEach(logDir -> clusterModel.broker(brokerId).disk(logDir).markDiskForRemoval())
+                logDirsToRemove.forEach(logDir -> clusterModel.markDiskForRemoval(brokerId, logDir))
         );
 
         OptimizationOptions optimizationOptions = computeOptimizationOptions(clusterModel,
@@ -105,7 +108,8 @@ public class RemoveDisksRunnable extends GoalBasedOperationRunnable {
                 _fastMode
         );
 
-        OptimizerResult result = _kafkaCruiseControl.optimizations(clusterModel, _goalsByPriority, _operationProgress, null, optimizationOptions);
+        OptimizerResult result = _kafkaCruiseControl.optimizations(clusterModel, _goalsByPriority, _operationProgress, null, optimizationOptions,
+                brokerStatsBeforeRemoval);
         if (!_dryRun) {
             _kafkaCruiseControl.executeProposals(
                     result.goalProposals(),

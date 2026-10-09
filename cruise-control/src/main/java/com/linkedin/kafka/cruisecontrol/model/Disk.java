@@ -35,6 +35,9 @@ public class Disk implements Comparable<Disk> {
 
   private final String _logDir;
   private double _capacity;
+  // The capacity of the disk before it was marked for removal -- only relevant if the disk is marked for removal.
+  private double _capacityBeforeRemoval;
+  private boolean _isMarkedForRemoval;
   private final Set<Replica> _replicas;
   private State _state;
   private final Broker _broker;
@@ -56,6 +59,7 @@ public class Disk implements Comparable<Disk> {
     _replicas = new HashSet<>();
     _utilization = 0;
     _sortedReplicas = new HashMap<>();
+    _isMarkedForRemoval = false;
 
     if (diskCapacity < 0) {
       _capacity = DEAD_DISK_CAPACITY;
@@ -80,6 +84,13 @@ public class Disk implements Comparable<Disk> {
 
   public boolean isAlive() {
     return _state == State.ALIVE;
+  }
+
+  /**
+   * @return {@code true} if the disk is marked for removal, {@code false} otherwise.
+   */
+  public boolean isMarkedForRemoval() {
+    return _isMarkedForRemoval;
   }
 
   public Set<Replica> replicas() {
@@ -111,9 +122,17 @@ public class Disk implements Comparable<Disk> {
   }
 
   /**
-   * Set disk capacity to 0 to mark it for removal.
+   * Set disk capacity to 0 to mark it for removal, so that goals move all replicas off the disk. The disk keeps its capacity
+   * before removal to report its load (see {@link #diskStats()}).
+   *
+   * Use {@link ClusterModel#markDiskForRemoval(int, String)} to also drop the disk capacity from the capacity of its broker,
+   * host, rack and cluster.
    */
-  public void markDiskForRemoval() {
+  void markDiskForRemoval() {
+    if (!_isMarkedForRemoval) {
+      _capacityBeforeRemoval = _capacity;
+      _isMarkedForRemoval = true;
+    }
     _capacity = 0;
   }
 
@@ -257,9 +276,10 @@ public class Disk implements Comparable<Disk> {
    * @return Disk stats.
    */
   public DiskStats diskStats() {
+    // An alive disk marked for removal reports its load relative to its capacity before removal, rather than as a dead disk.
     return new DiskStats((int) _replicas.stream().filter(Replica::isLeader).count(),
                          _replicas.size(),
                          _utilization,
-                         _capacity);
+                         _isMarkedForRemoval && isAlive() ? _capacityBeforeRemoval : _capacity);
   }
 }
