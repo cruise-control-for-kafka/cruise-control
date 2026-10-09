@@ -46,6 +46,51 @@ git commit -s -m "Your commit message"
 This adds a `Signed-off-by` line to your commit message with your name and email address.
 Make sure the name and email match your Git configuration (`user.name` and `user.email`).
 
+Use of Generative AI Tools
+==========================
+
+Code and other content generated in whole or in part using AI tools may be
+contributed. Follow the Linux Foundation
+[guidance on generative AI tools](https://www.linuxfoundation.org/legal/generative-ai).
+
+Before you contribute AI-generated output:
+
+- Confirm that the tool's terms of use do not restrict the output in a way that
+  conflicts with this project's Apache 2.0 license, its intellectual property
+  policies, or the [Open Source Definition](https://opensource.org/osd).
+- If the output includes pre-existing third-party copyrighted material, confirm
+  you have permission to contribute it under a license that complies with this
+  project's licensing policies, and include notice, attribution, and the
+  applicable license terms.
+- Follow your employer's policies when they are stricter.
+
+If an AI tool prepared any part of a commit, add a `Co-Authored-By` (or
+`Generated-by` / `Assisted-by`) trailer that names the tool and its version:
+
+```
+Co-Authored-By: <AI tool name and version>
+```
+
+Example:
+
+```
+Ensure tests wait for metadata propagation
+
+Executor tests fail when the broker has not yet propagated topic
+metadata after topic creation.
+
+Co-Authored-By: Cursor Grok 4.6
+Signed-off-by: Jane Developer <jane@example.com>
+```
+
+The `Signed-off-by` line from the Developer Certificate of Origin is still
+required. The human author remains responsible for the change.
+
+Do not attribute a commit to an AI tool when a human wrote the change
+without one.
+
+Coding agents should also follow [AGENTS.md](./AGENTS.md).
+
 Responsible Disclosure of Security Vulnerabilities
 ==================================================
 
