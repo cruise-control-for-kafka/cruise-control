@@ -42,6 +42,20 @@ class ReplicationThrottleHelper {
   static final String FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG = "follower.replication.throttled.replicas";
   public static final long CLIENT_REQUEST_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
   static final int RETRIES = 30;
+  // Backoff parameters for the config verification retry loop. The sleep before the n-th retry
+  // (n >= 1) is scale * base^n (10s, 20s, 30s, 30s, ...), capped at MAX_RETRY_SLEEP_MS so that a
+  // slow-to-verify config cannot park the executor thread for an unbounded exponential sleep.
+  static final long RETRY_BACKOFF_SCALE_MS = TimeUnit.SECONDS.toMillis(5);
+  static final int RETRY_BACKOFF_BASE = 2;
+  static final int MAX_RETRY_SLEEP_MS = (int) TimeUnit.SECONDS.toMillis(30);
+  // Config sources that a config entry can resolve from after a successful per-entity DELETE.
+  // Seeing one of these during verification means the delete itself worked; the value is
+  // inherited from a lower-precedence layer that CC does not manage.
+  private static final Set<ConfigEntry.ConfigSource> CONFIG_SOURCES_INHERITED_AFTER_DELETE = Collections.unmodifiableSet(
+      new HashSet<>(Arrays.asList(
+          ConfigEntry.ConfigSource.STATIC_BROKER_CONFIG,
+          ConfigEntry.ConfigSource.DYNAMIC_DEFAULT_BROKER_CONFIG,
+          ConfigEntry.ConfigSource.DEFAULT_CONFIG)));
 
   private final AdminClient _adminClient;
   private final Long _throttleRate;
@@ -136,15 +150,50 @@ class ReplicationThrottleHelper {
       brokersToRemoveThrottlesFrom.removeAll(brokersWithInProgressTasks);
 
       LOG.info("Removing replica movement throttles from brokers in the cluster: {}", brokersToRemoveThrottlesFrom);
+      // Attempt every removal before surfacing a failure, so that a broker or topic whose throttle
+      // cannot be removed or verified does not leave the remaining throttles in place.
+      Exception firstFailure = null;
       for (int broker : brokersToRemoveThrottlesFrom) {
-        removeThrottledRateFromBroker(broker);
+        try {
+          removeThrottledRateFromBroker(broker);
+        } catch (ExecutionException | TimeoutException | IllegalStateException e) {
+          LOG.warn("Failed to remove throttle rate from broker {}; continuing with the remaining throttles", broker, e);
+          firstFailure = addFailure(firstFailure, e);
+        }
       }
 
       Map<String, Set<String>> throttledReplicas = getThrottledReplicasByTopic(completedProposals);
       for (Map.Entry<String, Set<String>> entry : throttledReplicas.entrySet()) {
-        removeThrottledReplicasFromTopic(entry.getKey(), entry.getValue());
+        try {
+          removeThrottledReplicasFromTopic(entry.getKey(), entry.getValue());
+        } catch (ExecutionException | TimeoutException | IllegalStateException e) {
+          LOG.warn("Failed to remove throttled replicas from topic {}; continuing with the remaining throttles", entry.getKey(), e);
+          firstFailure = addFailure(firstFailure, e);
+        }
+      }
+
+      if (firstFailure != null) {
+        rethrow(firstFailure);
       }
     }
+  }
+
+  private static Exception addFailure(Exception firstFailure, Exception failure) {
+    if (firstFailure == null) {
+      return failure;
+    }
+    firstFailure.addSuppressed(failure);
+    return firstFailure;
+  }
+
+  private static void rethrow(Exception failure) throws ExecutionException, TimeoutException {
+    if (failure instanceof ExecutionException) {
+      throw (ExecutionException) failure;
+    }
+    if (failure instanceof TimeoutException) {
+      throw (TimeoutException) failure;
+    }
+    throw (RuntimeException) failure;
   }
 
   private boolean throttlingEnabled() {
@@ -364,13 +413,41 @@ class ReplicationThrottleHelper {
             .collect(HashMap::new, (m, o) -> m.put(o.configEntry().name(), o.configEntry().value()), HashMap::putAll);
     boolean retryResponse = CruiseControlMetricsUtils.retry(() -> {
       try {
-        return !configsEqual(getEntityConfigs(cf), expectedConfigs);
-      } catch (ExecutionException | InterruptedException | TimeoutException e) {
+        try {
+          return !configsEqual(getEntityConfigs(cf), expectedConfigs);
+        } catch (ExecutionException | TimeoutException e) {
+          if (isDeletedTopic(cf)) {
+            LOG.debug("Skipping config verification for topic {} since it no longer exists", cf.name());
+            return false;
+          }
+          // Keep retrying: a failed read must not let an unverified config pass silently.
+          LOG.warn("Failed to read configs for {}, will retry", cf, e);
+          return true;
+        }
+      } catch (InterruptedException e) {
+        LOG.warn("Interrupted while verifying configs {} for {}, skipping verification", ops, cf, e);
+        Thread.currentThread().interrupt();
         return false;
       }
-    }, _retries);
+    }, RETRY_BACKOFF_SCALE_MS, RETRY_BACKOFF_BASE, _retries, MAX_RETRY_SLEEP_MS);
     if (!retryResponse) {
       throw new IllegalStateException("The following configs " + ops + " were not applied to " + cf + " within the time limit");
+    }
+  }
+
+  /**
+   * @param cf The config resource whose read failed.
+   * @return {@code true} if the resource is a topic that is confirmed to no longer exist, {@code false} otherwise
+   * (including when existence cannot be determined).
+   */
+  private boolean isDeletedTopic(ConfigResource cf) throws InterruptedException {
+    if (cf.type() != ConfigResource.Type.TOPIC) {
+      return false;
+    }
+    try {
+      return !topicExists(cf.name());
+    } catch (ExecutionException | TimeoutException e) {
+      return false;
     }
   }
 
@@ -381,8 +458,13 @@ class ReplicationThrottleHelper {
         if (entry.getValue() != null) {
           return false;
         }
-      } else if (configEntry.source().equals(ConfigEntry.ConfigSource.STATIC_BROKER_CONFIG) && entry.getValue() == null) {
-        LOG.debug("Found static broker config: {}, skipping comparison", configEntry);
+      } else if (entry.getValue() == null && CONFIG_SOURCES_INHERITED_AFTER_DELETE.contains(configEntry.source())) {
+        // A deleted per-entity config can still resolve to a value inherited from a
+        // lower-precedence layer (static broker config, cluster-wide dynamic default, or the
+        // Kafka default). The deletion itself succeeded, so skip the comparison; otherwise
+        // verification of the delete would never converge (e.g. when a cluster-wide default
+        // replication throttle is set via kafka-configs --entity-default).
+        LOG.debug("Config {} resolves from {} after deletion, skipping comparison", configEntry, configEntry.source());
       } else if (!Objects.equals(entry.getValue(), configEntry.value())) {
         return false;
       }
