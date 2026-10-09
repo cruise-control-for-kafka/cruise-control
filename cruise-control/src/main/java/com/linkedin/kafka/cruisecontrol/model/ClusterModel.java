@@ -662,6 +662,20 @@ public class ClusterModel implements Serializable {
   }
 
   /**
+   * @param optimizationOptions Options to use in checking the number of racks that are alive and allowed replica moves.
+   * @return The number of alive racks in the cluster that are allowed replica moves.
+   */
+  public int numAliveRacksAllowedReplicaMoves(OptimizationOptions optimizationOptions) {
+    int numAliveRacksAllowedReplicaMoves = 0;
+    for (Rack rack : _racksById.values()) {
+      if (rack.isAliveAndAllowedReplicaMoves(optimizationOptions)) {
+        numAliveRacksAllowedReplicaMoves++;
+      }
+    }
+    return numAliveRacksAllowedReplicaMoves;
+  }
+
+  /**
    * Get the number of replicas with the given topic name in cluster.
    *
    * @param topic Name of the topic for which the number of replicas in cluster will be counted.

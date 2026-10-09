@@ -31,4 +31,5 @@ public interface BrokerCapacityConfigResolver extends CruiseControlConfigurable,
    */
   BrokerCapacityInfo capacityForBroker(String rack, String host, int brokerId, long timeoutMs, boolean allowCapacityEstimation)
       throws TimeoutException, BrokerCapacityResolutionException;
+  boolean isJbodKafkaCluster();
 }

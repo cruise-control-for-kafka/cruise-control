@@ -70,6 +70,32 @@ public class RebalanceRunnable extends GoalBasedOperationRunnable {
   }
 
   public RebalanceRunnable(KafkaCruiseControl kafkaCruiseControl,
+                           List<String> selfHealingGoals,
+                           boolean allowCapacityEstimation,
+                           boolean excludeRecentlyDemotedBrokers,
+                           boolean excludeRecentlyRemovedBrokers,
+                           String anomalyId,
+                           Supplier<String> reasonSupplier,
+                           boolean stopOngoingExecution,
+                           boolean skipHardGoalCheck,
+                           boolean ignoreProposalCache,
+                           boolean isRebalanceDiskMode) {
+    super(kafkaCruiseControl, new OperationFuture("Rebalance for Self-Healing"), selfHealingGoals, allowCapacityEstimation,
+            excludeRecentlyDemotedBrokers, excludeRecentlyRemovedBrokers, anomalyId, reasonSupplier, stopOngoingExecution, skipHardGoalCheck);
+    _concurrentInterBrokerPartitionMovements = SELF_HEALING_CONCURRENT_MOVEMENTS;
+    _maxInterBrokerPartitionMovements = SELF_HEALING_CONCURRENT_MOVEMENTS;
+    _concurrentIntraBrokerPartitionMovements = SELF_HEALING_CONCURRENT_MOVEMENTS;
+    _clusterLeaderMovementConcurrency = SELF_HEALING_CONCURRENT_MOVEMENTS;
+    _brokerLeaderMovementConcurrency = SELF_HEALING_CONCURRENT_MOVEMENTS;
+    _executionProgressCheckIntervalMs = SELF_HEALING_EXECUTION_PROGRESS_CHECK_INTERVAL_MS;
+    _replicaMovementStrategy = SELF_HEALING_REPLICA_MOVEMENT_STRATEGY;
+    _replicationThrottle = kafkaCruiseControl.config().getLong(ExecutorConfig.DEFAULT_REPLICATION_THROTTLE_CONFIG);
+    _ignoreProposalCache = ignoreProposalCache;
+    _destinationBrokerIds = SELF_HEALING_DESTINATION_BROKER_IDS;
+    _isRebalanceDiskMode = isRebalanceDiskMode;
+  }
+
+  public RebalanceRunnable(KafkaCruiseControl kafkaCruiseControl,
                            OperationFuture future,
                            RebalanceParameters parameters,
                            String uuid) {

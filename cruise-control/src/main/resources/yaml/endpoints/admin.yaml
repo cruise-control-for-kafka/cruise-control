@@ -12,6 +12,7 @@ AdminEndpoint:
             type: string
             enum:
               - GOAL_VIOLATION
+              - INTRA_BROKER_GOAL_VIOLATION
               - BROKER_FAILURE
               - METRIC_ANOMALY
               - DISK_FAILURE
@@ -26,6 +27,7 @@ AdminEndpoint:
             type: string
             enum:
               - GOAL_VIOLATION
+              - INTRA_BROKER_GOAL_VIOLATION
               - BROKER_FAILURE
               - METRIC_ANOMALY
               - DISK_FAILURE

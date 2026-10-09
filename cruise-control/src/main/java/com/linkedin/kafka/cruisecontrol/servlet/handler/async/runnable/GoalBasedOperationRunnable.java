@@ -91,6 +91,25 @@ public abstract class GoalBasedOperationRunnable extends OperationRunnable {
          SELF_HEALING_IS_TRIGGERED_BY_USER_REQUEST, SELF_HEALING_FAST_MODE);
   }
 
+  /**
+   * Constructor to be used for creating a runnable for self-healing.
+   */
+  public GoalBasedOperationRunnable(KafkaCruiseControl kafkaCruiseControl,
+                                    OperationFuture future,
+                                    List<String> goals,
+                                    boolean allowCapacityEstimation,
+                                    boolean excludeRecentlyDemotedBrokers,
+                                    boolean excludeRecentlyRemovedBrokers,
+                                    String uuid,
+                                    Supplier<String> reasonSupplier,
+                                    boolean stopOngoingExecution,
+                                    boolean skipHardGoalCheck) {
+    this(kafkaCruiseControl, future, SELF_HEALING_DRYRUN, goals, stopOngoingExecution,
+            SELF_HEALING_MODEL_COMPLETENESS_REQUIREMENTS, skipHardGoalCheck, SELF_HEALING_EXCLUDED_TOPICS,
+            allowCapacityEstimation, excludeRecentlyDemotedBrokers, excludeRecentlyRemovedBrokers, uuid, reasonSupplier,
+            SELF_HEALING_IS_TRIGGERED_BY_USER_REQUEST, SELF_HEALING_FAST_MODE);
+  }
+
   public GoalBasedOperationRunnable(KafkaCruiseControl kafkaCruiseControl,
                                     OperationFuture future,
                                     boolean dryRun,

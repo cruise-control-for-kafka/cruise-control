@@ -15,6 +15,7 @@ import java.util.Map;
 
 import static com.linkedin.cruisecontrol.CruiseControlUtils.utcDateFor;
 import static com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyType.GOAL_VIOLATION;
+import static com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION;
 
 @JsonResponseClass
 public class AnomalyDetails {
@@ -73,6 +74,15 @@ public class AnomalyDetails {
         anomalyDetails.put(UNFIXABLE_VIOLATED_GOALS, violatedGoalsByFixability.getOrDefault(false, Collections.emptyList()));
         if (_hasFixStarted) {
           anomalyDetails.put(OPTIMIZATION_RESULT, goalViolations.optimizationResult(_isJson));
+        }
+        break;
+      case INTRA_BROKER_GOAL_VIOLATION:
+        IntraBrokerGoalViolations intraBrokerGoalViolations = (IntraBrokerGoalViolations) _anomalyState.anomaly();
+        Map<Boolean, List<String>> violatedIntraBrokerGoalsByFixability = intraBrokerGoalViolations.violatedGoalsByFixability();
+        anomalyDetails.put(FIXABLE_VIOLATED_GOALS, violatedIntraBrokerGoalsByFixability.getOrDefault(true, Collections.emptyList()));
+        anomalyDetails.put(UNFIXABLE_VIOLATED_GOALS, violatedIntraBrokerGoalsByFixability.getOrDefault(false, Collections.emptyList()));
+        if (_hasFixStarted) {
+          anomalyDetails.put(OPTIMIZATION_RESULT, intraBrokerGoalViolations.optimizationResult(_isJson));
         }
         break;
       case BROKER_FAILURE:

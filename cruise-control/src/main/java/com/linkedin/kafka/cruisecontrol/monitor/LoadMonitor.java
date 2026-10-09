@@ -453,6 +453,41 @@ public class LoadMonitor {
   }
 
   /**
+   * Get the most recent cluster load model before the given timestamp.
+   *
+   * @param nowMs The current time in millisecond.
+   * @param requirements the load requirements for getting the cluster model.
+   * @param populateReplicaPlacementInfo whether populate replica placement information.
+   * @param allowCapacityEstimation whether allow capacity estimation in cluster model if the underlying live broker capacity is unavailable.
+   * @param operationProgress the progress to report.
+   * @return A cluster model with the configured number of windows whose timestamp is before given timestamp.
+   * @throws NotEnoughValidWindowsException If there is not enough sample to generate cluster model.
+   * @throws TimeoutException If broker capacity resolver is unable to resolve broker capacity in time.
+   * @throws BrokerCapacityResolutionException If broker capacity resolver fails to resolve broker capacity.
+   */
+  public ClusterModel clusterModel(long nowMs,
+                                   ModelCompletenessRequirements requirements,
+                                   boolean populateReplicaPlacementInfo,
+                                   boolean allowCapacityEstimation,
+                                   OperationProgress operationProgress)
+          throws NotEnoughValidWindowsException, TimeoutException, BrokerCapacityResolutionException {
+    ClusterModel clusterModel = clusterModel(DEFAULT_START_TIME_FOR_CLUSTER_MODEL,
+                                             nowMs,
+                                             requirements,
+                                             populateReplicaPlacementInfo,
+                                             allowCapacityEstimation,
+                                             operationProgress);
+    // Micro optimization: put the broker stats construction out of the lock.
+    BrokerStats brokerStats = clusterModel.brokerStats(_config);
+    // update the cached brokerLoadStats
+    synchronized (this) {
+      _cachedBrokerLoadStats = brokerStats;
+      _cachedBrokerLoadGeneration = clusterModel.generation();
+    }
+    return clusterModel;
+  }
+
+  /**
    * Get the cluster load model for a time range.
    *
    * @param from start of the time window
