@@ -131,6 +131,10 @@ public class Executor {
   // movements of an ongoing execution are being executed. It enables dynamically updating the replication throttle
   // of the ongoing execution (see {@link #updateOngoingExecutionReplicationThrottle(long)}).
   private volatile ReplicationThrottleHelper _ongoingExecutionThrottleHelper;
+  // The log dir throttle helper of the ongoing execution -- i.e. non-null only while the intra-broker replica movements
+  // of an ongoing execution are being executed. It enables dynamically updating the log dir throttle of the ongoing
+  // execution (see {@link #updateOngoingExecutionLogDirThrottle(long)}).
+  private volatile LogDirThrottleHelper _ongoingExecutionLogDirThrottleHelper;
   // TODO: Execution history is currently kept in memory, but ideally we should move it to a persistent store.
   private final long _demotionHistoryRetentionTimeMs;
   private final long _removalHistoryRetentionTimeMs;
@@ -1079,6 +1083,36 @@ public class Executor {
   }
 
   /**
+   * Dynamically update the log dir throttle of the ongoing execution. The new throttle rate is applied to (1) the brokers
+   * participating in the in-progress intra-broker replica movements right away and (2) the brokers participating in the
+   * upcoming intra-broker replica movements of the ongoing execution as their tasks start.
+   *
+   * @param newThrottleRate The new log dir throttle rate in bytes per second.
+   * @return {@code true} if the log dir throttle of the ongoing execution has been updated, {@code false} if there is no
+   * ongoing execution with remaining intra-broker replica movements to throttle.
+   */
+  public boolean updateOngoingExecutionLogDirThrottle(long newThrottleRate) {
+    if (newThrottleRate < 1) {
+      throw new IllegalArgumentException(String.format("Requested log dir throttle must be positive (Requested: %d).",
+                                                       newThrottleRate));
+    }
+    LogDirThrottleHelper logDirThrottleHelper = _ongoingExecutionLogDirThrottleHelper;
+    if (!_hasOngoingExecution || logDirThrottleHelper == null) {
+      LOG.info("Skip updating log dir throttle to {} bytes/sec since there is no ongoing intra-broker replica movement.",
+               newThrottleRate);
+      return false;
+    }
+    List<ExecutionTask> inProgressTasks = inExecutionTasks().stream()
+        .filter(task -> task.state() == ExecutionTaskState.IN_PROGRESS && task.type() == INTRA_BROKER_REPLICA_ACTION)
+        .collect(Collectors.toList());
+    boolean updated = logDirThrottleHelper.updateThrottleRate(newThrottleRate, inProgressTasks);
+    if (updated) {
+      LOG.info("Log dir throttle of the ongoing execution is updated to {} bytes/sec.", newThrottleRate);
+    }
+    return updated;
+  }
+
+  /**
    * Set the execution mode of the tasks to keep track of the ongoing execution mode via sensors.
    *
    * @param isKafkaAssignerMode {@code true} if kafka assigner mode, {@code false} otherwise.
@@ -1809,40 +1843,46 @@ public class Executor {
       long totalDataToMoveInMB = _executionTaskManager.remainingIntraBrokerDataToMoveInMB();
       long startTime = System.currentTimeMillis();
       LOG.info("User task {}: Starting {} intra-broker partition movements.", _uuid, numTotalPartitionMovements);
+      // Expose the log dir throttle helper to support dynamically updating the log dir throttle of the ongoing execution.
+      _ongoingExecutionLogDirThrottleHelper = _logDirThrottleHelper;
 
-      int partitionsToMove = numTotalPartitionMovements;
-      // Exhaust all the pending partition movements.
-      while ((partitionsToMove > 0 || !inExecutionTasks().isEmpty()) && _stopSignal.get() == NO_STOP_EXECUTION) {
-        // Get tasks to execute.
-        List<ExecutionTask> tasksToExecute = _executionTaskManager.getIntraBrokerReplicaMovementTasks();
-        LOG.info("User task {}: Executor will execute {} task(s)", _uuid, tasksToExecute.size());
+      try {
+        int partitionsToMove = numTotalPartitionMovements;
+        // Exhaust all the pending partition movements.
+        while ((partitionsToMove > 0 || !inExecutionTasks().isEmpty()) && _stopSignal.get() == NO_STOP_EXECUTION) {
+          // Get tasks to execute.
+          List<ExecutionTask> tasksToExecute = _executionTaskManager.getIntraBrokerReplicaMovementTasks();
+          LOG.info("User task {}: Executor will execute {} task(s)", _uuid, tasksToExecute.size());
 
-        if (!tasksToExecute.isEmpty()) {
-          _logDirThrottleHelper.setThrottles(tasksToExecute);
-          // Execute the tasks.
-          _executionTaskManager.markTasksInProgress(tasksToExecute);
-          executeIntraBrokerReplicaMovements(tasksToExecute, _adminClient, _executionTaskManager, _config);
+          if (!tasksToExecute.isEmpty()) {
+            _logDirThrottleHelper.setThrottles(tasksToExecute);
+            // Execute the tasks.
+            _executionTaskManager.markTasksInProgress(tasksToExecute);
+            executeIntraBrokerReplicaMovements(tasksToExecute, _adminClient, _executionTaskManager, _config);
+          }
+          // Wait indefinitely for partition movements to finish.
+          waitForIntraBrokerReplicaTasksToFinish();
+          partitionsToMove = _executionTaskManager.numRemainingIntraBrokerPartitionMovements();
+          int numFinishedPartitionMovements = _executionTaskManager.numFinishedIntraBrokerPartitionMovements();
+          long finishedDataToMoveInMB = _executionTaskManager.finishedIntraBrokerDataToMoveInMB();
+          updatePartitionMovementMetrics(numFinishedPartitionMovements, finishedDataToMoveInMB, System.currentTimeMillis() - startTime);
+          LOG.info("User task {}: {}/{} ({}%) intra-broker partition movements completed. {}/{} ({}%) MB have been moved.",
+                   _uuid,
+                   numFinishedPartitionMovements, numTotalPartitionMovements,
+                   String.format("%.2f", numFinishedPartitionMovements * UNIT_INTERVAL_TO_PERCENTAGE / numTotalPartitionMovements),
+                   finishedDataToMoveInMB, totalDataToMoveInMB,
+                   totalDataToMoveInMB == 0 ? 100 : String.format("%.2f", finishedDataToMoveInMB * UNIT_INTERVAL_TO_PERCENTAGE
+                                                                          / totalDataToMoveInMB));
         }
-        // Wait indefinitely for partition movements to finish.
-        waitForIntraBrokerReplicaTasksToFinish();
-        partitionsToMove = _executionTaskManager.numRemainingIntraBrokerPartitionMovements();
-        int numFinishedPartitionMovements = _executionTaskManager.numFinishedIntraBrokerPartitionMovements();
-        long finishedDataToMoveInMB = _executionTaskManager.finishedIntraBrokerDataToMoveInMB();
-        updatePartitionMovementMetrics(numFinishedPartitionMovements, finishedDataToMoveInMB, System.currentTimeMillis() - startTime);
-        LOG.info("User task {}: {}/{} ({}%) intra-broker partition movements completed. {}/{} ({}%) MB have been moved.",
-                 _uuid,
-                 numFinishedPartitionMovements, numTotalPartitionMovements,
-                 String.format("%.2f", numFinishedPartitionMovements * UNIT_INTERVAL_TO_PERCENTAGE / numTotalPartitionMovements),
-                 finishedDataToMoveInMB, totalDataToMoveInMB,
-                 totalDataToMoveInMB == 0 ? 100 : String.format("%.2f", finishedDataToMoveInMB * UNIT_INTERVAL_TO_PERCENTAGE
-                                                                        / totalDataToMoveInMB));
-      }
-      Set<ExecutionTask> inExecutionTasks = inExecutionTasks();
-      while (!inExecutionTasks.isEmpty()) {
-        LOG.info("User task {}: Waiting for {} tasks moving {} MB to finish", _uuid, inExecutionTasks.size(),
-                 _executionTaskManager.inExecutionIntraBrokerDataMovementInMB());
-        waitForIntraBrokerReplicaTasksToFinish();
-        inExecutionTasks = inExecutionTasks();
+        Set<ExecutionTask> inExecutionTasks = inExecutionTasks();
+        while (!inExecutionTasks.isEmpty()) {
+          LOG.info("User task {}: Waiting for {} tasks moving {} MB to finish", _uuid, inExecutionTasks.size(),
+                   _executionTaskManager.inExecutionIntraBrokerDataMovementInMB());
+          waitForIntraBrokerReplicaTasksToFinish();
+          inExecutionTasks = inExecutionTasks();
+        }
+      } finally {
+        _ongoingExecutionLogDirThrottleHelper = null;
       }
       if (inExecutionTasks().isEmpty()) {
         LOG.info("User task {}: Intra-broker partition movements finished.", _uuid);

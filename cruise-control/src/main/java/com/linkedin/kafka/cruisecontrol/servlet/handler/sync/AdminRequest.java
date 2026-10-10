@@ -41,6 +41,8 @@ public class AdminRequest extends AbstractSyncRequest {
    * {@link com.linkedin.kafka.cruisecontrol.executor.ExecutorState.State#NO_TASK_IN_PROGRESS} state.</li>
    * <li>Dynamically change the replication throttle of the ongoing execution. Has no effect if there is no ongoing
    * inter-broker replica movement.</li>
+   * <li>Dynamically change the log dir throttle of the ongoing execution. Has no effect if there is no ongoing
+   * intra-broker replica movement.</li>
    * <li>Enable/disable self-healing for the specified anomaly types.</li>
    * <li>Drop selected recently removed/demoted brokers.</li>
    * <li>Enable/disable the specified concurrency adjusters.</li>
@@ -172,6 +174,19 @@ public class AdminRequest extends AbstractSyncRequest {
                                 + " replica movement%n", replicationThrottle));
         LOG.info("Replication throttle requested by user is not updated to: {} bytes/sec since there is no ongoing"
                  + " inter-broker replica movement.", replicationThrottle);
+      }
+    }
+    // 7. Change the log dir throttle of the ongoing execution.
+    Long logDirThrottle = changeExecutionConcurrencyParameters.logDirThrottle();
+    if (logDirThrottle != null) {
+      if (_kafkaCruiseControl.updateOngoingExecutionLogDirThrottle(logDirThrottle)) {
+        sb.append(String.format("Log dir throttle of the ongoing execution is set to %d bytes/sec%n", logDirThrottle));
+        LOG.info("Log dir throttle of the ongoing execution is set to: {} bytes/sec by user.", logDirThrottle);
+      } else {
+        sb.append(String.format("Log dir throttle is not updated to %d bytes/sec since there is no ongoing intra-broker"
+                                + " replica movement%n", logDirThrottle));
+        LOG.info("Log dir throttle requested by user is not updated to: {} bytes/sec since there is no ongoing"
+                 + " intra-broker replica movement.", logDirThrottle);
       }
     }
 

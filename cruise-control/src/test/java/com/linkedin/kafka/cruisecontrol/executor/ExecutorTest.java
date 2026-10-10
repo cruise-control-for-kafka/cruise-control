@@ -439,6 +439,19 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
   }
 
   @Test
+  public void testUpdateOngoingExecutionLogDirThrottle() {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getExecutorProperties());
+    Executor executor = new Executor(config, null, new MetricRegistry(), null, EasyMock.mock(MetadataAdminClient.class),
+                                     null, EasyMock.mock(AnomalyDetectorManager.class));
+
+    // The requested log dir throttle must be positive.
+    assertThrows(IllegalArgumentException.class, () -> executor.updateOngoingExecutionLogDirThrottle(0L));
+    assertThrows(IllegalArgumentException.class, () -> executor.updateOngoingExecutionLogDirThrottle(-1L));
+    // Without an ongoing execution with intra-broker replica movements, the log dir throttle cannot be updated.
+    assertFalse(executor.updateOngoingExecutionLogDirThrottle(100L));
+  }
+
+  @Test
   public void testExecutionKnobs() {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getExecutorProperties());
     assertThrows(IllegalStateException.class,

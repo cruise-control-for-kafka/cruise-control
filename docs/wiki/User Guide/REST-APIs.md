@@ -632,6 +632,7 @@ Note sometimes the topic regex can be too long to put at POST request head, in t
 Some Cruise Control configs can be changed dynamically via `admin` endpoint, which includes
 * Dynamically change the partition and leadership concurrency and the interval between checking and updating (if needed) the progress of an ongoing execution.
 * Dynamically change the replication throttle applied to the inter-broker replica movements of an ongoing execution.
+* Dynamically change the log dir throttle applied to the intra-broker replica movements of an ongoing execution.
 * Enable/disable self-healing for the specified anomaly types.
 * Drop selected recently removed/demoted brokers.
 * Enable/disable the specified concurrency adjusters.
@@ -648,6 +649,7 @@ Supported parameters are:
 | concurrent_intra_broker_partition_movements   | integer   | upper bound of ongoing replica movements between disks within a broker    | N/A                   | yes       |
 | concurrent_leader_movements                   | integer   | upper bound of ongoing leadership movements                               | N/A                   | yes       |
 | replication_throttle                          | long      | replication throttle (bytes/second) for the ongoing execution             | N/A                   | yes       |
+| log_dir_throttle                              | long      | log dir throttle (bytes/second) for the ongoing execution                 | N/A                   | yes       |
 | drop_recently_removed_brokers                 | list      | list of id of recently removed brokers to be dropped                      | N/A                   | yes       |
 | drop_recently_demoted_brokers                 | list      | list of id of recently demoted brokers to be dropped                      | N/A                   | yes       |
 | doAs                                          | string    | propagated user by the trusted proxy service                              | null                  | yes       | 
@@ -675,6 +677,12 @@ To change the replication throttle of an ongoing execution, send POST request li
      POST /kafkacruisecontrol/admin?replication_throttle=[bytes_per_second]
 
 The new throttle rate is applied right away to the brokers participating in the in-progress inter-broker replica movements, and picked up by the upcoming inter-broker replica movements of the ongoing execution. It has no effect if there is no ongoing inter-broker replica movement.
+
+To change the log dir throttle of an ongoing execution, send POST request like:
+
+     POST /kafkacruisecontrol/admin?log_dir_throttle=[bytes_per_second]
+
+The new throttle rate (which must be positive) is applied right away to the brokers participating in the in-progress intra-broker replica movements, and picked up by the upcoming intra-broker replica movements of the ongoing execution -- even if the execution started without a log dir throttle. The original value of `replica.alter.log.dirs.io.max.bytes.per.second` on these brokers is still restored once the execution finishes. It has no effect if there is no ongoing intra-broker replica movement.
 
 To drop recently removed/demoted brokers, send POST request like:
 

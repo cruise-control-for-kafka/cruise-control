@@ -75,6 +75,13 @@ AdminEndpoint:
           type: integer
           format: int64
           minimum: 0
+      - name: log_dir_throttle
+        in: query
+        description: Change the log dir throttle (bytes/second) applied to the intra-broker replica movements of the ongoing execution.
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
       - name: drop_recently_removed_brokers
         in: query
         description: Drop broker ids from recently removed broker list so that Cruise Control can move replicas to these brokers.

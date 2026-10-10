@@ -228,6 +228,54 @@ public class ParameterUtilsTest {
   }
 
   @Test
+  public void testParseRequestedLogDirThrottle() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+
+    Map<String, String[]> paramMap = Collections.singletonMap(ParameterUtils.LOG_DIR_THROTTLE_PARAM,
+                                                              new String[]{ParameterUtils.LOG_DIR_THROTTLE_PARAM});
+
+    EasyMock.expect(mockRequest.getParameterMap()).andReturn(paramMap).once();
+    EasyMock.expect(mockRequest.getParameter(ParameterUtils.LOG_DIR_THROTTLE_PARAM)).andReturn(LOG_DIR_THROTTLE_STRING).once();
+
+    EasyMock.replay(mockRequest);
+
+    Long logDirThrottle = ParameterUtils.requestedLogDirThrottle(mockRequest);
+    Assert.assertEquals(Long.valueOf(LOG_DIR_THROTTLE_STRING), logDirThrottle);
+    EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testParseRequestedLogDirThrottleWithoutValueDoesNotFallBackToDefault() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    // No parameter string value in the parameter map -- the requested log dir throttle should be null rather than
+    // falling back to the default log dir throttle config.
+    EasyMock.expect(mockRequest.getParameterMap()).andReturn(Collections.emptyMap()).once();
+
+    EasyMock.replay(mockRequest);
+
+    Assert.assertNull(ParameterUtils.requestedLogDirThrottle(mockRequest));
+    EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testParseRequestedLogDirThrottleRejectsNonPositiveValue() {
+    for (String value : new String[]{"0", "-1"}) {
+      CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+
+      Map<String, String[]> paramMap = Collections.singletonMap(ParameterUtils.LOG_DIR_THROTTLE_PARAM,
+                                                                new String[]{ParameterUtils.LOG_DIR_THROTTLE_PARAM});
+
+      EasyMock.expect(mockRequest.getParameterMap()).andReturn(paramMap).once();
+      EasyMock.expect(mockRequest.getParameter(ParameterUtils.LOG_DIR_THROTTLE_PARAM)).andReturn(value).once();
+
+      EasyMock.replay(mockRequest);
+
+      Assert.assertThrows(UserRequestException.class, () -> ParameterUtils.requestedLogDirThrottle(mockRequest));
+      EasyMock.verify(mockRequest);
+    }
+  }
+
+  @Test
   public void testParseExecutionProgressCheckIntervalMsNoValue() {
     CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
     EasyMock.expect(mockRequest.getParameterMap()).andReturn(Collections.emptyMap()).once();

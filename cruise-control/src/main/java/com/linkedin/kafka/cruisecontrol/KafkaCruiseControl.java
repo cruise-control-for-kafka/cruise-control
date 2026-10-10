@@ -527,6 +527,17 @@ public class KafkaCruiseControl {
   }
 
   /**
+   * Dynamically update the log dir throttle of the ongoing execution (if any).
+   *
+   * @param logDirThrottle The new log dir throttle rate in bytes per second.
+   * @return {@code true} if the log dir throttle of the ongoing execution has been updated, {@code false} if
+   * there is no ongoing execution with remaining intra-broker replica movements to throttle.
+   */
+  public boolean updateOngoingExecutionLogDirThrottle(long logDirThrottle) {
+    return _executor.updateOngoingExecutionLogDirThrottle(logDirThrottle);
+  }
+
+  /**
    * Resume the activities of the load monitor.
    *
    * @param reason The reason for resuming metric sampling.
