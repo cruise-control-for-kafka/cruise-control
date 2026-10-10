@@ -14,6 +14,7 @@ import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeSmallReplica
 import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.common.config.ConfigDef;
+import org.apache.kafka.common.config.ConfigException;
 
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REASON_PARAM;
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
@@ -92,6 +93,16 @@ public final class ExecutorConfig {
   public static final Long DEFAULT_DEFAULT_REPLICATION_THROTTLE = null;
   public static final String DEFAULT_REPLICATION_THROTTLE_DOC = "The replication throttle applied to replicas being "
       + "moved, in bytes per second.";
+
+  /**
+   * <code>default.log.dir.throttle</code>
+   */
+  public static final String DEFAULT_LOG_DIR_THROTTLE_CONFIG = "default.log.dir.throttle";
+  public static final Long DEFAULT_DEFAULT_LOG_DIR_THROTTLE = null;
+  public static final String DEFAULT_LOG_DIR_THROTTLE_DOC = "The throttle applied to replicas being moved between the logdirs "
+      + "(i.e. disks) of the same broker, in bytes per second. During an execution, it is set as the broker config "
+      + "replica.alter.log.dirs.io.max.bytes.per.second on the brokers with intra-broker replica movements, and the original "
+      + "value of the config is restored once the execution finishes. If null, intra-broker replica movements are not throttled.";
 
   /**
    * <code>replica.movement.strategies</code>
@@ -548,6 +559,16 @@ public final class ExecutorConfig {
                             DEFAULT_DEFAULT_REPLICATION_THROTTLE,
                             ConfigDef.Importance.MEDIUM,
                             DEFAULT_REPLICATION_THROTTLE_DOC)
+                    .define(DEFAULT_LOG_DIR_THROTTLE_CONFIG,
+                            ConfigDef.Type.LONG,
+                            DEFAULT_DEFAULT_LOG_DIR_THROTTLE,
+                            ConfigDef.LambdaValidator.with((name, value) -> {
+                              if (value != null && (Long) value < 1) {
+                                throw new ConfigException(name, value, "Value must be null or at least 1.");
+                              }
+                            }, () -> "null or [1,...]"),
+                            ConfigDef.Importance.MEDIUM,
+                            DEFAULT_LOG_DIR_THROTTLE_DOC)
                     .define(REPLICA_MOVEMENT_STRATEGIES_CONFIG,
                             ConfigDef.Type.LIST,
                             DEFAULT_REPLICA_MOVEMENT_STRATEGIES,

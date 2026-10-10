@@ -161,6 +161,13 @@ RebalanceEndpoint:
           type: integer
           format: int64
           minimum: 1
+      - name: log_dir_throttle
+        in: query
+        description: Upper bound on the bandwidth in bytes per second used to move replicas between the disks (logdirs) of a broker.
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
       - name: execution_progress_check_interval_ms
         in: query
         description: Execution progress check interval in milliseconds.
