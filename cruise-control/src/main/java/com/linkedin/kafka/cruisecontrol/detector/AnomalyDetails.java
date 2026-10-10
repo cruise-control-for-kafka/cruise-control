@@ -66,7 +66,8 @@ public class AnomalyDetails {
                        _isJson ? _anomalyState.statusUpdateMs() : utcDateFor(_anomalyState.statusUpdateMs()));
     switch ((KafkaAnomalyType) _anomalyType) {
       case GOAL_VIOLATION:
-        GoalViolations goalViolations = (GoalViolations) _anomalyState.anomaly();
+      case INTRA_BROKER_GOAL_VIOLATION:
+        AbstractGoalViolations goalViolations = (AbstractGoalViolations) _anomalyState.anomaly();
         Map<Boolean, List<String>> violatedGoalsByFixability = goalViolations.violatedGoalsByFixability();
         anomalyDetails.put(FIXABLE_VIOLATED_GOALS, violatedGoalsByFixability.getOrDefault(true, Collections.emptyList()));
         anomalyDetails.put(UNFIXABLE_VIOLATED_GOALS, violatedGoalsByFixability.getOrDefault(false, Collections.emptyList()));

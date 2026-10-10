@@ -127,6 +127,7 @@ The returned state contains the following information:
   * selfHealingEnabled: Anomaly type for which self healing is enabled
   * selfHealingDisabled: Anomaly type for which self healing is disabled
   * recentGoalViolations: Recently detected goal violations
+  * recentIntraBrokerGoalViolations: Recently detected intra-broker goal violations (i.e. imbalance across the disks of brokers)
   * recentBrokerFailures: Recently detected broker failures
   * recentDiskFailures: Recently detected disk failures
   * recentMetricAnomalies: Recently detected metric anomalies
@@ -660,6 +661,8 @@ Supported parameters are:
 To Enable/disable self-healing, send POST request like:
 
      POST /kafkacruisecontrol/admin?disable_self_healing_for=[anomaly_type]
+
+Supported anomaly types are `broker_failure`, `goal_violation`, `intra_broker_goal_violation`, `metric_anomaly`, `disk_failure`, `topic_anomaly`, and `maintenance_event`.
 
 To increase/decrease execution concurrency, send POST request like:
 
