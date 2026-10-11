@@ -14,18 +14,27 @@ import com.linkedin.kafka.cruisecontrol.analyzer.goals.DiskUsageDistributionGoal
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.async.progress.OperationProgress;
 import com.linkedin.kafka.cruisecontrol.common.DeterministicCluster;
+import com.linkedin.kafka.cruisecontrol.common.TestConstants;
+import com.linkedin.kafka.cruisecontrol.config.BrokerCapacityInfo;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.executor.Executor;
+import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
+import com.linkedin.kafka.cruisecontrol.model.DiskBalanceStats;
+import com.linkedin.kafka.cruisecontrol.monitor.ModelGeneration;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.RebalanceParameters;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.apache.kafka.clients.admin.AdminClient;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.Time;
 import org.easymock.EasyMock;
 import org.junit.Test;
 
+import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils.getAggregatedMetricValues;
 import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils.goalsByPriority;
+import static com.linkedin.kafka.cruisecontrol.common.TestConstants.LOGDIR0;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -33,6 +42,7 @@ import static org.junit.Assert.assertTrue;
 
 public class OptimizationResultTest {
   private static final String INTER_BROKER_GOAL = DiskUsageDistributionGoal.class.getSimpleName();
+  private static final double DELTA = 1e-6;
   private static final String INTRA_BROKER_GOAL = IntraBrokerDiskUsageDistributionGoal.class.getSimpleName();
 
   /**
@@ -43,10 +53,30 @@ public class OptimizationResultTest {
    * @return The optimizer result.
    */
   private static OptimizerResult optimizeDiskAwareCluster(KafkaCruiseControlConfig config, String goalName) throws Exception {
+    return optimize(config, DeterministicCluster.unbalanced4(), goalName);
+  }
+
+  private static OptimizerResult optimize(KafkaCruiseControlConfig config, ClusterModel clusterModel, String goalName) throws Exception {
     GoalOptimizer goalOptimizer = new GoalOptimizer(config, null, Time.SYSTEM, new MetricRegistry(), EasyMock.mock(Executor.class),
                                                     EasyMock.mock(AdminClient.class));
-    return goalOptimizer.optimizations(DeterministicCluster.unbalanced4(), goalsByPriority(List.of(goalName), config),
-                                       new OperationProgress());
+    return goalOptimizer.optimizations(clusterModel, goalsByPriority(List.of(goalName), config), new OperationProgress());
+  }
+
+  /**
+   * @return A cluster model with a broker having two disks, where four replicas, each using 20% of a disk, reside on
+   * {@link TestConstants#LOGDIR0}.
+   */
+  private static ClusterModel clusterModelWithUnbalancedDisks() {
+    ClusterModel clusterModel = new ClusterModel(new ModelGeneration(0, 0L), 1.0);
+    clusterModel.createRack("r0");
+    clusterModel.createBroker("r0", "0", 0, new BrokerCapacityInfo(TestConstants.BROKER_CAPACITY, TestConstants.DISK_CAPACITY), true);
+    for (int partition = 0; partition < 4; partition++) {
+      TopicPartition tp = new TopicPartition("topic", partition);
+      clusterModel.createReplica("r0", 0, tp, 0, true, false, LOGDIR0, false);
+      clusterModel.setReplicaLoad("r0", 0, tp, getAggregatedMetricValues(1.0, 10.0, 10.0, 0.2 * TestConstants.LARGE_BROKER_CAPACITY / 2),
+                                  Collections.singletonList(1L));
+    }
+    return clusterModel;
   }
 
   private static String response(OptimizerResult optimizerResult, KafkaCruiseControlConfig config, boolean json) {
@@ -107,6 +137,48 @@ public class OptimizationResultTest {
       Map<String, Object> diskStatistics = cast(clusterModelStats.get("diskStatistics"));
       assertEquals(4, ((Number) diskStatistics.get("numAliveDisks")).intValue());
     }
+  }
+
+  @Test
+  public void testDiskBalanceBeforeAndAfterOptimization() throws Exception {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
+    OptimizerResult optimizerResult = optimize(config, clusterModelWithUnbalancedDisks(), INTRA_BROKER_GOAL);
+    DiskBalanceStats before = optimizerResult.clusterModelStatsBeforeOptimization().diskBalanceStats();
+    DiskBalanceStats after = optimizerResult.clusterModelStats().diskBalanceStats();
+    // Before optimization, the disks are at 80% and 0%; after it, at 40% each.
+    assertEquals(2, before.numUnbalancedDisks());
+    assertEquals(80.0, before.maxDiskUtilizationPct(), DELTA);
+    assertEquals(80.0, before.maxDiskUtilizationSpreadPct(), DELTA);
+    assertEquals(0, after.numUnbalancedDisks());
+    assertEquals(40.0, after.maxDiskUtilizationPct(), DELTA);
+    assertEquals(0.0, after.maxDiskUtilizationSpreadPct(), DELTA);
+
+    String summary = optimizerResult.getProposalSummary();
+    assertTrue(summary, summary.contains(String.format("%nDisk balance (before -> after): unbalanced disks 2 -> 0, max disk utilization "
+                                                       + "80.00%% -> 40.00%%, max spread within a broker 80.00 -> 0.00pp.")));
+    Map<String, Object> jsonSummary = optimizerResult.getProposalSummaryForJson();
+    assertEquals(before.numUnbalancedDisks(), jsonSummary.get("numUnbalancedDisksBefore"));
+    assertEquals(after.numUnbalancedDisks(), jsonSummary.get("numUnbalancedDisksAfter"));
+    assertEquals(before.maxDiskUtilizationPct(), jsonSummary.get("maxDiskUtilizationPctBefore"));
+    assertEquals(after.maxDiskUtilizationPct(), jsonSummary.get("maxDiskUtilizationPctAfter"));
+    assertEquals(before.maxDiskUtilizationSpreadPct(), jsonSummary.get("maxDiskUtilizationSpreadPctBefore"));
+    assertEquals(after.maxDiskUtilizationSpreadPct(), jsonSummary.get("maxDiskUtilizationSpreadPctAfter"));
+  }
+
+  @Test
+  public void testNoDiskBalanceWithoutDiskInfo() throws Exception {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
+    GoalOptimizer goalOptimizer = new GoalOptimizer(config, null, Time.SYSTEM, new MetricRegistry(), EasyMock.mock(Executor.class),
+                                                    EasyMock.mock(AdminClient.class));
+    OptimizerResult optimizerResult = goalOptimizer.optimizations(DeterministicCluster.unbalanced(),
+                                                                  goalsByPriority(List.of(INTER_BROKER_GOAL), config),
+                                                                  new OperationProgress());
+
+    assertFalse(optimizerResult.getProposalSummary().contains("Disk balance"));
+    assertFalse(optimizerResult.getProposalSummaryForJson().containsKey("numUnbalancedDisksBefore"));
+    String response = response(optimizerResult, config, false);
+    assertFalse(response, response.contains("DISKS"));
+    assertTrue(response, goalStats(response, INTER_BROKER_GOAL).contains("AVG:{"));
   }
 
   @SuppressWarnings("unchecked")

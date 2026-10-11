@@ -369,6 +369,11 @@ Similar to the [GET interface for getting proposals](https://github.com/cruise-c
 
 User can specify goals to use for rebalance via `goals` parameter. When `goals` is provided, the cached proposals will be ignored.
 
+If the cluster model has disk information (e.g. with `rebalance_disk=true`), the summary also shows the disk balance before and
+after the optimization (number of unbalanced disks, highest disk utilization, and largest utilization spread between the disks
+of a broker), and the stats of each goal include a `DISKS` line (`diskStatistics` in JSON). Intra-broker goals only move replicas
+between the disks of a broker, so their broker-level stats cannot change: the plaintext response only shows their `DISKS` line.
+
 When rebalancing a cluster, all the brokers in the cluster(except recently removed/demoted brokers if `exclude_recently_removed_brokers`/`exclude_recently_demoted_brokers` set to `true`) are eligible to give / receive replicas. All the brokers will be throttled during the partition movement. The throttling can be set in two ways.
 
 * By throttling number of replica concurrently moving into a broker. It is gated by the request parameter `concurrent_partition_movements_per_broker` or config value `num.concurrent.partition.movements.per.broker` (if request parameter is not set), `concurrent_intra_partition_movements` or config value `num.concurrent.intra.broker.partition.movements`. Similarly, the number of concurrent partition leadership changes is gated by request parameter `concurrent_leader_movements` or config value `num.concurrent.leader.movements`.
@@ -556,6 +561,9 @@ Replica movements are limited to disks within the same broker — there is no in
 If `verbose` is set to `true`, the response also shows the proposed replica movements -- including the log directories
 that each replica moves between -- and the load before the disk removal. The load after the disk removal shows the
 removed disks as empty, and the disk capacity of the brokers without the removed disks.
+
+The summary shows the disk balance before and after the disk removal, as for `rebalance` with `rebalance_disk=true`. The disks to
+remove are left out of the disk balance after the removal.
 
 ### Stop the current proposal execution task
 The following POST request will let Cruise Control stop an ongoing `rebalance`, `add_broker`,  `remove_broker`, `fix_offline_replica`, `topic_configuration`, `demote_broker` or `remove_disks` operation:

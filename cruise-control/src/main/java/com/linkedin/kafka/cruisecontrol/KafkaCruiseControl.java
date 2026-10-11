@@ -32,6 +32,7 @@ import com.linkedin.kafka.cruisecontrol.executor.Executor;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.ReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
+import com.linkedin.kafka.cruisecontrol.model.ClusterModelStats;
 import com.linkedin.kafka.cruisecontrol.model.ModelParameters;
 import com.linkedin.kafka.cruisecontrol.model.ModelUtils;
 import com.linkedin.kafka.cruisecontrol.model.ReplicaPlacementInfo;
@@ -606,7 +607,8 @@ public class KafkaCruiseControl {
   }
 
   /**
-   * See {@link GoalOptimizer#optimizations(ClusterModel, List, OperationProgress, Map, OptimizationOptions, BrokerStats)}.
+   * See {@link GoalOptimizer#optimizations(ClusterModel, List, OperationProgress, Map, OptimizationOptions, BrokerStats,
+   * ClusterModelStats)}.
    *
    * @param clusterModel The state of the cluster.
    * @param goalsByPriority the goals ordered by priority.
@@ -617,6 +619,8 @@ public class KafkaCruiseControl {
    * @param initBrokerStats The broker stats of the initial cluster state, if the passed in clusterModel has been modified in a
    *                        way that is not supposed to be reflected in the load before optimization (e.g. disks are marked
    *                        for removal), otherwise it is null.
+   * @param initClusterModelStats The cluster model stats of the initial cluster state, under the same condition as initBrokerStats,
+   *                              otherwise it is null.
    * @return Results of optimization containing the proposals and stats.
    */
   public synchronized OptimizerResult optimizations(ClusterModel clusterModel,
@@ -624,10 +628,11 @@ public class KafkaCruiseControl {
                                                     OperationProgress operationProgress,
                                                     Map<TopicPartition, List<ReplicaPlacementInfo>> initReplicaDistribution,
                                                     OptimizationOptions optimizationOptions,
-                                                    BrokerStats initBrokerStats)
+                                                    BrokerStats initBrokerStats,
+                                                    ClusterModelStats initClusterModelStats)
       throws KafkaCruiseControlException {
     return _goalOptimizer.optimizations(clusterModel, goalsByPriority, operationProgress, initReplicaDistribution, optimizationOptions,
-                                        initBrokerStats);
+                                        initBrokerStats, initClusterModelStats);
   }
 
   /**

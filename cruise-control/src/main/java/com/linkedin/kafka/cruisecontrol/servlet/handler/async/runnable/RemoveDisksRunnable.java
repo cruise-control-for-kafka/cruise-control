@@ -16,6 +16,7 @@ import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
 import com.linkedin.kafka.cruisecontrol.exception.KafkaCruiseControlException;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
+import com.linkedin.kafka.cruisecontrol.model.ClusterModelStats;
 import com.linkedin.kafka.cruisecontrol.model.Disk;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.RemoveDisksParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.response.OptimizationResult;
@@ -89,12 +90,6 @@ public class RemoveDisksRunnable extends GoalBasedOperationRunnable {
 
         checkCanRemoveDisks(_brokerIdAndLogdirs, clusterModel);
 
-        // Marking disks for removal drops their capacity, hence the load before the disk removal is taken beforehand.
-        BrokerStats brokerStatsBeforeRemoval = clusterModel.brokerStats(null);
-        _brokerIdAndLogdirs.forEach((brokerId, logDirsToRemove) ->
-                logDirsToRemove.forEach(logDir -> clusterModel.markDiskForRemoval(brokerId, logDir))
-        );
-
         OptimizationOptions optimizationOptions = computeOptimizationOptions(clusterModel,
                 false,
                 _kafkaCruiseControl,
@@ -108,8 +103,16 @@ public class RemoveDisksRunnable extends GoalBasedOperationRunnable {
                 _fastMode
         );
 
+        // Marking disks for removal drops their capacity, hence the load and stats before the disk removal are taken beforehand.
+        BrokerStats brokerStatsBeforeRemoval = clusterModel.brokerStats(null);
+        ClusterModelStats clusterModelStatsBeforeRemoval =
+                clusterModel.getClusterStats(new BalancingConstraint(_kafkaCruiseControl.config()), optimizationOptions);
+        _brokerIdAndLogdirs.forEach((brokerId, logDirsToRemove) ->
+                logDirsToRemove.forEach(logDir -> clusterModel.markDiskForRemoval(brokerId, logDir))
+        );
+
         OptimizerResult result = _kafkaCruiseControl.optimizations(clusterModel, _goalsByPriority, _operationProgress, null, optimizationOptions,
-                brokerStatsBeforeRemoval);
+                brokerStatsBeforeRemoval, clusterModelStatsBeforeRemoval);
         if (!_dryRun) {
             _kafkaCruiseControl.executeProposals(
                     result.goalProposals(),

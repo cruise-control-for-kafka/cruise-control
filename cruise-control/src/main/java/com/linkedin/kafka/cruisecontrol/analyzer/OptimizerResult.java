@@ -8,6 +8,7 @@ import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutionProposal;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModelStats;
+import com.linkedin.kafka.cruisecontrol.model.DiskBalanceStats;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelGeneration;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
@@ -60,6 +61,18 @@ public class OptimizerResult {
   private static final String PROVISION_STATUS = "provisionStatus";
   @JsonResponseField
   private static final String PROVISION_RECOMMENDATION = "provisionRecommendation";
+  @JsonResponseField(required = false)
+  private static final String NUM_UNBALANCED_DISKS_BEFORE = "numUnbalancedDisksBefore";
+  @JsonResponseField(required = false)
+  private static final String NUM_UNBALANCED_DISKS_AFTER = "numUnbalancedDisksAfter";
+  @JsonResponseField(required = false)
+  private static final String MAX_DISK_UTILIZATION_PCT_BEFORE = "maxDiskUtilizationPctBefore";
+  @JsonResponseField(required = false)
+  private static final String MAX_DISK_UTILIZATION_PCT_AFTER = "maxDiskUtilizationPctAfter";
+  @JsonResponseField(required = false)
+  private static final String MAX_DISK_UTILIZATION_SPREAD_PCT_BEFORE = "maxDiskUtilizationSpreadPctBefore";
+  @JsonResponseField(required = false)
+  private static final String MAX_DISK_UTILIZATION_SPREAD_PCT_AFTER = "maxDiskUtilizationSpreadPctAfter";
   private static final String VIOLATED = "VIOLATED";
   private static final String FIXED = "FIXED";
   private static final String NO_ACTION = "NO-ACTION";
@@ -71,6 +84,7 @@ public class OptimizerResult {
   private final BrokerStats _brokerStatsBeforeOptimization;
   private final BrokerStats _brokerStatsAfterOptimization;
   private final ModelGeneration _modelGeneration;
+  private final ClusterModelStats _clusterModelStatsBeforeOptimization;
   private final ClusterModelStats _clusterModelStats;
   private final Map<Integer, String> _capacityEstimationInfoByBrokerId;
   private final OptimizationOptions _optimizationOptions;
@@ -85,6 +99,7 @@ public class OptimizerResult {
                   Set<String> violatedGoalNamesAfterOptimization,
                   Set<ExecutionProposal> proposals,
                   BrokerStats brokerStatsBeforeOptimization,
+                  ClusterModelStats clusterModelStatsBeforeOptimization,
                   ClusterModel clusterModel,
                   OptimizationOptions optimizationOptions,
                   Map<String, Double> balancednessCostByGoal,
@@ -110,6 +125,7 @@ public class OptimizerResult {
     _violatedGoalNamesAfterOptimization = violatedGoalNamesAfterOptimization;
     _proposals = proposals;
     _brokerStatsBeforeOptimization = brokerStatsBeforeOptimization;
+    _clusterModelStatsBeforeOptimization = clusterModelStatsBeforeOptimization;
     _brokerStatsAfterOptimization = clusterModel.brokerStats(null);
     _modelGeneration = clusterModel.generation();
     _clusterModelStats = clusterModel.getClusterStats(balancingConstraint, optimizationOptions);
@@ -183,6 +199,13 @@ public class OptimizerResult {
    */
   public ModelGeneration modelGeneration() {
     return _modelGeneration;
+  }
+
+  /**
+   * @return The cluster model stats before optimization.
+   */
+  public ClusterModelStats clusterModelStatsBeforeOptimization() {
+    return _clusterModelStatsBeforeOptimization;
   }
 
   /**
@@ -305,7 +328,28 @@ public class OptimizerResult {
                          _clusterModelStats.monitoredPartitionsPercentage(), excludedTopics(),
                          excludedBrokersForLeadership(), excludedBrokersForReplicaMove(), _clusterModelStats.toStringCounts(),
                          _onDemandBalancednessScoreBefore, _onDemandBalancednessScoreAfter, _provisionResponse.status(),
-                         recommendation.isEmpty() ? "" : String.format("%nProvision Recommendation: %s", recommendation));
+                         recommendation.isEmpty() ? "" : String.format("%nProvision Recommendation: %s", recommendation))
+           + diskBalanceSummary();
+  }
+
+  /**
+   * @return The disk balance before and after optimization in plaintext format, or an empty string if the cluster model has no
+   * disk information.
+   */
+  private String diskBalanceSummary() {
+    DiskBalanceStats before = diskBalanceStatsBeforeOptimization();
+    DiskBalanceStats after = _clusterModelStats.diskBalanceStats();
+    if (before == null || after == null) {
+      return "";
+    }
+    return String.format("%nDisk balance (before -> after): unbalanced disks %d -> %d, max disk utilization %.2f%% -> %.2f%%, "
+                         + "max spread within a broker %.2f -> %.2fpp.",
+                         before.numUnbalancedDisks(), after.numUnbalancedDisks(), before.maxDiskUtilizationPct(),
+                         after.maxDiskUtilizationPct(), before.maxDiskUtilizationSpreadPct(), after.maxDiskUtilizationSpreadPct());
+  }
+
+  private DiskBalanceStats diskBalanceStatsBeforeOptimization() {
+    return _clusterModelStatsBeforeOptimization == null ? null : _clusterModelStatsBeforeOptimization.diskBalanceStats();
   }
 
   /**
@@ -328,6 +372,16 @@ public class OptimizerResult {
     ret.put(ON_DEMAND_BALANCEDNESS_SCORE_AFTER, _onDemandBalancednessScoreAfter);
     ret.put(PROVISION_STATUS, _provisionResponse.status());
     ret.put(PROVISION_RECOMMENDATION, _provisionResponse.recommendation());
+    DiskBalanceStats diskBalanceStatsBefore = diskBalanceStatsBeforeOptimization();
+    DiskBalanceStats diskBalanceStatsAfter = _clusterModelStats.diskBalanceStats();
+    if (diskBalanceStatsBefore != null && diskBalanceStatsAfter != null) {
+      ret.put(NUM_UNBALANCED_DISKS_BEFORE, diskBalanceStatsBefore.numUnbalancedDisks());
+      ret.put(NUM_UNBALANCED_DISKS_AFTER, diskBalanceStatsAfter.numUnbalancedDisks());
+      ret.put(MAX_DISK_UTILIZATION_PCT_BEFORE, diskBalanceStatsBefore.maxDiskUtilizationPct());
+      ret.put(MAX_DISK_UTILIZATION_PCT_AFTER, diskBalanceStatsAfter.maxDiskUtilizationPct());
+      ret.put(MAX_DISK_UTILIZATION_SPREAD_PCT_BEFORE, diskBalanceStatsBefore.maxDiskUtilizationSpreadPct());
+      ret.put(MAX_DISK_UTILIZATION_SPREAD_PCT_AFTER, diskBalanceStatsAfter.maxDiskUtilizationSpreadPct());
+    }
     return ret;
   }
 }

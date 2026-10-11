@@ -78,6 +78,15 @@ public class RemoveDisksRunnableTest {
     assertEquals(List.of(LOGDIR1), proposals.get(0).get("newReplicaLogdirs"));
     Map<String, Object> summary = cast(response.get("summary"));
     assertEquals(1, ((Number) summary.get("numIntraBrokerReplicaMovements")).intValue());
+
+    // The disk balance before the removal is taken before the disk to remove is marked for removal: both disks are unbalanced
+    // (50% and 0% for a broker at 25%). After the removal, the removed disk has no capacity and is left out.
+    assertEquals(2, ((Number) summary.get("numUnbalancedDisksBefore")).intValue());
+    assertEquals(0, ((Number) summary.get("numUnbalancedDisksAfter")).intValue());
+    assertEquals(50.0, (Double) summary.get("maxDiskUtilizationPctBefore"), DELTA);
+    assertEquals(50.0, (Double) summary.get("maxDiskUtilizationPctAfter"), DELTA);
+    assertEquals(50.0, (Double) summary.get("maxDiskUtilizationSpreadPctBefore"), DELTA);
+    assertEquals(0.0, (Double) summary.get("maxDiskUtilizationSpreadPctAfter"), DELTA);
   }
 
   @Test
@@ -93,6 +102,8 @@ public class RemoveDisksRunnableTest {
     assertTrue(response.contains("Stats for IntraBrokerDiskCapacityGoal"));
     assertTrue(response.contains("DISKS:{alive: 1 "));
     assertFalse(response.contains("AVG:{"));
+    assertTrue(response.contains("Disk balance (before -> after): unbalanced disks 2 -> 0, max disk utilization 50.00% -> 50.00%, "
+                                 + "max spread within a broker 50.00 -> 0.00pp."));
   }
 
   /**
@@ -125,9 +136,10 @@ public class RemoveDisksRunnableTest {
             .andReturn(ExecutorState.noTaskInProgress(Collections.emptySet(), Collections.emptySet()));
     EasyMock.expect(kafkaCruiseControl.excludedTopics(clusterModel, null)).andReturn(Collections.emptySet());
     EasyMock.expect(kafkaCruiseControl.optimizations(EasyMock.eq(clusterModel), EasyMock.anyObject(), EasyMock.anyObject(),
-                                                     EasyMock.isNull(), EasyMock.anyObject(), EasyMock.anyObject()))
+                                                     EasyMock.isNull(), EasyMock.anyObject(), EasyMock.anyObject(), EasyMock.anyObject()))
             .andAnswer(() -> goalOptimizer.optimizations(clusterModel, EasyMock.getCurrentArgument(1), EasyMock.getCurrentArgument(2),
-                                                         null, EasyMock.getCurrentArgument(4), EasyMock.getCurrentArgument(5)));
+                                                         null, EasyMock.getCurrentArgument(4), EasyMock.getCurrentArgument(5),
+                                                         EasyMock.getCurrentArgument(6)));
     EasyMock.replay(parameters, kafkaCruiseControl);
 
     RemoveDisksRunnable runnable = new RemoveDisksRunnable(kafkaCruiseControl, new OperationFuture("Remove disks"), parameters, "uuid");
