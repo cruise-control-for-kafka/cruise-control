@@ -89,6 +89,10 @@ public class RemoveDisksRunnableTest {
     assertTrue(response.contains("Current load:"));
     assertTrue(response.contains("Cluster load after removing disks"));
     assertFalse(response.contains("DEAD"));
+    // The goal of remove_disks is an intra-broker goal, which cannot change broker-level stats: only disk-level stats are shown.
+    assertTrue(response.contains("Stats for IntraBrokerDiskCapacityGoal"));
+    assertTrue(response.contains("DISKS:{alive: 1 "));
+    assertFalse(response.contains("AVG:{"));
   }
 
   /**

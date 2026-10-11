@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.apache.kafka.common.TopicPartition;
 
 import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.averageDiskUtilizationPercentage;
@@ -32,6 +33,8 @@ public class ClusterModelStats {
   private static final String METADATA = "metadata";
   @JsonResponseField
   private static final String STATISTICS = "statistics";
+  @JsonResponseField(required = false)
+  private static final String DISK_STATISTICS = "diskStatistics";
   private final Map<Statistic, Map<Resource, Double>> _resourceUtilizationStats;
   private final Map<Statistic, Double> _potentialNwOutUtilizationStats;
   private final Map<Statistic, Number> _replicaStats;
@@ -52,6 +55,8 @@ public class ClusterModelStats {
   // Aggregated standard deviation of disk utilization for the cluster.
   private double _diskUtilizationStDev;
   private Set<Integer> _brokersAllowedReplicaMove;
+  // Stats about the balance between the disks of each broker -- null if the cluster model has no disk information.
+  private DiskBalanceStats _diskBalanceStats;
 
   /**
    * Constructor for analysis stats.
@@ -71,6 +76,7 @@ public class ClusterModelStats {
     _numUnbalancedDisks = 0;
     _diskUtilizationStDev = 0;
     _brokersAllowedReplicaMove = Collections.emptySet();
+    _diskBalanceStats = null;
   }
 
   /**
@@ -98,6 +104,8 @@ public class ClusterModelStats {
     _numSnapshotWindows = clusterModel.load().numWindows();
     _monitoredPartitionsRatio = clusterModel.monitoredPartitionsRatio();
     populateStatsForDisks(balancingConstraint, aliveBrokers);
+    _diskBalanceStats = DiskBalanceStats.compute(brokers.stream().filter(Broker::isAlive).collect(Collectors.toList()),
+                                                 balancingConstraint);
     return this;
   }
 
@@ -229,15 +237,29 @@ public class ClusterModelStats {
   }
 
   /**
+   * @return Stats about the balance between the disks of each broker, or {@code null} if the cluster model has no disk
+   * information. Unlike {@link #numUnbalancedDisks()} and {@link #diskUtilizationStandardDeviation()}, these stats leave out
+   * disks with no capacity, such as disks marked for removal.
+   */
+  public DiskBalanceStats diskBalanceStats() {
+    return _diskBalanceStats;
+  }
+
+  /**
    * @return An object that can be further used to encode into JSON.
    */
   public Map<String, Object> getJsonStructure() {
-    return Map.of(METADATA, new ClusterModelStatsMetaData(numBrokers(), numReplicasInCluster(), numTopics()).getJsonStructure(),
-                  STATISTICS, new ClusterModelStatsValue(_resourceUtilizationStats,
-                                                         _potentialNwOutUtilizationStats,
-                                                         _replicaStats,
-                                                         _leaderReplicaStats,
-                                                         _topicReplicaStats).getJsonStructure());
+    Map<String, Object> jsonStructure = new HashMap<>();
+    jsonStructure.put(METADATA, new ClusterModelStatsMetaData(numBrokers(), numReplicasInCluster(), numTopics()).getJsonStructure());
+    jsonStructure.put(STATISTICS, new ClusterModelStatsValue(_resourceUtilizationStats,
+                                                             _potentialNwOutUtilizationStats,
+                                                             _replicaStats,
+                                                             _leaderReplicaStats,
+                                                             _topicReplicaStats).getJsonStructure());
+    if (_diskBalanceStats != null) {
+      jsonStructure.put(DISK_STATISTICS, _diskBalanceStats.getJsonStructure());
+    }
+    return jsonStructure;
   }
 
   /**
@@ -249,11 +271,12 @@ public class ClusterModelStats {
 
   @Override
   public String toString() {
-    return new ClusterModelStatsValue(_resourceUtilizationStats,
-                                      _potentialNwOutUtilizationStats,
-                                      _replicaStats,
-                                      _leaderReplicaStats,
-                                      _topicReplicaStats).toString();
+    String brokerStats = new ClusterModelStatsValue(_resourceUtilizationStats,
+                                                    _potentialNwOutUtilizationStats,
+                                                    _replicaStats,
+                                                    _leaderReplicaStats,
+                                                    _topicReplicaStats).toString();
+    return _diskBalanceStats == null ? brokerStats : String.format("%s%n%s", brokerStats, _diskBalanceStats);
   }
 
   /**

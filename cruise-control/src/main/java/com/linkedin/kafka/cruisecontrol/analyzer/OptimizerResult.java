@@ -78,6 +78,7 @@ public class OptimizerResult {
   private final double _onDemandBalancednessScoreAfter;
   private final Map<String, Duration> _optimizationDurationByGoal;
   private final ProvisionResponse _provisionResponse;
+  private final Set<String> _intraBrokerGoalNames;
 
   OptimizerResult(LinkedHashMap<Goal, ClusterModelStats> statsByGoalPriority,
                   Set<String> violatedGoalNamesBeforeOptimization,
@@ -88,7 +89,8 @@ public class OptimizerResult {
                   OptimizationOptions optimizationOptions,
                   Map<String, Double> balancednessCostByGoal,
                   Map<String, Duration> optimizationDurationByGoal,
-                  ProvisionResponse provisionResponse) {
+                  ProvisionResponse provisionResponse,
+                  Set<String> intraBrokerGoalNames) {
     validateNotNull(statsByGoalPriority, "The stats by goal priority cannot be null.");
     validateNotNull(optimizationDurationByGoal, "The optimization duration by goal priority cannot be null.");
     if (statsByGoalPriority.isEmpty()) {
@@ -118,6 +120,7 @@ public class OptimizerResult {
     _onDemandBalancednessScoreAfter = onDemandBalancednessScore(balancednessCostByGoal, _violatedGoalNamesAfterOptimization);
     _optimizationDurationByGoal = optimizationDurationByGoal;
     _provisionResponse = provisionResponse;
+    _intraBrokerGoalNames = intraBrokerGoalNames;
   }
 
   private double onDemandBalancednessScore(Map<String, Double> balancednessCostByGoal, Set<String> violatedGoals) {
@@ -142,6 +145,16 @@ public class OptimizerResult {
    */
   public LinkedHashMap<String, ClusterModelStats> statsByGoalName() {
     return _statsByGoalName;
+  }
+
+  /**
+   * @param goalName Goal name.
+   * @return {@code true} if the given goal is an intra-broker goal (see
+   * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#INTRA_BROKER_GOALS_CONFIG}), i.e. it moves replicas
+   * only between the disks of the same broker, hence does not change broker-level stats; {@code false} otherwise.
+   */
+  public boolean isIntraBrokerGoalName(String goalName) {
+    return _intraBrokerGoalNames.contains(goalName);
   }
 
   /**
