@@ -273,13 +273,43 @@ public class Disk implements Comparable<Disk> {
   }
 
   /**
-   * @return Disk stats.
+   * @return Disk stats, with a potential NW_OUT rate of 0 -- see {@link #diskStats(double)}.
    */
   public DiskStats diskStats() {
+    return diskStats(0.0);
+  }
+
+  /**
+   * Get the disk stats. The network rates are the total produce / consume traffic of the replicas on the disk as modeled by
+   * Cruise Control, not the I/O of the disk.
+   *
+   * @param potentialBytesOutRate The NW_OUT rate of the replicas on the disk if all of them were leaders. Computing it
+   *                              requires the leader of each partition, hence it is provided by the {@link ClusterModel}.
+   * @return Disk stats.
+   */
+  public DiskStats diskStats(double potentialBytesOutRate) {
+    int numLeaderReplicas = 0;
+    double leaderBytesInRate = 0.0;
+    double followerBytesInRate = 0.0;
+    double bytesOutRate = 0.0;
+    for (Replica replica : _replicas) {
+      double bytesInRate = replica.load().expectedUtilizationFor(Resource.NW_IN);
+      if (replica.isLeader()) {
+        numLeaderReplicas++;
+        leaderBytesInRate += bytesInRate;
+      } else {
+        followerBytesInRate += bytesInRate;
+      }
+      bytesOutRate += replica.load().expectedUtilizationFor(Resource.NW_OUT);
+    }
     // An alive disk marked for removal reports its load relative to its capacity before removal, rather than as a dead disk.
-    return new DiskStats((int) _replicas.stream().filter(Replica::isLeader).count(),
+    return new DiskStats(numLeaderReplicas,
                          _replicas.size(),
                          _utilization,
-                         _isMarkedForRemoval && isAlive() ? _capacityBeforeRemoval : _capacity);
+                         _isMarkedForRemoval && isAlive() ? _capacityBeforeRemoval : _capacity,
+                         leaderBytesInRate,
+                         followerBytesInRate,
+                         bytesOutRate,
+                         potentialBytesOutRate);
   }
 }

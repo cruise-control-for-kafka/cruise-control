@@ -1320,8 +1320,32 @@ public class ClusterModel implements Serializable {
     BrokerStats brokerStats = new BrokerStats(config);
     brokers().forEach(broker -> brokerStats.addSingleBrokerStats(broker,
                                                                  potentialLeadershipLoadFor(broker.id()).expectedUtilizationFor(Resource.NW_OUT),
+                                                                 potentialBytesOutRateByLogdir(broker.id()),
                                                                  _capacityEstimationInfoByBrokerId.get(broker.id()) != null));
     return brokerStats;
+  }
+
+  /**
+   * Get the NW_OUT rate that each disk of the given broker would serve if all the replicas on it were leaders, i.e. for each
+   * disk, the sum of the leader NW_OUT rate of the partitions it has a replica of. This is the per-disk breakdown of
+   * {@link #potentialLeadershipLoadFor(Integer)}.
+   *
+   * @param brokerId Id of the broker.
+   * @return The potential NW_OUT rate by logdir, or an empty map if the model has no disk information.
+   */
+  public Map<String, Double> potentialBytesOutRateByLogdir(int brokerId) {
+    Map<String, Double> potentialBytesOutRateByLogdir = new HashMap<>();
+    for (Disk disk : broker(brokerId).disks()) {
+      double potentialBytesOutRate = 0.0;
+      for (Replica replica : disk.replicas()) {
+        Replica leader = partition(replica.topicPartition()).leader();
+        if (leader != null) {
+          potentialBytesOutRate += leader.load().expectedUtilizationFor(Resource.NW_OUT);
+        }
+      }
+      potentialBytesOutRateByLogdir.put(disk.logDir(), potentialBytesOutRate);
+    }
+    return potentialBytesOutRateByLogdir;
   }
 
   /**

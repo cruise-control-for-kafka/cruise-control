@@ -13,6 +13,7 @@ import com.linkedin.kafka.cruisecontrol.servlet.response.AbstractCruiseControlRe
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,6 +33,7 @@ public class BrokerStats extends AbstractCruiseControlResponse {
   protected static final String HOSTS = "hosts";
   @JsonResponseField
   protected static final String BROKERS = "brokers";
+  private static final String DEAD_STATE = "DEAD";
   protected final List<SingleBrokerStats> _brokerStats;
   protected final SortedMap<String, SingleHostStats> _hostStats;
   protected int _hostFieldLength;
@@ -61,9 +63,24 @@ public class BrokerStats extends AbstractCruiseControlResponse {
    * @param isEstimated {@code true} if the broker capacity is estimated, {@code false} otherwise.
    */
   public void addSingleBrokerStats(Broker broker, double potentialBytesOutRate, boolean isEstimated) {
+    addSingleBrokerStats(broker, potentialBytesOutRate, Collections.emptyMap(), isEstimated);
+  }
+
+  /**
+   * Add single broker stats.
+   *
+   * @param broker The broker whose stats are requested.
+   * @param potentialBytesOutRate Potential bytes out rate.
+   * @param potentialBytesOutRateByLogdir Potential bytes out rate of each disk of the broker (a missing logdir is reported as 0).
+   * @param isEstimated {@code true} if the broker capacity is estimated, {@code false} otherwise.
+   */
+  public void addSingleBrokerStats(Broker broker,
+                                   double potentialBytesOutRate,
+                                   Map<String, Double> potentialBytesOutRateByLogdir,
+                                   boolean isEstimated) {
     String host = broker.host().name();
     String rack = broker.rack().id();
-    SingleBrokerStats singleBrokerStats = new SingleBrokerStats(broker, potentialBytesOutRate, isEstimated);
+    SingleBrokerStats singleBrokerStats = new SingleBrokerStats(broker, potentialBytesOutRate, potentialBytesOutRateByLogdir, isEstimated);
     _brokerStats.add(singleBrokerStats);
     _hostFieldLength = Math.max(_hostFieldLength, host.length());
     _rackFieldLength = Math.max(_rackFieldLength, rack.length());
@@ -174,11 +191,25 @@ public class BrokerStats extends AbstractCruiseControlResponse {
         for (Map.Entry<String, DiskStats> entry : capacityByDisk.entrySet()) {
           DiskStats diskStats = entry.getValue();
           Double util = diskStats.utilization();
-          sb.append(String.format("%" + (_hostFieldLength + 15 + _rackFieldLength + _logdirFieldLength) + "s,"
-                                  + (util == null ? "%19s/%5s," : "%19.3f/%05.2f,") + "%119d/%d%n",
+          boolean isDead = util == null;
+          // Disk capacity, core number, CPU and network capacities are per broker, hence left blank for logdirs.
+          String rateFormat = isDead ? "s" : ".3f";
+          sb.append(String.format("%" + (_hostFieldLength + 15 + _rackFieldLength + _logdirFieldLength) + "s,%20s"
+                                  + (isDead ? "%19s/%5s," : "%19.3f/%05.2f,") + "%20s%15s%25s"
+                                  + "%24" + rateFormat + ",%24" + rateFormat + ",%25s%19" + rateFormat + ",%19" + rateFormat + ","
+                                  + "%14d/%d%n",
                                   entry.getKey(),
-                                  util == null ? "DEAD" : util,
-                                  util == null ? "DEAD" : diskStats.utilizationPercentage(),
+                                  "",
+                                  isDead ? DEAD_STATE : util,
+                                  isDead ? DEAD_STATE : diskStats.utilizationPercentage(),
+                                  "",
+                                  "",
+                                  "",
+                                  isDead ? DEAD_STATE : diskStats.leaderBytesInRate(),
+                                  isDead ? DEAD_STATE : diskStats.followerBytesInRate(),
+                                  "",
+                                  isDead ? DEAD_STATE : diskStats.bytesOutRate(),
+                                  isDead ? DEAD_STATE : diskStats.potentialBytesOutRate(),
                                   diskStats.numLeaderReplicas(),
                                   diskStats.numReplicas()));
         }

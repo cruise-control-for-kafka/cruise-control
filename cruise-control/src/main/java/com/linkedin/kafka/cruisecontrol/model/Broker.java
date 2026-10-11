@@ -634,11 +634,24 @@ public class Broker implements Serializable, Comparable<Broker> {
    *         been created with a request to populate replica placement info, otherwise returns an empty map.
    */
   public Map<String, DiskStats> diskStats() {
+    return diskStats(Collections.emptyMap());
+  }
+
+  /**
+   * Get per-logdir disk statistics of the broker.
+   *
+   * @param potentialBytesOutRateByLogdir The NW_OUT rate of the replicas on each disk if all of them were leaders (see
+   *                                      {@link ClusterModel#potentialBytesOutRateByLogdir(int)}). A missing logdir is
+   *                                      reported with a potential NW_OUT rate of 0.
+   * @return The per-logdir disk statistics. This method is relevant only when the {@link ClusterModel} has
+   *         been created with a request to populate replica placement info, otherwise returns an empty map.
+   */
+  public Map<String, DiskStats> diskStats(Map<String, Double> potentialBytesOutRateByLogdir) {
     if (_diskByLogdir.isEmpty()) {
       return Collections.emptyMap();
     }
     Map<String, DiskStats> diskStatMap = new HashMap<>();
-    _diskByLogdir.forEach((k, v) -> diskStatMap.put(k, v.diskStats()));
+    _diskByLogdir.forEach((k, v) -> diskStatMap.put(k, v.diskStats(potentialBytesOutRateByLogdir.getOrDefault(k, 0.0))));
     return diskStatMap;
   }
 

@@ -163,6 +163,15 @@ If `allow_capacity_estimation` is set to `true`, for brokers missing capacity in
 
 The response contains both load-per-broker and load-per-host information. This is specifically useful when multiple brokers are hosted by the same machine.
 
+If `populate_disk_info` is set to `true`, the response also shows the load of each disk (log directory) of the brokers:
+its disk usage, the number of leader replicas and replicas on it, and the network traffic of the replicas on it
+(`LEADER_NW_IN`, `FOLLOWER_NW_IN`, `NW_OUT` and `PNW_OUT` in plaintext; `LeaderNwInRate`, `FollowerNwInRate`, `NwOutRate`
+and `PnwOutRate` in JSON). The network traffic of a disk is the produce and consume traffic of the replicas hosted on it,
+derived from the partition metrics collected by Cruise Control -- not the measured I/O of the disk. `PNW_OUT` is the
+outbound traffic the disk would serve if all its replicas were leaders. For the alive disks of a broker, these values add
+up to the values of the broker. Disk capacity, CPU and network capacities are per broker, hence not shown for disks. The
+load of a dead disk is shown as `DEAD`.
+
 NOTE: The load shown is only for the load from the valid partitions. i.e the partitions with enough metric samples. So please always check the `LoadMonitor`'s state(via `State` endpoint) to decide whether the workload is representative enough.
 
 ### Query partition resource utilization
