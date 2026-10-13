@@ -7,10 +7,14 @@ package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 import com.linkedin.cruisecontrol.http.CruiseControlRequestContext;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
+import java.io.UnsupportedEncodingException;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
+import com.linkedin.kafka.cruisecontrol.servlet.UserRequestException;
 import org.easymock.EasyMock;
 import org.junit.Assert;
 import org.junit.Test;
@@ -244,5 +248,40 @@ public class ParameterUtilsTest {
 
     Assert.assertEquals(CruiseControlEndPoint.STATE, ParameterUtils.endPoint(mockRequest));
     EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testBrokerIdAndLogdirs() throws UnsupportedEncodingException {
+    // The first hyphen of a pair separates the broker id from the logdir, which may contain hyphens. Empty pairs are ignored.
+    Assert.assertEquals(Map.of(101, Set.of("/tmp/kafka-logs-1", "/tmp/kafka-logs-2"), 102, Set.of("/data/d-1")),
+                        ParameterUtils.brokerIdAndLogdirs(requestWithBrokerIdAndLogdirs("101-/tmp/kafka-logs-1,,101-/tmp/kafka-logs-2,"
+                                                                                        + "102-/data/d-1")));
+    Assert.assertEquals(Collections.emptyMap(), ParameterUtils.brokerIdAndLogdirs(requestWithBrokerIdAndLogdirs("")));
+    Assert.assertEquals(Collections.emptyMap(), ParameterUtils.brokerIdAndLogdirs(requestWithBrokerIdAndLogdirs(null)));
+  }
+
+  @Test
+  public void testInvalidBrokerIdAndLogdirs() {
+    for (String invalidPair : List.of("101", "-/tmp/kafka-logs-1", "-1-/tmp/kafka-logs-1", "abc-/tmp/kafka-logs-1", "101-")) {
+      UserRequestException e = Assert.assertThrows(UserRequestException.class, () -> ParameterUtils.brokerIdAndLogdirs(
+          requestWithBrokerIdAndLogdirs("101-/tmp/kafka-logs-2," + invalidPair)));
+      Assert.assertTrue(e.getMessage(), e.getMessage().contains(String.format("'%s'", invalidPair)));
+    }
+  }
+
+  /**
+   * @param brokerIdAndLogdirs The value of {@link ParameterUtils#BROKER_ID_AND_LOGDIRS_PARAM}, or {@code null} to leave the
+   *                           parameter out.
+   * @return A request with the given broker id and logdir pairs.
+   */
+  private static CruiseControlRequestContext requestWithBrokerIdAndLogdirs(String brokerIdAndLogdirs) {
+    CruiseControlRequestContext request = EasyMock.niceMock(CruiseControlRequestContext.class);
+    Map<String, String[]> parameterMap = brokerIdAndLogdirs == null
+                                         ? Collections.emptyMap()
+                                         : Map.of(ParameterUtils.BROKER_ID_AND_LOGDIRS_PARAM, new String[]{brokerIdAndLogdirs});
+    EasyMock.expect(request.getParameterMap()).andReturn(parameterMap).anyTimes();
+    EasyMock.expect(request.getParameter(ParameterUtils.BROKER_ID_AND_LOGDIRS_PARAM)).andReturn(brokerIdAndLogdirs).anyTimes();
+    EasyMock.replay(request);
+    return request;
   }
 }

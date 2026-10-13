@@ -62,6 +62,10 @@ public class RemoveDisksParameters extends GoalBasedOptimizationParameters {
     protected void initParameters() throws UnsupportedEncodingException {
         super.initParameters();
         _logdirByBrokerId = ParameterUtils.brokerIdAndLogdirs(_requestContext);
+        if (_logdirByBrokerId.isEmpty()) {
+            throw new UserRequestException(String.format("%s is required to specify the disks to remove (e.g. %s=101-/tmp/kafka-logs-1).",
+                                                         BROKER_ID_AND_LOGDIRS_PARAM, BROKER_ID_AND_LOGDIRS_PARAM));
+        }
         _dryRun = ParameterUtils.getDryRun(_requestContext);
         boolean requestReasonRequired = _config.getBoolean(ExecutorConfig.REQUEST_REASON_REQUIRED_CONFIG);
         _reason = ParameterUtils.reason(_requestContext, requestReasonRequired && !_dryRun);

@@ -549,6 +549,8 @@ Supported parameters are:
 
 Note that `brokerid_and_logdirs` takes comma as delimiter between two broker id and logdir pairs — i.e. we assume a valid logdir name contains no comma. Each pair uses a hyphen (`-`) as the delimiter between broker id and logdir name (e.g. `101-/tmp/kafka-logs-1`).
 
+A request without `brokerid_and_logdirs`, or with a pair that is not a broker id followed by a hyphen and a logdir, is rejected with HTTP 400.
+
 Unlike most other optimization endpoints, `remove_disks` does not accept a `goals` parameter. Proposal generation always uses `IntraBrokerDiskCapacityGoal` with disk-emptying enabled, regardless of the `intra.broker.goals` or `default.goals` configuration. This goal generates intra-broker replica movement proposals to move all replicas off the specified disks while keeping each remaining disk under the configured capacity threshold.
 
 Before generating proposals, Cruise Control validates that:
