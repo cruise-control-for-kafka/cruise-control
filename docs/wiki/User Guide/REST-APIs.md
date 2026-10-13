@@ -159,7 +159,7 @@ If the number of workload snapshots for the given timestamp is not sufficient to
 
 Timestamp for `start`/`end`/`time` is in milliseconds since the epoch; what `System.currentTimeMillis()` returns.  The time zone is the time zone of the Cruise Control server.
 
-If `allow_capacity_estimation` is set to `true`, for brokers missing capacity information Cruise Control will make estimations based on other brokers in the cluster; otherwise an `IllegalStateException` will be thrown and shown in response.
+If `allow_capacity_estimation` is set to `true`, for brokers missing capacity information Cruise Control will make estimations (with the default `BrokerCapacityConfigFileResolver`, from the default broker capacity given for broker id `-1`); otherwise a `BrokerCapacityResolutionException` will be thrown and shown in response.
 
 The response contains both load-per-broker and load-per-host information. This is specifically useful when multiple brokers are hosted by the same machine.
 
@@ -170,7 +170,9 @@ and `PnwOutRate` in JSON). The network traffic of a disk is the produce and cons
 derived from the partition metrics collected by Cruise Control -- not the measured I/O of the disk. `PNW_OUT` is the
 outbound traffic the disk would serve if all its replicas were leaders. For the alive disks of a broker, these values add
 up to the values of the broker. Disk capacity, CPU and network capacities are per broker, hence not shown for disks. The
-load of a dead disk is shown as `DEAD`.
+load of a dead disk is shown as `DEAD`. Brokers that are down and disks that failed do not prevent the response. A broker whose
+capacity is estimated from the default broker capacity gets the per-logdir disk capacities of that entry, so its log
+directories must be the ones listed there.
 
 NOTE: The load shown is only for the load from the valid partitions. i.e the partitions with enough metric samples. So please always check the `LoadMonitor`'s state(via `State` endpoint) to decide whether the workload is representative enough.
 

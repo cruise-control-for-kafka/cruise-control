@@ -375,7 +375,7 @@ public class Broker implements Serializable, Comparable<Broker> {
    * @param logdir Logdir of the dead disk to be added to the current broker.
    * @return The dead disk that was added to this broker.
    */
-  Disk addDeadDisk(String logdir) {
+  public Disk addDeadDisk(String logdir) {
     Disk disk = new Disk(logdir, this, -1);
     _diskByLogdir.put(logdir, disk);
     return disk;
