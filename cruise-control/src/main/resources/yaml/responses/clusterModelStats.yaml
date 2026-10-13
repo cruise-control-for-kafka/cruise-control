@@ -97,7 +97,8 @@ DiskBalanceStats:
       type: integer
       format: int32
     numUnbalancedDisks:
-      description: Number of disks whose utilization is out of the balance range (disk.balance.threshold) of their broker.
+      description: Number of disks whose utilization is out of the balance range of their broker that IntraBrokerDiskUsageDistributionGoal
+        enforces, i.e. the utilization of the broker times 1 +/- (disk.balance.threshold - 1) * 0.9.
       type: integer
       format: int32
     numDisksAboveCapacityLimit:

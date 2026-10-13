@@ -82,15 +82,26 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
   }
 
   /**
-   * Initialize the utilization thresholds.
    * To avoid churns, we add a balance margin to the user specified rebalance threshold. e.g. when user sets the
-   * threshold to be resourceBalancePercentage, we use (resourceBalancePercentage-1)*balanceMargin instead.
+   * threshold to be resourceBalancePercentage, we use (resourceBalancePercentage-1)*balanceMargin instead. The utilization
+   * percentage of a disk is balanced if it is within this fraction of the utilization percentage of its broker -- e.g. 0.09
+   * for a threshold of 1.10, i.e. between 0.91 and 1.09 times the utilization percentage of its broker.
+   *
+   * @param balancingConstraint Balancing constraint.
+   * @return The relative distance from the utilization percentage of its broker within which a disk is balanced.
+   */
+  public static double balancePercentageWithMargin(BalancingConstraint balancingConstraint) {
+    return (balancingConstraint.resourceBalancePercentage(RESOURCE) - 1) * BALANCE_MARGIN;
+  }
+
+  /**
+   * Initialize the utilization thresholds (see {@link #balancePercentageWithMargin(BalancingConstraint)}).
    * @param clusterModel The state of the cluster.
    * @param optimizationOptions Options to take into account during optimization.
    */
   @Override
   protected void initGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions) {
-    double balancePercentageWithMargin = (_balancingConstraint.resourceBalancePercentage(RESOURCE) - 1) * BALANCE_MARGIN;
+    double balancePercentageWithMargin = balancePercentageWithMargin(_balancingConstraint);
     for (Broker broker : brokersToBalance(clusterModel)) {
       double averageDiskUtilization = averageDiskUtilizationPercentage(broker);
       _balanceUpperThresholdByBroker.put(broker, averageDiskUtilization * (1 + balancePercentageWithMargin));

@@ -71,7 +71,6 @@ public class ClusterModelStatsTest {
 
     assertEquals(4, diskBalanceStats.numAliveDisks());
     assertEquals(2, diskBalanceStats.numUnbalancedDisks());
-    assertEquals(stats.numUnbalancedDisks(), diskBalanceStats.numUnbalancedDisks());
     assertEquals(1, diskBalanceStats.numDisksAboveCapacityLimit());
     assertEquals(85.0, diskBalanceStats.maxDiskUtilizationPct(), DELTA);
     assertEquals(0, diskBalanceStats.maxDiskUtilizationBrokerId());
@@ -94,6 +93,22 @@ public class ClusterModelStatsTest {
     assertEquals(diskBalanceStats.getJsonStructure(), json.get("diskStatistics"));
     assertEquals(85.0, (Double) diskBalanceStats.getJsonStructure().get("maxDiskUtilizationPct"), DELTA);
     assertEquals(LOGDIR0, diskBalanceStats.getJsonStructure().get("maxDiskUtilizationLogdir"));
+  }
+
+  @Test
+  public void testUnbalancedDisksUseTheBalanceBandOfTheGoal() {
+    // With disk.balance.threshold=1.10, IntraBrokerDiskUsageDistributionGoal keeps a disk within 9% of its broker utilization
+    // (0.9 margin): disks at 54.75% and 45.25% of a broker at 50% are unbalanced for the goal, though within 10%.
+    ClusterModel clusterModel = new ClusterModel(new ModelGeneration(0, 0L), 1.0);
+    clusterModel.createRack("0");
+    clusterModel.createBroker("0", "0", 0, new BrokerCapacityInfo(TestConstants.BROKER_CAPACITY, TestConstants.DISK_CAPACITY), true);
+    createReplica(clusterModel, 0, 0, LOGDIR0, 0.5475);
+    createReplica(clusterModel, 1, 0, LOGDIR1, 0.4525);
+    ClusterModelStats stats = clusterModel.getClusterStats(BALANCING_CONSTRAINT);
+
+    assertEquals(2, stats.diskBalanceStats().numUnbalancedDisks());
+    // The count that the stats comparator of the goal uses is unchanged.
+    assertEquals(0, stats.numUnbalancedDisks());
   }
 
   @Test

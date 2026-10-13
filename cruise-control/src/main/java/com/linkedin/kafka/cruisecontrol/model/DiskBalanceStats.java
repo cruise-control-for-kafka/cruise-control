@@ -5,6 +5,7 @@
 package com.linkedin.kafka.cruisecontrol.model;
 
 import com.linkedin.kafka.cruisecontrol.analyzer.BalancingConstraint;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
@@ -79,8 +80,10 @@ public final class DiskBalanceStats {
    *
    * A disk is unbalanced if its utilization percentage is out of the range centered at the utilization percentage of the
    * disks of its broker, with boundary determined by
-   * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#DISK_BALANCE_THRESHOLD_CONFIG}; and above the
-   * capacity limit if its utilization percentage exceeds
+   * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#DISK_BALANCE_THRESHOLD_CONFIG} and the balance
+   * margin of {@link IntraBrokerDiskUsageDistributionGoal} (see
+   * {@link IntraBrokerDiskUsageDistributionGoal#balancePercentageWithMargin(BalancingConstraint)}) -- i.e. if the goal would
+   * move replicas to or from it; and above the capacity limit if its utilization percentage exceeds
    * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#DISK_CAPACITY_THRESHOLD_CONFIG}.
    *
    * @param brokers Alive brokers, in the order to report ties in.
@@ -89,7 +92,7 @@ public final class DiskBalanceStats {
    * cluster model has no disk information).
    */
   static DiskBalanceStats compute(Iterable<Broker> brokers, BalancingConstraint balancingConstraint) {
-    double balancePercentage = balancingConstraint.resourceBalancePercentage(Resource.DISK);
+    double balancePercentageWithMargin = IntraBrokerDiskUsageDistributionGoal.balancePercentageWithMargin(balancingConstraint);
     double capacityThreshold = balancingConstraint.capacityThreshold(Resource.DISK);
     int numAliveDisks = 0;
     int numUnbalancedDisks = 0;
@@ -115,8 +118,8 @@ public final class DiskBalanceStats {
         continue;
       }
       double brokerDiskUtilization = totalUtilization / totalCapacity;
-      double upperLimit = brokerDiskUtilization * balancePercentage;
-      double lowerLimit = brokerDiskUtilization * Math.max(0, 2 - balancePercentage);
+      double upperLimit = brokerDiskUtilization * (1 + balancePercentageWithMargin);
+      double lowerLimit = brokerDiskUtilization * Math.max(0, 1 - balancePercentageWithMargin);
       double minBrokerDiskUtilization = Double.MAX_VALUE;
       double maxBrokerDiskUtilization = -Double.MAX_VALUE;
       for (Disk disk : disks) {
