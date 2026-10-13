@@ -104,8 +104,7 @@ public class OptimizerResult {
                   OptimizationOptions optimizationOptions,
                   Map<String, Double> balancednessCostByGoal,
                   Map<String, Duration> optimizationDurationByGoal,
-                  ProvisionResponse provisionResponse,
-                  Set<String> intraBrokerGoalNames) {
+                  ProvisionResponse provisionResponse) {
     validateNotNull(statsByGoalPriority, "The stats by goal priority cannot be null.");
     validateNotNull(optimizationDurationByGoal, "The optimization duration by goal priority cannot be null.");
     if (statsByGoalPriority.isEmpty()) {
@@ -114,11 +113,15 @@ public class OptimizerResult {
     BalancingConstraint balancingConstraint = statsByGoalPriority.entrySet().stream().findAny().get().getValue().balancingConstraint();
     _clusterModelStatsComparatorByGoalName = new LinkedHashMap<>(statsByGoalPriority.size());
     _statsByGoalName = new LinkedHashMap<>(statsByGoalPriority.size());
+    _intraBrokerGoalNames = new HashSet<>();
     for (Map.Entry<Goal, ClusterModelStats> entry : statsByGoalPriority.entrySet()) {
       String goalName = entry.getKey().name();
       Goal.ClusterModelStatsComparator comparator = entry.getKey().clusterModelStatsComparator();
       _clusterModelStatsComparatorByGoalName.put(goalName, comparator);
       _statsByGoalName.put(goalName, entry.getValue());
+      if (entry.getKey().isIntraBrokerGoal()) {
+        _intraBrokerGoalNames.add(goalName);
+      }
     }
 
     _violatedGoalNamesBeforeOptimization = violatedGoalNamesBeforeOptimization;
@@ -136,7 +139,6 @@ public class OptimizerResult {
     _onDemandBalancednessScoreAfter = onDemandBalancednessScore(balancednessCostByGoal, _violatedGoalNamesAfterOptimization);
     _optimizationDurationByGoal = optimizationDurationByGoal;
     _provisionResponse = provisionResponse;
-    _intraBrokerGoalNames = intraBrokerGoalNames;
   }
 
   private double onDemandBalancednessScore(Map<String, Double> balancednessCostByGoal, Set<String> violatedGoals) {
@@ -165,11 +167,10 @@ public class OptimizerResult {
 
   /**
    * @param goalName Goal name.
-   * @return {@code true} if the given goal is an intra-broker goal (see
-   * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#INTRA_BROKER_GOALS_CONFIG}), i.e. it moves replicas
+   * @return {@code true} if the given goal is an intra-broker goal (see {@link Goal#isIntraBrokerGoal()}), i.e. it moves replicas
    * only between the disks of the same broker, hence does not change broker-level stats; {@code false} otherwise.
    */
-  public boolean isIntraBrokerGoalName(String goalName) {
+  public boolean isIntraBrokerGoal(String goalName) {
     return _intraBrokerGoalNames.contains(goalName);
   }
 

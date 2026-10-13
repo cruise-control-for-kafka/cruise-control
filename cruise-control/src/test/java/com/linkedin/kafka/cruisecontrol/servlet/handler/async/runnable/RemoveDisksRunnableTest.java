@@ -11,9 +11,11 @@ import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils;
 import com.linkedin.kafka.cruisecontrol.analyzer.GoalOptimizer;
 import com.linkedin.kafka.cruisecontrol.analyzer.OptimizerResult;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.common.TestConstants;
 import com.linkedin.kafka.cruisecontrol.config.BrokerCapacityInfo;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutionProposal;
 import com.linkedin.kafka.cruisecontrol.executor.Executor;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
@@ -25,6 +27,7 @@ import com.linkedin.kafka.cruisecontrol.servlet.response.OptimizationResult;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.common.TopicPartition;
@@ -101,6 +104,19 @@ public class RemoveDisksRunnableTest {
     ExecutionProposal proposal = result.goalProposals().iterator().next();
     assertEquals(TP, proposal.topicPartition());
     assertEquals(LOGDIR1, proposal.replicasToMoveBetweenDisksByBroker().get(BROKER_ID).logdir());
+  }
+
+  @Test
+  public void testOnlyDiskStatsWhateverTheIntraBrokerGoalsConfig() throws Exception {
+    // remove_disks runs its own IntraBrokerDiskCapacityGoal, even when intra.broker.goals does not list it: the goal itself says
+    // that it is an intra-broker goal, so its result shows disk-level stats only.
+    Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
+    props.setProperty(AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG, IntraBrokerDiskUsageDistributionGoal.class.getName());
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(props);
+    String response = response(removeDisk(config), config, false);
+
+    assertTrue(response, response.contains("Stats for IntraBrokerDiskCapacityGoal"));
+    assertFalse(response, response.contains("AVG:{cpu"));
   }
 
   @Test

@@ -43,7 +43,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.TopicPartition;
@@ -67,8 +66,6 @@ public class GoalOptimizer implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(GoalOptimizer.class);
   private static final long HALF_MINUTE_IN_MS = TimeUnit.SECONDS.toMillis(30);
   private final List<Goal> _goalsByPriority;
-  // Names of the goals in intra.broker.goals -- i.e. goals that move replicas only between the disks of the same broker.
-  private final Set<String> _intraBrokerGoalNames;
   private final BalancingConstraint _balancingConstraint;
   private final Pattern _defaultExcludedTopics;
   private final LoadMonitor _loadMonitor;
@@ -107,7 +104,6 @@ public class GoalOptimizer implements Runnable {
                        Executor executor,
                        Admin adminClient) {
     _goalsByPriority = AnalyzerUtils.getDefaultGoalsByPriority(config);
-    _intraBrokerGoalNames = intraBrokerGoalNames(config);
     _defaultModelCompletenessRequirements = MonitorUtils.combineLoadRequirementOptions(_goalsByPriority);
     _requirementsWithAvailableValidWindows = new ModelCompletenessRequirements(
         1,
@@ -562,21 +558,7 @@ public class GoalOptimizer implements Runnable {
                                optimizationOptions,
                                balancednessCostByGoal(goalsByPriority, _priorityWeight, _strictnessWeight),
                                optimizationDurationByGoal,
-                               provisionResponse,
-                               _intraBrokerGoalNames);
-  }
-
-  /**
-   * Get the names of the goals configured in {@link AnalyzerConfig#INTRA_BROKER_GOALS_CONFIG}. The name of a goal is its
-   * simple class name (see {@link com.linkedin.kafka.cruisecontrol.analyzer.goals.AbstractGoal#name()}).
-   *
-   * @param config The Kafka Cruise Control Configuration.
-   * @return Names of the intra-broker goals.
-   */
-  static Set<String> intraBrokerGoalNames(KafkaCruiseControlConfig config) {
-    return config.getList(AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG).stream()
-                 .map(goalClassName -> goalClassName.substring(goalClassName.lastIndexOf('.') + 1))
-                 .collect(Collectors.toUnmodifiableSet());
+                               provisionResponse);
   }
 
   private void setHasUnfixableProposalOptimization(boolean hasUnfixableProposalOptimization, List<Goal> goalsByPriority) {

@@ -76,6 +76,11 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
     return false;
   }
 
+  @Override
+  public boolean isIntraBrokerGoal() {
+    return true;
+  }
+
   /**
    * Initialize the utilization thresholds.
    * To avoid churns, we add a balance margin to the user specified rebalance threshold. e.g. when user sets the

@@ -73,6 +73,11 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
     return true;
   }
 
+  @Override
+  public boolean isIntraBrokerGoal() {
+    return true;
+  }
+
   /**
    * Sanity checks: For each alive broker in the cluster, the load for {@link Resource#DISK} less than the limiting capacity
    * determined by the total capacity of alive disks multiplied by the capacity threshold.

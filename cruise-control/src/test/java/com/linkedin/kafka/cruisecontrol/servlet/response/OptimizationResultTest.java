@@ -110,14 +110,14 @@ public class OptimizationResultTest {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
     // An inter-broker goal can change both broker-level and disk-level stats.
     OptimizerResult optimizerResult = optimizeDiskAwareCluster(config, INTER_BROKER_GOAL);
-    assertFalse(optimizerResult.isIntraBrokerGoalName(INTER_BROKER_GOAL));
+    assertFalse(optimizerResult.isIntraBrokerGoal(INTER_BROKER_GOAL));
     String interBrokerGoalStats = goalStats(response(optimizerResult, config, false), INTER_BROKER_GOAL);
     assertTrue(interBrokerGoalStats, interBrokerGoalStats.contains("AVG:{"));
     assertTrue(interBrokerGoalStats, interBrokerGoalStats.contains("DISKS:{"));
 
     // An intra-broker goal cannot change broker-level stats.
     optimizerResult = optimizeDiskAwareCluster(config, INTRA_BROKER_GOAL);
-    assertTrue(optimizerResult.isIntraBrokerGoalName(INTRA_BROKER_GOAL));
+    assertTrue(optimizerResult.isIntraBrokerGoal(INTRA_BROKER_GOAL));
     String intraBrokerGoalStats = goalStats(response(optimizerResult, config, false), INTRA_BROKER_GOAL);
     assertFalse(intraBrokerGoalStats, intraBrokerGoalStats.contains("AVG:{"));
     assertTrue(intraBrokerGoalStats, intraBrokerGoalStats.contains("DISKS:{alive: 4 "));
