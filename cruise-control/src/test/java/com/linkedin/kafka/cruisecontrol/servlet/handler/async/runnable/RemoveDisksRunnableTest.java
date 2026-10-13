@@ -88,12 +88,18 @@ public class RemoveDisksRunnableTest {
 
     // The disk balance before the removal is taken before the disk to remove is marked for removal: both disks are unbalanced
     // (50% and 0% for a broker at 25%). After the removal, the removed disk has no capacity and is left out.
-    assertEquals(2, ((Number) summary.get("numUnbalancedDisksBefore")).intValue());
-    assertEquals(0, ((Number) summary.get("numUnbalancedDisksAfter")).intValue());
-    assertEquals(50.0, (Double) summary.get("maxDiskUtilizationPctBefore"), DELTA);
-    assertEquals(50.0, (Double) summary.get("maxDiskUtilizationPctAfter"), DELTA);
-    assertEquals(50.0, (Double) summary.get("maxDiskUtilizationSpreadPctBefore"), DELTA);
-    assertEquals(0.0, (Double) summary.get("maxDiskUtilizationSpreadPctAfter"), DELTA);
+    Map<String, Object> diskStatisticsBefore = cast(summary.get("diskStatisticsBefore"));
+    assertEquals(2, ((Number) diskStatisticsBefore.get("numAliveDisks")).intValue());
+    Map<String, Object> usageBefore = cast(diskStatisticsBefore.get("usage"));
+    assertEquals(2, ((Number) usageBefore.get("numUnbalancedDisks")).intValue());
+    assertEquals(50.0, utilizationPct(usageBefore, "MAX"), DELTA);
+    assertEquals(50.0, utilizationPct(usageBefore, "maxSpreadWithinBroker"), DELTA);
+    Map<String, Object> diskStatisticsAfter = cast(summary.get("diskStatisticsAfter"));
+    assertEquals(1, ((Number) diskStatisticsAfter.get("numAliveDisks")).intValue());
+    Map<String, Object> usageAfter = cast(diskStatisticsAfter.get("usage"));
+    assertEquals(0, ((Number) usageAfter.get("numUnbalancedDisks")).intValue());
+    assertEquals(50.0, utilizationPct(usageAfter, "MAX"), DELTA);
+    assertEquals(0.0, utilizationPct(usageAfter, "maxSpreadWithinBroker"), DELTA);
   }
 
   @Test
@@ -161,10 +167,11 @@ public class RemoveDisksRunnableTest {
     assertFalse(response.contains("DEAD"));
     // The goal of remove_disks is an intra-broker goal, which cannot change broker-level stats: only disk-level stats are shown.
     assertTrue(response.contains("Stats for IntraBrokerDiskCapacityGoal"));
-    assertTrue(response.contains("DISKS:{alive: 1 "));
-    assertFalse(response.contains("AVG:{"));
-    assertTrue(response.contains("Disk balance (before -> after): unbalanced disks 2 -> 0, max disk utilization 50.00% -> 50.00%, "
-                                 + "max spread within a broker 50.00 -> 0.00pp."));
+    assertTrue(response.contains("DISKS:{alive: 1}"));
+    assertFalse(response.contains("AVG:{cpu"));
+    // The removed disk is counted before the removal only.
+    assertTrue(response, response.contains("Disk usage balance (before -> after): unbalanced disks 2 of 2 -> 0 of 1, max utilization "
+                                           + "50.00% -> 50.00%, max spread within a broker 50.00pp -> 0.00pp."));
   }
 
   /**
@@ -295,6 +302,11 @@ public class RemoveDisksRunnableTest {
     assertEquals(diskMB, (Double) disk.get("DiskMB"), DELTA);
     assertEquals(diskPct, (Double) disk.get("DiskPct"), DELTA);
     assertEquals(numReplicas, ((Number) disk.get("NumReplicas")).intValue());
+  }
+
+  private static double utilizationPct(Map<String, Object> diskUsageStats, String statistic) {
+    Map<String, Object> value = cast(diskUsageStats.get(statistic));
+    return (Double) value.get("utilizationPct");
   }
 
   @SuppressWarnings("unchecked")

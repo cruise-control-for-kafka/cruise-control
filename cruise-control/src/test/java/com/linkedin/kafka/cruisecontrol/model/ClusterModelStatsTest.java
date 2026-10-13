@@ -13,6 +13,7 @@ import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelGeneration;
 import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.Test;
 
@@ -68,31 +69,47 @@ public class ClusterModelStatsTest {
   public void testDiskBalanceStats() {
     ClusterModelStats stats = clusterModel().getClusterStats(BALANCING_CONSTRAINT);
     DiskBalanceStats diskBalanceStats = stats.diskBalanceStats();
+    DiskBalanceStats.DiskUsageStats usage = diskBalanceStats.usage();
 
     assertEquals(4, diskBalanceStats.numAliveDisks());
-    assertEquals(2, diskBalanceStats.numUnbalancedDisks());
-    assertEquals(1, diskBalanceStats.numDisksAboveCapacityLimit());
-    assertEquals(85.0, diskBalanceStats.maxDiskUtilizationPct(), DELTA);
-    assertEquals(0, diskBalanceStats.maxDiskUtilizationBrokerId());
-    assertEquals(LOGDIR0, diskBalanceStats.maxDiskUtilizationLogdir());
-    assertEquals(65.0, diskBalanceStats.maxDiskUtilizationSpreadPct(), DELTA);
-    assertEquals(0, diskBalanceStats.maxDiskUtilizationSpreadBrokerId().intValue());
+    assertEquals(2, usage.numUnbalancedDisks());
+    assertEquals(1, usage.numDisksAboveCapacityLimit());
+    assertEquals((85.0 + 20.0 + 50.0 + 50.0) / 4, usage.avg().utilizationPct(), DELTA);
+    assertDiskUtilization(usage.max(), 85.0, 0, LOGDIR0);
+    assertDiskUtilization(usage.min(), 20.0, 0, LOGDIR1);
     // The disks of broker 0 are 32.5pp away from their broker average (52.5%), and the disks of broker 1 are at it.
-    assertEquals(Math.sqrt(2 * Math.pow(32.5, 2) / 4), diskBalanceStats.diskUtilizationStDevPct(), DELTA);
-    assertEquals(stats.diskUtilizationStandardDeviation() * 100, diskBalanceStats.diskUtilizationStDevPct(), DELTA);
+    assertEquals(Math.sqrt(2 * Math.pow(32.5, 2) / 4), usage.stDev().utilizationPct(), DELTA);
+    assertEquals(stats.diskUtilizationStandardDeviation() * 100, usage.stDev().utilizationPct(), DELTA);
+    assertDiskUtilization(usage.maxSpreadWithinBroker(), 65.0, 0, null);
 
     String statsString = stats.toString();
-    assertTrue(statsString, statsString.contains("AVG:{"));
-    assertTrue(statsString, statsString.contains(String.format("%nDISKS:{alive: 4 unbalanced: 2 aboveCapacityLimit: 1 "
-                                                               + "maxUtilization: 85.00%% (broker 0 %s) maxSpreadWithinBroker: "
-                                                               + "65.00pp (broker 0) utilizationStDevFromBrokerAvg: 22.98pp}", LOGDIR0)));
+    assertTrue(statsString, statsString.contains("AVG:{cpu"));
+    assertTrue(statsString, statsString.contains(String.format(
+        "%nDISKS:{alive: 4}%n"
+        + "DISK USAGE:{unbalanced: 2 aboveCapacityLimit: 1 maxSpreadWithinBroker: 65.00pp (broker 0)}%n"
+        + "DISK USAGE AVG:{utilization:  51.25%%}%n"
+        + "DISK USAGE MAX:{utilization:  85.00%% (broker 0 %s)}%n"
+        + "DISK USAGE MIN:{utilization:  20.00%% (broker 0 %s)}%n"
+        + "DISK USAGE STD:{utilization:  22.98pp}", LOGDIR0, LOGDIR1)));
 
     Map<String, Object> json = stats.getJsonStructure();
     assertTrue(json.containsKey("metadata"));
     assertTrue(json.containsKey("statistics"));
     assertEquals(diskBalanceStats.getJsonStructure(), json.get("diskStatistics"));
-    assertEquals(85.0, (Double) diskBalanceStats.getJsonStructure().get("maxDiskUtilizationPct"), DELTA);
-    assertEquals(LOGDIR0, diskBalanceStats.getJsonStructure().get("maxDiskUtilizationLogdir"));
+    assertEquals(4, diskBalanceStats.getJsonStructure().get("numAliveDisks"));
+    Map<String, Object> usageJson = cast(diskBalanceStats.getJsonStructure().get("usage"));
+    Map<String, Object> max = cast(usageJson.get("MAX"));
+    assertEquals(Set.of("utilizationPct", "broker", "logdir"), max.keySet());
+    assertEquals(85.0, (Double) max.get("utilizationPct"), DELTA);
+    assertEquals(0, max.get("broker"));
+    assertEquals(LOGDIR0, max.get("logdir"));
+    Map<String, Object> maxSpreadWithinBroker = cast(usageJson.get("maxSpreadWithinBroker"));
+    assertEquals(Set.of("utilizationPct", "broker"), maxSpreadWithinBroker.keySet());
+    assertEquals(65.0, (Double) maxSpreadWithinBroker.get("utilizationPct"), DELTA);
+    assertEquals(Set.of("utilizationPct"), ((Map<?, ?>) usageJson.get("AVG")).keySet());
+    assertEquals(Set.of("utilizationPct"), ((Map<?, ?>) usageJson.get("STD")).keySet());
+    assertEquals(2, usageJson.get("numUnbalancedDisks"));
+    assertEquals(1, usageJson.get("numDisksAboveCapacityLimit"));
   }
 
   @Test
@@ -106,7 +123,7 @@ public class ClusterModelStatsTest {
     createReplica(clusterModel, 1, 0, LOGDIR1, 0.4525);
     ClusterModelStats stats = clusterModel.getClusterStats(BALANCING_CONSTRAINT);
 
-    assertEquals(2, stats.diskBalanceStats().numUnbalancedDisks());
+    assertEquals(2, stats.diskBalanceStats().usage().numUnbalancedDisks());
     // The count that the stats comparator of the goal uses is unchanged.
     assertEquals(0, stats.numUnbalancedDisks());
   }
@@ -116,16 +133,18 @@ public class ClusterModelStatsTest {
     ClusterModel clusterModel = clusterModel();
     clusterModel.markDiskForRemoval(1, LOGDIR1);
     DiskBalanceStats diskBalanceStats = clusterModel.getClusterStats(BALANCING_CONSTRAINT).diskBalanceStats();
+    DiskBalanceStats.DiskUsageStats usage = diskBalanceStats.usage();
 
     // The disk marked for removal has no capacity, hence no utilization percentage: it is neither counted as unbalanced nor
     // above the capacity limit, and broker 1 has a single disk left to compute the spread for.
     assertEquals(3, diskBalanceStats.numAliveDisks());
-    assertEquals(2, diskBalanceStats.numUnbalancedDisks());
-    assertEquals(1, diskBalanceStats.numDisksAboveCapacityLimit());
-    assertEquals(85.0, diskBalanceStats.maxDiskUtilizationPct(), DELTA);
-    assertEquals(65.0, diskBalanceStats.maxDiskUtilizationSpreadPct(), DELTA);
-    assertEquals(0, diskBalanceStats.maxDiskUtilizationSpreadBrokerId().intValue());
-    assertEquals(Math.sqrt(2 * Math.pow(32.5, 2) / 3), diskBalanceStats.diskUtilizationStDevPct(), DELTA);
+    assertEquals(2, usage.numUnbalancedDisks());
+    assertEquals(1, usage.numDisksAboveCapacityLimit());
+    assertEquals((85.0 + 20.0 + 50.0) / 3, usage.avg().utilizationPct(), DELTA);
+    assertDiskUtilization(usage.max(), 85.0, 0, LOGDIR0);
+    assertDiskUtilization(usage.min(), 20.0, 0, LOGDIR1);
+    assertDiskUtilization(usage.maxSpreadWithinBroker(), 65.0, 0, null);
+    assertEquals(Math.sqrt(2 * Math.pow(32.5, 2) / 3), usage.stDev().utilizationPct(), DELTA);
   }
 
   @Test
@@ -133,7 +152,20 @@ public class ClusterModelStatsTest {
     ClusterModelStats stats = DeterministicCluster.unbalanced().getClusterStats(BALANCING_CONSTRAINT);
 
     assertNull(stats.diskBalanceStats());
-    assertFalse(stats.toString().contains("DISKS"));
+    assertFalse(stats.toString().contains("DISKS:{"));
+    assertFalse(stats.toString().contains("DISK USAGE"));
     assertFalse(stats.getJsonStructure().containsKey("diskStatistics"));
+  }
+
+  private static void assertDiskUtilization(DiskBalanceStats.DiskUtilizationValue value, double utilizationPct, Integer brokerId,
+                                            String logdir) {
+    assertEquals(utilizationPct, value.utilizationPct(), DELTA);
+    assertEquals(brokerId, value.brokerId());
+    assertEquals(logdir, value.logdir());
+  }
+
+  @SuppressWarnings("unchecked")
+  private static <T> T cast(Object object) {
+    return (T) object;
   }
 }

@@ -26,6 +26,7 @@ import com.linkedin.kafka.cruisecontrol.servlet.parameters.RebalanceParameters;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.Time;
@@ -112,15 +113,17 @@ public class OptimizationResultTest {
     OptimizerResult optimizerResult = optimizeDiskAwareCluster(config, INTER_BROKER_GOAL);
     assertFalse(optimizerResult.isIntraBrokerGoal(INTER_BROKER_GOAL));
     String interBrokerGoalStats = goalStats(response(optimizerResult, config, false), INTER_BROKER_GOAL);
-    assertTrue(interBrokerGoalStats, interBrokerGoalStats.contains("AVG:{"));
+    assertTrue(interBrokerGoalStats, interBrokerGoalStats.contains("AVG:{cpu"));
     assertTrue(interBrokerGoalStats, interBrokerGoalStats.contains("DISKS:{"));
+    assertTrue(interBrokerGoalStats, interBrokerGoalStats.contains("DISK USAGE AVG:{"));
 
     // An intra-broker goal cannot change broker-level stats.
     optimizerResult = optimizeDiskAwareCluster(config, INTRA_BROKER_GOAL);
     assertTrue(optimizerResult.isIntraBrokerGoal(INTRA_BROKER_GOAL));
     String intraBrokerGoalStats = goalStats(response(optimizerResult, config, false), INTRA_BROKER_GOAL);
-    assertFalse(intraBrokerGoalStats, intraBrokerGoalStats.contains("AVG:{"));
-    assertTrue(intraBrokerGoalStats, intraBrokerGoalStats.contains("DISKS:{alive: 4 "));
+    assertFalse(intraBrokerGoalStats, intraBrokerGoalStats.contains("AVG:{cpu"));
+    assertTrue(intraBrokerGoalStats, intraBrokerGoalStats.contains("DISKS:{alive: 4}"));
+    assertTrue(intraBrokerGoalStats, intraBrokerGoalStats.contains("DISK USAGE STD:{"));
   }
 
   @Test
@@ -136,6 +139,9 @@ public class OptimizationResultTest {
       assertTrue(clusterModelStats.containsKey("statistics"));
       Map<String, Object> diskStatistics = cast(clusterModelStats.get("diskStatistics"));
       assertEquals(4, ((Number) diskStatistics.get("numAliveDisks")).intValue());
+      Map<String, Object> usage = cast(diskStatistics.get("usage"));
+      assertEquals(Set.of("AVG", "MAX", "MIN", "STD", "maxSpreadWithinBroker", "numUnbalancedDisks", "numDisksAboveCapacityLimit"),
+                   usage.keySet());
     }
   }
 
@@ -146,23 +152,20 @@ public class OptimizationResultTest {
     DiskBalanceStats before = optimizerResult.clusterModelStatsBeforeOptimization().diskBalanceStats();
     DiskBalanceStats after = optimizerResult.clusterModelStats().diskBalanceStats();
     // Before optimization, the disks are at 80% and 0%; after it, at 40% each.
-    assertEquals(2, before.numUnbalancedDisks());
-    assertEquals(80.0, before.maxDiskUtilizationPct(), DELTA);
-    assertEquals(80.0, before.maxDiskUtilizationSpreadPct(), DELTA);
-    assertEquals(0, after.numUnbalancedDisks());
-    assertEquals(40.0, after.maxDiskUtilizationPct(), DELTA);
-    assertEquals(0.0, after.maxDiskUtilizationSpreadPct(), DELTA);
+    assertEquals(2, before.usage().numUnbalancedDisks());
+    assertEquals(80.0, before.usage().max().utilizationPct(), DELTA);
+    assertEquals(80.0, before.usage().maxSpreadWithinBroker().utilizationPct(), DELTA);
+    assertEquals(0, after.usage().numUnbalancedDisks());
+    assertEquals(40.0, after.usage().max().utilizationPct(), DELTA);
+    assertEquals(0.0, after.usage().maxSpreadWithinBroker().utilizationPct(), DELTA);
 
     String summary = optimizerResult.getProposalSummary();
-    assertTrue(summary, summary.contains(String.format("%nDisk balance (before -> after): unbalanced disks 2 -> 0, max disk utilization "
-                                                       + "80.00%% -> 40.00%%, max spread within a broker 80.00 -> 0.00pp.")));
+    assertTrue(summary, summary.contains(String.format("%nDisk usage balance (before -> after): unbalanced disks 2 of 2 -> 0 of 2, "
+                                                       + "max utilization 80.00%% -> 40.00%%, max spread within a broker 80.00pp -> "
+                                                       + "0.00pp.")));
     Map<String, Object> jsonSummary = optimizerResult.getProposalSummaryForJson();
-    assertEquals(before.numUnbalancedDisks(), jsonSummary.get("numUnbalancedDisksBefore"));
-    assertEquals(after.numUnbalancedDisks(), jsonSummary.get("numUnbalancedDisksAfter"));
-    assertEquals(before.maxDiskUtilizationPct(), jsonSummary.get("maxDiskUtilizationPctBefore"));
-    assertEquals(after.maxDiskUtilizationPct(), jsonSummary.get("maxDiskUtilizationPctAfter"));
-    assertEquals(before.maxDiskUtilizationSpreadPct(), jsonSummary.get("maxDiskUtilizationSpreadPctBefore"));
-    assertEquals(after.maxDiskUtilizationSpreadPct(), jsonSummary.get("maxDiskUtilizationSpreadPctAfter"));
+    assertEquals(before.getJsonStructure(), jsonSummary.get("diskStatisticsBefore"));
+    assertEquals(after.getJsonStructure(), jsonSummary.get("diskStatisticsAfter"));
   }
 
   @Test
@@ -174,11 +177,13 @@ public class OptimizationResultTest {
                                                                   goalsByPriority(List.of(INTER_BROKER_GOAL), config),
                                                                   new OperationProgress());
 
-    assertFalse(optimizerResult.getProposalSummary().contains("Disk balance"));
-    assertFalse(optimizerResult.getProposalSummaryForJson().containsKey("numUnbalancedDisksBefore"));
+    assertFalse(optimizerResult.getProposalSummary().contains("Disk usage balance"));
+    assertFalse(optimizerResult.getProposalSummaryForJson().containsKey("diskStatisticsBefore"));
+    assertFalse(optimizerResult.getProposalSummaryForJson().containsKey("diskStatisticsAfter"));
     String response = response(optimizerResult, config, false);
-    assertFalse(response, response.contains("DISKS"));
-    assertTrue(response, goalStats(response, INTER_BROKER_GOAL).contains("AVG:{"));
+    assertFalse(response, response.contains("DISKS:{"));
+    assertFalse(response, response.contains("DISK USAGE"));
+    assertTrue(response, goalStats(response, INTER_BROKER_GOAL).contains("AVG:{cpu"));
   }
 
   @SuppressWarnings("unchecked")

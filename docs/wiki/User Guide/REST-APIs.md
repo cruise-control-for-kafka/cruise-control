@@ -373,10 +373,32 @@ User can specify goals to use for rebalance via `goals` parameter. When `goals` 
 
 With `rebalance_disk=true`, `goals` only accepts intra-broker goals (the goals listed in `intra.broker.goals`); without `goals`, the goals in `intra.broker.goals` are used, in their order.
 
-If the cluster model has disk information (e.g. with `rebalance_disk=true`), the summary also shows the disk balance before and
-after the optimization (number of unbalanced disks, highest disk utilization, and largest utilization spread between the disks
-of a broker), and the stats of each goal include a `DISKS` line (`diskStatistics` in JSON). Intra-broker goals only move replicas
-between the disks of a broker, so their broker-level stats cannot change: the plaintext response only shows their `DISKS` line.
+If the cluster model has disk information (e.g. with `rebalance_disk=true`), the response also shows the balance between the
+disks of each broker, grouped by the metric it is about -- currently the disk usage (`usage` in JSON):
+
+* The stats of each goal include disk-level stats (`diskStatistics` in JSON): the number of alive disks (`DISKS:{alive: ...}`,
+  `numAliveDisks`), and the `DISK USAGE` lines:
+  * `unbalanced` (`numUnbalancedDisks`): the number of disks that `IntraBrokerDiskUsageDistributionGoal` would move replicas to
+    or from, i.e. whose utilization is out of the utilization of their broker times 1 +/- (`disk.balance.threshold` - 1) * 0.9;
+  * `aboveCapacityLimit` (`numDisksAboveCapacityLimit`): the number of disks whose utilization is above `disk.capacity.threshold`;
+  * `maxSpreadWithinBroker`: the largest difference between the utilization of the disks of a broker, and that broker;
+  * `AVG`, `MAX` and `MIN`: the average, highest and lowest utilization of a disk -- `MAX` and `MIN` with the broker and log
+    directory of the disk;
+  * `STD`: the standard deviation of the utilization of each disk from the utilization of its broker, which
+    `IntraBrokerDiskUsageDistributionGoal` reduces.
+
+  Utilizations are percentages of the disk capacity (`%`; `utilizationPct` in JSON). `STD` and `maxSpreadWithinBroker` are
+  differences between such percentages, in percentage points (`pp`): e.g. a broker whose disks are at 17.35% and 0.73% has a
+  spread of 16.62pp. Disks with no capacity, such as disks being removed, are left out.
+* The stats of a goal are the stats of the cluster after that goal is optimized -- i.e. after that goal and all the goals before
+  it -- not what that goal alone changed. For example, with `rebalance_disk=true`, `IntraBrokerDiskCapacityGoal(NO-ACTION)`
+  followed by `unbalanced: 12` means that no disk was above the capacity limit, while 12 disks were unbalanced; then
+  `IntraBrokerDiskUsageDistributionGoal(FIXED)` followed by `unbalanced: 0` shows the balance after both goals.
+* Intra-broker goals only move replicas between the disks of a broker, so their broker-level stats cannot change: the plaintext
+  response only shows their disk-level stats.
+* The summary shows the disk usage balance before and after the optimization, e.g. `Disk usage balance (before -> after):
+  unbalanced disks 12 of 12 -> 0 of 12, max utilization 17.33% -> 6.18%, max spread within a broker 16.62pp -> 2.83pp.`
+  (`diskStatisticsBefore` and `diskStatisticsAfter` in JSON, shaped like `diskStatistics`).
 
 When rebalancing a cluster, all the brokers in the cluster(except recently removed/demoted brokers if `exclude_recently_removed_brokers`/`exclude_recently_demoted_brokers` set to `true`) are eligible to give / receive replicas. All the brokers will be throttled during the partition movement. The throttling can be set in two ways.
 
@@ -568,8 +590,9 @@ If `verbose` is set to `true`, the response also shows the proposed replica move
 that each replica moves between -- and the load before the disk removal. The load after the disk removal shows the
 removed disks as empty, and the disk capacity of the brokers without the removed disks.
 
-The summary shows the disk balance before and after the disk removal, as for `rebalance` with `rebalance_disk=true`. The disks to
-remove are left out of the disk balance after the removal.
+The summary shows the disk usage balance before and after the disk removal, as for `rebalance` with `rebalance_disk=true`. The
+disks to remove are only counted before the removal: e.g. removing one disk of each of three brokers with four disks each gives
+`unbalanced disks 12 of 12 -> 9 of 9`. The remaining disks are not rebalanced by `remove_disks`.
 
 ### Stop the current proposal execution task
 The following POST request will let Cruise Control stop an ongoing `rebalance`, `add_broker`,  `remove_broker`, `fix_offline_replica`, `topic_configuration`, `demote_broker` or `remove_disks` operation:

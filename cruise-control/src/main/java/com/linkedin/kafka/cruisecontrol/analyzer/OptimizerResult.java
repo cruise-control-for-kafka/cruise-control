@@ -62,17 +62,9 @@ public class OptimizerResult {
   @JsonResponseField
   private static final String PROVISION_RECOMMENDATION = "provisionRecommendation";
   @JsonResponseField(required = false)
-  private static final String NUM_UNBALANCED_DISKS_BEFORE = "numUnbalancedDisksBefore";
+  private static final String DISK_STATISTICS_BEFORE = "diskStatisticsBefore";
   @JsonResponseField(required = false)
-  private static final String NUM_UNBALANCED_DISKS_AFTER = "numUnbalancedDisksAfter";
-  @JsonResponseField(required = false)
-  private static final String MAX_DISK_UTILIZATION_PCT_BEFORE = "maxDiskUtilizationPctBefore";
-  @JsonResponseField(required = false)
-  private static final String MAX_DISK_UTILIZATION_PCT_AFTER = "maxDiskUtilizationPctAfter";
-  @JsonResponseField(required = false)
-  private static final String MAX_DISK_UTILIZATION_SPREAD_PCT_BEFORE = "maxDiskUtilizationSpreadPctBefore";
-  @JsonResponseField(required = false)
-  private static final String MAX_DISK_UTILIZATION_SPREAD_PCT_AFTER = "maxDiskUtilizationSpreadPctAfter";
+  private static final String DISK_STATISTICS_AFTER = "diskStatisticsAfter";
   private static final String VIOLATED = "VIOLATED";
   private static final String FIXED = "FIXED";
   private static final String NO_ACTION = "NO-ACTION";
@@ -159,6 +151,9 @@ public class OptimizerResult {
   }
 
   /**
+   * The stats of a goal are the stats of the cluster after the optimization of this goal -- i.e. after this goal and all the goals
+   * of higher priority -- rather than the changes made by this goal alone. E.g. a goal with no action shows the state it found.
+   *
    * @return Stats by goal name ordered by priority.
    */
   public LinkedHashMap<String, ClusterModelStats> statsByGoalName() {
@@ -335,7 +330,8 @@ public class OptimizerResult {
 
   /**
    * @return The disk balance before and after optimization in plaintext format, or an empty string if the cluster model has no
-   * disk information.
+   * disk information. The number of disks may differ before and after: e.g. the disks removed by remove_disks are only
+   * counted before.
    */
   private String diskBalanceSummary() {
     DiskBalanceStats before = diskBalanceStatsBeforeOptimization();
@@ -343,10 +339,13 @@ public class OptimizerResult {
     if (before == null || after == null) {
       return "";
     }
-    return String.format("%nDisk balance (before -> after): unbalanced disks %d -> %d, max disk utilization %.2f%% -> %.2f%%, "
-                         + "max spread within a broker %.2f -> %.2fpp.",
-                         before.numUnbalancedDisks(), after.numUnbalancedDisks(), before.maxDiskUtilizationPct(),
-                         after.maxDiskUtilizationPct(), before.maxDiskUtilizationSpreadPct(), after.maxDiskUtilizationSpreadPct());
+    DiskBalanceStats.DiskUsageStats usageBefore = before.usage();
+    DiskBalanceStats.DiskUsageStats usageAfter = after.usage();
+    return String.format("%nDisk usage balance (before -> after): unbalanced disks %d of %d -> %d of %d, max utilization %.2f%% -> "
+                         + "%.2f%%, max spread within a broker %.2fpp -> %.2fpp.",
+                         usageBefore.numUnbalancedDisks(), before.numAliveDisks(), usageAfter.numUnbalancedDisks(),
+                         after.numAliveDisks(), usageBefore.max().utilizationPct(), usageAfter.max().utilizationPct(),
+                         usageBefore.maxSpreadWithinBroker().utilizationPct(), usageAfter.maxSpreadWithinBroker().utilizationPct());
   }
 
   private DiskBalanceStats diskBalanceStatsBeforeOptimization() {
@@ -376,12 +375,8 @@ public class OptimizerResult {
     DiskBalanceStats diskBalanceStatsBefore = diskBalanceStatsBeforeOptimization();
     DiskBalanceStats diskBalanceStatsAfter = _clusterModelStats.diskBalanceStats();
     if (diskBalanceStatsBefore != null && diskBalanceStatsAfter != null) {
-      ret.put(NUM_UNBALANCED_DISKS_BEFORE, diskBalanceStatsBefore.numUnbalancedDisks());
-      ret.put(NUM_UNBALANCED_DISKS_AFTER, diskBalanceStatsAfter.numUnbalancedDisks());
-      ret.put(MAX_DISK_UTILIZATION_PCT_BEFORE, diskBalanceStatsBefore.maxDiskUtilizationPct());
-      ret.put(MAX_DISK_UTILIZATION_PCT_AFTER, diskBalanceStatsAfter.maxDiskUtilizationPct());
-      ret.put(MAX_DISK_UTILIZATION_SPREAD_PCT_BEFORE, diskBalanceStatsBefore.maxDiskUtilizationSpreadPct());
-      ret.put(MAX_DISK_UTILIZATION_SPREAD_PCT_AFTER, diskBalanceStatsAfter.maxDiskUtilizationSpreadPct());
+      ret.put(DISK_STATISTICS_BEFORE, diskBalanceStatsBefore.getJsonStructure());
+      ret.put(DISK_STATISTICS_AFTER, diskBalanceStatsAfter.getJsonStructure());
     }
     return ret;
   }

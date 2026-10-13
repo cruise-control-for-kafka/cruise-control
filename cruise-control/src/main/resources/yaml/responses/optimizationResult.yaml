@@ -91,27 +91,7 @@ OptimizerResult:
         - UNDECIDED
     provisionRecommendation:
       type: string
-    numUnbalancedDisksBefore:
-      description: Number of unbalanced disks before optimization, only present if the cluster model has disk information.
-      type: integer
-      format: int32
-    numUnbalancedDisksAfter:
-      description: Number of unbalanced disks after optimization, only present if the cluster model has disk information.
-      type: integer
-      format: int32
-    maxDiskUtilizationPctBefore:
-      description: Highest disk utilization percentage before optimization, only present if the cluster model has disk information.
-      type: number
-      format: double
-    maxDiskUtilizationPctAfter:
-      description: Highest disk utilization percentage after optimization, only present if the cluster model has disk information.
-      type: number
-      format: double
-    maxDiskUtilizationSpreadPctBefore:
-      description: Largest difference between the highest and the lowest disk utilization percentage of a broker before optimization, in percentage points, only present if the cluster model has disk information.
-      type: number
-      format: double
-    maxDiskUtilizationSpreadPctAfter:
-      description: Largest difference between the highest and the lowest disk utilization percentage of a broker after optimization, in percentage points, only present if the cluster model has disk information.
-      type: number
-      format: double
+    diskStatisticsBefore:
+      $ref: './clusterModelStats.yaml#/DiskBalanceStats'
+    diskStatisticsAfter:
+      $ref: './clusterModelStats.yaml#/DiskBalanceStats'

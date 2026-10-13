@@ -239,7 +239,8 @@ public class ClusterModelStats {
   /**
    * @return Stats about the balance between the disks of each broker, or {@code null} if the cluster model has no disk
    * information. Unlike {@link #numUnbalancedDisks()} and {@link #diskUtilizationStandardDeviation()}, these stats leave out
-   * disks with no capacity, such as disks marked for removal.
+   * disks with no capacity, such as disks marked for removal, and count unbalanced disks with the balance margin of
+   * {@link com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal}.
    */
   public DiskBalanceStats diskBalanceStats() {
     return _diskBalanceStats;

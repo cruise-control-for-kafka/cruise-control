@@ -408,7 +408,9 @@ public class GoalOptimizer implements Runnable {
    * (1) Re-balance: Generates proposals to update the state of the cluster to achieve a final balanced state.
    * (2) Self-healing: Generates proposals to move replicas away from decommissioned brokers and broken disks.
    * The result contains the stats after each goal, as well as the stats before the optimization (see
-   * {@link OptimizerResult#clusterModelStatsBeforeOptimization()}).
+   * {@link OptimizerResult#clusterModelStatsBeforeOptimization()}). The stats after a goal are the stats of the cluster once this
+   * goal and all the goals before it are optimized, not the changes made by this goal alone (see
+   * {@link OptimizerResult#statsByGoalName()}).
    *
    * Assumptions:
    * <ul>

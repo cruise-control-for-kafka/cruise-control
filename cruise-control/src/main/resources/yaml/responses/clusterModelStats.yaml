@@ -81,21 +81,45 @@ ClusterModelStatsValueHolder:
 
 DiskBalanceStats:
   type: object
-  description: Balance between the disks of each broker, only present if the cluster model has disk information. Disks with no
-    capacity, such as disks being removed, are left out.
+  description: Balance between the disks of each broker, grouped by the metric it is about. Only present if the cluster model has
+    disk information. Disks with no capacity, such as disks being removed, are left out.
   required:
     - numAliveDisks
-    - numUnbalancedDisks
-    - numDisksAboveCapacityLimit
-    - maxDiskUtilizationPct
-    - maxDiskUtilizationBroker
-    - maxDiskUtilizationLogdir
-    - maxDiskUtilizationSpreadPct
-    - diskUtilizationStDevPct
+    - usage
   properties:
     numAliveDisks:
+      description: Number of alive disks with a positive capacity.
       type: integer
       format: int32
+    usage:
+      $ref: '#/DiskUsageStats'
+
+DiskUsageStats:
+  type: object
+  description: Disk usage, i.e. the share of the capacity of each disk that its replicas use. AVG, MAX and MIN are the average,
+    highest and lowest utilization percentage of the disks (MAX and MIN with the broker and logdir of the disk). STD is the standard
+    deviation of the utilization percentage of each disk from the utilization percentage of its broker, and maxSpreadWithinBroker
+    the largest difference between the utilization percentages of the disks of a broker (with the broker, if a broker has at least
+    two disks), both in percentage points.
+  required:
+    - AVG
+    - MAX
+    - MIN
+    - STD
+    - maxSpreadWithinBroker
+    - numUnbalancedDisks
+    - numDisksAboveCapacityLimit
+  properties:
+    AVG:
+      $ref: '#/DiskUtilizationValue'
+    MAX:
+      $ref: '#/DiskUtilizationValue'
+    MIN:
+      $ref: '#/DiskUtilizationValue'
+    STD:
+      $ref: '#/DiskUtilizationValue'
+    maxSpreadWithinBroker:
+      $ref: '#/DiskUtilizationValue'
     numUnbalancedDisks:
       description: Number of disks whose utilization is out of the balance range of their broker that IntraBrokerDiskUsageDistributionGoal
         enforces, i.e. the utilization of the broker times 1 +/- (disk.balance.threshold - 1) * 0.9.
@@ -105,26 +129,21 @@ DiskBalanceStats:
       description: Number of disks whose utilization is above disk.capacity.threshold.
       type: integer
       format: int32
-    maxDiskUtilizationPct:
-      description: Highest disk utilization percentage.
+
+DiskUtilizationValue:
+  type: object
+  required:
+    - utilizationPct
+  properties:
+    utilizationPct:
+      description: Disk utilization in percent of the disk capacity, or a difference between such percentages in percentage points
+        (STD and maxSpreadWithinBroker).
       type: number
       format: double
-    maxDiskUtilizationBroker:
-      description: Broker of the disk with the highest utilization percentage.
+    broker:
+      description: Broker the value is about, if any.
       type: integer
       format: int32
-    maxDiskUtilizationLogdir:
-      description: Logdir of the disk with the highest utilization percentage.
+    logdir:
+      description: Logdir of the disk the value is about, if any.
       type: string
-    maxDiskUtilizationSpreadPct:
-      description: Largest difference between the highest and the lowest disk utilization percentage of a broker, in percentage points.
-      type: number
-      format: double
-    maxDiskUtilizationSpreadBroker:
-      description: Broker with the largest disk utilization spread, only present if a broker has at least two disks.
-      type: integer
-      format: int32
-    diskUtilizationStDevPct:
-      description: Standard deviation of the utilization percentage of disks from the one of their broker, in percentage points.
-      type: number
-      format: double
