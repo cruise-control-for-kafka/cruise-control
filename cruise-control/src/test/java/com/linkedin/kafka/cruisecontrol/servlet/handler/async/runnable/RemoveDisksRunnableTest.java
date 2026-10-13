@@ -12,6 +12,7 @@ import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils;
 import com.linkedin.kafka.cruisecontrol.analyzer.GoalOptimizer;
 import com.linkedin.kafka.cruisecontrol.analyzer.OptimizerResult;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal;
+import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.common.TestConstants;
 import com.linkedin.kafka.cruisecontrol.config.BrokerCapacityInfo;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
@@ -25,6 +26,7 @@ import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.RemoveDisksParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.response.OptimizationResult;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -54,6 +56,7 @@ public class RemoveDisksRunnableTest {
   private static final double DISK_CAPACITY = TestConstants.LARGE_BROKER_CAPACITY / 2;
   private static final double REPLICA_DISK_MB = DISK_CAPACITY / 2;
   private static final Map<Integer, Set<String>> LOGDIRS_TO_REMOVE = Collections.singletonMap(BROKER_ID, Collections.singleton(LOGDIR0));
+  private static final String LOGDIR2 = "/mnt/i02";
 
   @Test
   public void testVerboseJsonResponseHasLoadBeforeAndAfterAndDiskMovements() throws Exception {
@@ -107,6 +110,34 @@ public class RemoveDisksRunnableTest {
   }
 
   @Test
+  public void testOnlyEmptiesTheDisksToRemove() throws Exception {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
+    // Broker 0 has three disks: the one to remove, one above the capacity limit (80%), and an empty one. Broker 1 also has a disk
+    // above the capacity limit.
+    ClusterModel clusterModel = new ClusterModel(new ModelGeneration(0, 0L), 1.0);
+    Map<Resource, Double> brokerCapacity = new HashMap<>(TestConstants.BROKER_CAPACITY);
+    brokerCapacity.put(Resource.DISK, 3 * DISK_CAPACITY);
+    createBroker(clusterModel, 0, new BrokerCapacityInfo(brokerCapacity, Map.of(LOGDIR0, DISK_CAPACITY, LOGDIR1, DISK_CAPACITY,
+                                                                                LOGDIR2, DISK_CAPACITY)));
+    createBroker(clusterModel, 1, new BrokerCapacityInfo(TestConstants.BROKER_CAPACITY, TestConstants.DISK_CAPACITY));
+    TopicPartition replicaToMove = new TopicPartition("topic", 0);
+    createReplica(clusterModel, 0, replicaToMove, LOGDIR0, REPLICA_DISK_MB);
+    createReplica(clusterModel, 0, new TopicPartition("topic", 1), LOGDIR1, 0.9 * DISK_CAPACITY);
+    createReplica(clusterModel, 1, new TopicPartition("topic", 2), LOGDIR0, 0.9 * DISK_CAPACITY);
+
+    OptimizerResult result = removeDisks(config, clusterModel, Collections.singletonMap(0, Collections.singleton(LOGDIR0)),
+                                         Collections.emptySet());
+
+    // Only the replica on the disk to remove moves, to the disk of its broker with room for it; the disks above the capacity
+    // limit are left as they are, and do not fail the request.
+    assertEquals(1, result.goalProposals().size());
+    ExecutionProposal proposal = result.goalProposals().iterator().next();
+    assertEquals(replicaToMove, proposal.topicPartition());
+    assertEquals(Collections.singleton(0), proposal.replicasToMoveBetweenDisksByBroker().keySet());
+    assertEquals(LOGDIR2, proposal.replicasToMoveBetweenDisksByBroker().get(0).logdir());
+  }
+
+  @Test
   public void testOnlyDiskStatsWhateverTheIntraBrokerGoalsConfig() throws Exception {
     // remove_disks runs its own IntraBrokerDiskCapacityGoal, even when intra.broker.goals does not list it: the goal itself says
     // that it is an intra-broker goal, so its result shows disk-level stats only.
@@ -155,21 +186,36 @@ public class RemoveDisksRunnableTest {
    * @return The optimizer result of the disk removal.
    */
   private static OptimizerResult removeDisk(KafkaCruiseControlConfig config, Set<String> excludedTopics) throws Exception {
-    ClusterModel clusterModel = clusterModel();
+    return removeDisks(config, clusterModel(), LOGDIRS_TO_REMOVE, excludedTopics);
+  }
+
+  /**
+   * Run a dry-run removal of the given disks, optimizing the given cluster model with the goal optimizer.
+   *
+   * @param config The Kafka Cruise Control config.
+   * @param clusterModel The cluster model.
+   * @param logdirsToRemove The logdirs of the disks to remove, by broker id.
+   * @param excludedTopics Topics excluded from partition movement.
+   * @return The optimizer result of the disk removal.
+   */
+  private static OptimizerResult removeDisks(KafkaCruiseControlConfig config,
+                                             ClusterModel clusterModel,
+                                             Map<Integer, Set<String>> logdirsToRemove,
+                                             Set<String> excludedTopics) throws Exception {
     GoalOptimizer goalOptimizer = new GoalOptimizer(config, null, Time.SYSTEM, new MetricRegistry(), EasyMock.mock(Executor.class),
                                                     EasyMock.mock(AdminClient.class));
 
     RemoveDisksParameters parameters = EasyMock.niceMock(RemoveDisksParameters.class);
     EasyMock.expect(parameters.dryRun()).andReturn(true).anyTimes();
     EasyMock.expect(parameters.allowCapacityEstimation()).andReturn(true).anyTimes();
-    EasyMock.expect(parameters.brokerIdAndLogdirs()).andReturn(LOGDIRS_TO_REMOVE).anyTimes();
+    EasyMock.expect(parameters.brokerIdAndLogdirs()).andReturn(logdirsToRemove).anyTimes();
 
     KafkaCruiseControl kafkaCruiseControl = EasyMock.mock(KafkaCruiseControl.class);
     EasyMock.expect(kafkaCruiseControl.config()).andReturn(config).anyTimes();
     EasyMock.expect(kafkaCruiseControl.timeMs()).andReturn(1L).anyTimes();
     kafkaCruiseControl.sanityCheckDryRun(true, false);
     EasyMock.expect(kafkaCruiseControl.acquireForModelGeneration(EasyMock.anyObject())).andReturn(null);
-    kafkaCruiseControl.sanityCheckBrokerPresence(Collections.singleton(BROKER_ID));
+    kafkaCruiseControl.sanityCheckBrokerPresence(logdirsToRemove.keySet());
     EasyMock.expect(kafkaCruiseControl.clusterModel(EasyMock.eq(DEFAULT_START_TIME_FOR_CLUSTER_MODEL), EasyMock.anyLong(),
                                                     EasyMock.anyObject(), EasyMock.eq(true), EasyMock.eq(true), EasyMock.anyObject()))
             .andReturn(clusterModel);
@@ -207,6 +253,18 @@ public class RemoveDisksRunnableTest {
     OptimizationResult response = new OptimizationResult(optimizerResult, config);
     response.discardIrrelevantResponse(parameters);
     return response.cachedResponse();
+  }
+
+  private static void createBroker(ClusterModel clusterModel, int brokerId, BrokerCapacityInfo capacity) {
+    String rack = Integer.toString(brokerId);
+    clusterModel.createRack(rack);
+    clusterModel.createBroker(rack, rack, brokerId, capacity, true);
+  }
+
+  private static void createReplica(ClusterModel clusterModel, int brokerId, TopicPartition tp, String logdir, double diskMB) {
+    String rack = Integer.toString(brokerId);
+    clusterModel.createReplica(rack, brokerId, tp, 0, true, false, logdir, false);
+    clusterModel.setReplicaLoad(rack, brokerId, tp, getAggregatedMetricValues(1.0, 10.0, 10.0, diskMB), Collections.singletonList(1L));
   }
 
   /**

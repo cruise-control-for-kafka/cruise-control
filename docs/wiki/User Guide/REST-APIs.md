@@ -250,7 +250,7 @@ Supported parameters are:
 | exclude_recently_demoted_brokers  | boolean   | whether to allow leader replicas to be moved to recently demoted brokers              | false                | yes       |
 | exclude_recently_removed_brokers  | boolean   | whether allow replicas to be moved to recently removed broker                         | false                | yes       |
 | destination_broker_ids            | boolean   | specify brokers to move replicas to                                                   | available brokers    | yes       |
-| rebalance_disk                    | boolean   | whether to balance load between disks within brokers (requires JBOD Kafka deployment) | false                | yes       |
+| rebalance_disk                    | boolean   | whether to balance load between disks within brokers, with the intra-broker goals in `goals` (default: `intra.broker.goals`) (requires JBOD Kafka deployment) | false                | yes       |
 | json                              | boolean   | return in JSON format or not                                                          | false                | yes       | 
 | verbose                           | boolean   | return detailed state information                                                     | false                | yes       |
 | doAs                              | string    | propagated user by the trusted proxy service                                          | null                 | yes       | 
@@ -360,7 +360,7 @@ Supported parameters are:
 | ignore_proposal_cache                         | boolean   | whether to ignore the cached proposal or not                                                                                          | false                 | yes       | 
 | replication_throttle                          | long      | upper bound on the bandwidth used to move replicas (in bytes per second)                                                              | null                  | yes       | 
 | destination_broker_ids                        | list      | specify brokers to move replicas to                                                                                                   | available brokers     | yes       | 
-| rebalance_disk                                | boolean   | whether to balance load between disks within brokers (requires JBOD Kafka deployment)                                                 | false                 | yes       | 
+| rebalance_disk                                | boolean   | whether to balance load between disks within brokers, with the intra-broker goals in `goals` (default: `intra.broker.goals`) (requires JBOD Kafka deployment) | false                 | yes       | 
 | json                                          | boolean   | return in JSON format or not                                                                                                          | false                 | yes       | 
 | verbose                                       | boolean   | return detailed state information                                                                                                     | false                 | yes       | 
 | reason                                        | string    | reason for the request                                                                                                                | "No reason provided"  | yes       | 
@@ -370,6 +370,8 @@ Supported parameters are:
 Similar to the [GET interface for getting proposals](https://github.com/cruise-control-for-kafka/cruise-control/wiki/REST-APIs#get-optimization-proposals), the rebalance can also be based on available valid windows or available valid partitions.
 
 User can specify goals to use for rebalance via `goals` parameter. When `goals` is provided, the cached proposals will be ignored.
+
+With `rebalance_disk=true`, `goals` only accepts intra-broker goals (the goals listed in `intra.broker.goals`); without `goals`, the goals in `intra.broker.goals` are used, in their order.
 
 If the cluster model has disk information (e.g. with `rebalance_disk=true`), the summary also shows the disk balance before and
 after the optimization (number of unbalanced disks, highest disk utilization, and largest utilization spread between the disks
@@ -553,7 +555,7 @@ Note that `brokerid_and_logdirs` takes comma as delimiter between two broker id 
 
 A request without `brokerid_and_logdirs`, or with a pair that is not a broker id followed by a hyphen and a logdir, is rejected with HTTP 400.
 
-Unlike most other optimization endpoints, `remove_disks` does not accept a `goals` parameter. Proposal generation always uses `IntraBrokerDiskCapacityGoal` with disk-emptying enabled, regardless of the `intra.broker.goals` or `default.goals` configuration. This goal generates intra-broker replica movement proposals to move all replicas off the specified disks while keeping each remaining disk under the configured capacity threshold.
+Unlike most other optimization endpoints, `remove_disks` does not accept a `goals` parameter. Proposal generation always uses `IntraBrokerDiskCapacityGoal` with disk-emptying enabled, regardless of the `intra.broker.goals` or `default.goals` configuration. This goal generates intra-broker replica movement proposals to move all replicas off the specified disks while keeping each remaining disk under the configured capacity threshold. It only moves the replicas on the specified disks -- including the replicas of topics excluded from partition movement (`topics.excluded.from.partition.movement`) -- to other disks of the same broker: it neither balances the remaining disks, nor touches other disks above the capacity threshold or other brokers. The other intra-broker goals, such as `IntraBrokerDiskUsageDistributionGoal`, are not used, since they balance the disks of every broker.
 
 Before generating proposals, Cruise Control validates that:
 * Each specified logdir exists on the corresponding broker.

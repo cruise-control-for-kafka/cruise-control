@@ -41,7 +41,7 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
   private static final Logger LOG = LoggerFactory.getLogger(IntraBrokerDiskCapacityGoal.class);
   private static final int MIN_NUM_VALID_WINDOWS = 1;
   private static final Resource RESOURCE = Resource.DISK;
-  // This is only used for the remove disks endpoint
+  // This is only used for the remove disks endpoint: the goal only moves replicas off the disks marked for removal.
   private final boolean _shouldEmptyZeroCapacityDisks;
 
   /**
@@ -54,7 +54,9 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
   /**
    * Constructor for Intra Broker Disk Capacity Goal.
    *
-   * @param shouldEmptyZeroCapacityDisks specifies if the goal should move all replicas from disks with 0 capacity
+   * @param shouldEmptyZeroCapacityDisks specifies if the goal should move all replicas from the disks marked for removal (which
+   *                                     have 0 capacity). In that case, the goal only moves replicas off those disks: it neither
+   *                                     balances the other brokers, nor moves replicas off the other disks of their brokers.
    */
   public IntraBrokerDiskCapacityGoal(boolean shouldEmptyZeroCapacityDisks) {
       _shouldEmptyZeroCapacityDisks = shouldEmptyZeroCapacityDisks;
@@ -79,8 +81,8 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
   }
 
   /**
-   * Sanity checks: For each alive broker in the cluster, the load for {@link Resource#DISK} less than the limiting capacity
-   * determined by the total capacity of alive disks multiplied by the capacity threshold.
+   * Sanity checks: For each broker to balance (see {@link #brokersToBalance(ClusterModel)}), the load for {@link Resource#DISK}
+   * less than the limiting capacity determined by the total capacity of alive disks multiplied by the capacity threshold.
    *
    * @param clusterModel The state of the cluster.
    * @param optimizationOptions Options to take into account during optimization.
@@ -89,7 +91,7 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
   protected void initGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions)
       throws OptimizationFailureException {
     // While proposals exclude the excludedTopics, the existingUtilization still considers replicas of the excludedTopics.
-    for (Broker broker : clusterModel.aliveBrokers()) {
+    for (Broker broker : brokersToBalance(clusterModel)) {
       double existingUtilization = broker.load().expectedUtilizationFor(RESOURCE);
       double allowedCapacity = broker.capacityFor(RESOURCE) * _balancingConstraint.capacityThreshold(RESOURCE);
       if (allowedCapacity < existingUtilization) {
@@ -118,6 +120,7 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
    * Get brokers in the cluster so that the rebalance process will go over to apply balancing actions to replicas
    * they contain.
    * Note this goal moves replica between disks within broker, therefore it is unable to heal dead broker.
+   * To empty the disks marked for removal, only their brokers are balanced.
    *
    * @param clusterModel The state of the cluster.
    * @return A collection of brokers that the rebalance process will go over to apply balancing actions to replicas
@@ -125,7 +128,11 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
    */
   @Override
   protected SortedSet<Broker> brokersToBalance(ClusterModel clusterModel) {
-    return new TreeSet<>(clusterModel.aliveBrokers());
+    SortedSet<Broker> brokersToBalance = new TreeSet<>(clusterModel.aliveBrokers());
+    if (_shouldEmptyZeroCapacityDisks) {
+      brokersToBalance.removeIf(broker -> broker.disks().stream().noneMatch(Disk::isMarkedForRemoval));
+    }
+    return brokersToBalance;
   }
 
   /**
@@ -196,7 +203,9 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
     LOG.debug("balancing broker {}, optimized goals = {}.", broker, optimizedGoals);
 
     // Get alive disk over capacity limit.
+    // To empty the disks marked for removal, replicas are only moved off those disks.
     List<Disk> disksOverUtilized = broker.disks().stream().filter(Disk::isAlive)
+                                         .filter(disk -> !_shouldEmptyZeroCapacityDisks || disk.isMarkedForRemoval())
                                          .filter(this::isUtilizationOverLimit).toList();
     if (disksOverUtilized.isEmpty()) {
       return;
@@ -224,7 +233,8 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
 
   /**
    * Update goal state.
-   * Sanity check: After completion of balancing the resource, confirm that the utilization is under the capacity and finish.
+   * Sanity check: After completion of balancing the resource, confirm that the utilization is under the capacity -- or, to empty
+   * the disks marked for removal, that they are empty -- and finish.
    *
    * @param clusterModel The state of the cluster.
    * @param optimizationOptions Options to take into account during optimization.
@@ -234,17 +244,22 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
       throws OptimizationFailureException {
     for (Broker broker : brokersToBalance(clusterModel)) {
       for (Disk disk : broker.disks()) {
-        if (disk.isAlive() && isUtilizationOverLimit(disk)) {
+        if (_shouldEmptyZeroCapacityDisks) {
+          // Only the disks marked for removal must be emptied: replicas are only moved to disks with room below the capacity limit.
+          // Not emptying a disk is not a lack of capacity of the cluster, hence no provision recommendation.
+          if (disk.isMarkedForRemoval() && !disk.replicas().isEmpty()) {
+            throw new OptimizationFailureException(String.format("[%s] Could not move all replicas from disk %s on broker %d (%d "
+                                                                 + "replicas, %.2f MB left, disk is %s).", name(), disk.logDir(),
+                                                                 broker.id(), disk.replicas().size(), disk.utilization(),
+                                                                 disk.state()));
+          }
+        } else if (disk.isAlive() && isUtilizationOverLimit(disk)) {
           // The utilization of the host for the resource is over the capacity limit.
           double requiredCapacity = disk.utilization() / _balancingConstraint.capacityThreshold(RESOURCE);
           ProvisionRecommendation recommendation = new ProvisionRecommendation.Builder(ProvisionStatus.UNDER_PROVISIONED)
               .numDisks(1).totalCapacity(requiredCapacity).build();
           throw new OptimizationFailureException(String.format("[%s] Utilization (%.2f) for disk %s on broker %d is above capacity limit.",
                                                                name(), disk.utilization(), disk, broker.id()), recommendation);
-        }
-        if (_shouldEmptyZeroCapacityDisks && disk.capacity() == 0 && !disk.replicas().isEmpty()) {
-          throw new OptimizationFailureException(String.format("[%s] Could not move all replicas from disk %s on broker %d",
-                                                               name(), disk.logDir(), broker.id()));
         }
       }
     }

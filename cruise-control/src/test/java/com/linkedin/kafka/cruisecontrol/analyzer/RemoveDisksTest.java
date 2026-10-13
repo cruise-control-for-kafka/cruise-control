@@ -38,6 +38,7 @@ import java.util.Set;
 
 import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils.getAggregatedMetricValues;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
@@ -146,8 +147,13 @@ public class RemoveDisksTest {
             assertEquals(0, proposals.iterator().next().replicasToMoveBetweenDisksByBroker().get(0).brokerId().intValue());
             assertEquals(TestConstants.LOGDIR1, proposals.iterator().next().replicasToMoveBetweenDisksByBroker().get(0).logdir());
         } else {
-            assertThrows(OptimizationFailureException.class,
+            OptimizationFailureException e = assertThrows(OptimizationFailureException.class,
                     () -> goalOptimizer.optimizations(_clusterModel, goalsByPriority, new OperationProgress()));
+            // The replica does not fit on the remaining disk below the capacity limit: this is reported as such, rather than as a
+            // lack of capacity of the cluster.
+            assertTrue(e.getMessage(), e.getMessage().startsWith(String.format(
+                    "[IntraBrokerDiskCapacityGoal] Could not move all replicas from disk %s on broker 0 (1 replicas", TestConstants.LOGDIR0)));
+            assertNull(e.provisionRecommendation());
         }
     }
 }
