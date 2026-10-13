@@ -78,11 +78,11 @@ public class RemoveDisksRunnableTest {
     assertDiskState(brokerAfter, LOGDIR0, 0.0, 0.0, 0);
     assertDiskState(brokerAfter, LOGDIR1, REPLICA_DISK_MB, 50.0, 1);
 
-    // The proposal shows the logdirs that the replica moves between.
+    // The proposal shows the logdirs that the replica moves between, by broker id.
     List<Map<String, Object>> proposals = cast(response.get("proposals"));
     assertEquals(1, proposals.size());
-    assertEquals(List.of(LOGDIR0), proposals.get(0).get("oldReplicaLogdirs"));
-    assertEquals(List.of(LOGDIR1), proposals.get(0).get("newReplicaLogdirs"));
+    assertEquals(Map.of(Integer.toString(BROKER_ID), LOGDIR0), proposals.get(0).get("oldReplicaLogdirs"));
+    assertEquals(Map.of(Integer.toString(BROKER_ID), LOGDIR1), proposals.get(0).get("newReplicaLogdirs"));
     Map<String, Object> summary = cast(response.get("summary"));
     assertEquals(1, ((Number) summary.get("numIntraBrokerReplicaMovements")).intValue());
 

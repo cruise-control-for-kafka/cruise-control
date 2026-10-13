@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -274,7 +275,11 @@ public class ExecutionProposal {
 
   /**
    * @return An object that can be further used to encode into JSON. For proposals with intra-broker replica movements,
-   * the logdirs of old and new replicas are included as well, in the same order as the corresponding replica lists.
+   * the logdirs of old and new replicas are included as well, keyed by broker id: the old and new replica lists may list
+   * the brokers in a different order (the new leader comes first). A replica whose logdir is not known (e.g. on a dead
+   * broker) is left out. These logdirs are for display only: the replicas moved between disks are
+   * {@link #replicasToMoveBetweenDisksByBroker()}, which never include a replica whose logdir is not known, since such a
+   * replica is the same in both lists.
    */
   public Map<String, Object> getJsonStructure() {
     Map<String, Object> jsonStructure = new HashMap<>();
@@ -283,8 +288,8 @@ public class ExecutionProposal {
     jsonStructure.put(OLD_REPLICAS, brokerIds(_oldReplicas));
     jsonStructure.put(NEW_REPLICAS, brokerIds(_newReplicas));
     if (hasIntraBrokerReplicaAction()) {
-      jsonStructure.put(OLD_REPLICA_LOGDIRS, _oldReplicas.stream().map(ReplicaPlacementInfo::logdir).collect(Collectors.toList()));
-      jsonStructure.put(NEW_REPLICA_LOGDIRS, _newReplicas.stream().map(ReplicaPlacementInfo::logdir).collect(Collectors.toList()));
+      jsonStructure.put(OLD_REPLICA_LOGDIRS, logdirsByBrokerId(_oldReplicas));
+      jsonStructure.put(NEW_REPLICA_LOGDIRS, logdirsByBrokerId(_newReplicas));
     }
     return jsonStructure;
   }
@@ -294,15 +299,27 @@ public class ExecutionProposal {
   }
 
   /**
+   * @param replicas Replicas.
+   * @return The logdir of each of the given replicas whose logdir is known, by broker id, in the order of the replicas.
+   */
+  private static Map<Integer, String> logdirsByBrokerId(List<ReplicaPlacementInfo> replicas) {
+    Map<Integer, String> logdirsByBrokerId = new LinkedHashMap<>();
+    replicas.stream().filter(r -> r.logdir() != null).forEach(r -> logdirsByBrokerId.put(r.brokerId(), r.logdir()));
+    return logdirsByBrokerId;
+  }
+
+  /**
    * Describe the given replicas. For proposals with intra-broker replica movements, each replica is described with its
-   * broker id and logdir (e.g. {@code 0-/disk1}), otherwise only with its broker id.
+   * broker id and logdir (e.g. {@code 0-/disk1}), otherwise only with its broker id. A replica whose logdir is not known
+   * (e.g. on a dead broker) is described with its broker id only.
    *
    * @param replicas Replicas to describe.
    * @return Description of the given replicas.
    */
   private List<String> describe(List<ReplicaPlacementInfo> replicas) {
     boolean includeLogdir = hasIntraBrokerReplicaAction();
-    return replicas.stream().map(r -> includeLogdir ? String.format("%d-%s", r.brokerId(), r.logdir()) : String.valueOf(r.brokerId()))
+    return replicas.stream().map(r -> includeLogdir && r.logdir() != null ? String.format("%d-%s", r.brokerId(), r.logdir())
+                                                                          : String.valueOf(r.brokerId()))
                    .collect(Collectors.toList());
   }
 

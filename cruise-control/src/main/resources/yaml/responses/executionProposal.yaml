@@ -22,12 +22,14 @@ ExecutionProposal:
         type: integer
         format: int32
     oldReplicaLogdirs:
-      description: Logdirs of the old replicas, in the same order as oldReplicas. Only present for intra-broker (disk) movements.
-      type: array
-      items:
+      description: Logdir of each old replica, keyed by broker id. A replica whose logdir is not known (e.g. on a dead broker) is
+        left out. Only present for intra-broker (disk) movements.
+      type: object
+      additionalProperties:
         type: string
     newReplicaLogdirs:
-      description: Logdirs of the new replicas, in the same order as newReplicas. Only present for intra-broker (disk) movements.
-      type: array
-      items:
+      description: Logdir of each new replica, keyed by broker id. A replica whose logdir is not known (e.g. on a dead broker) is
+        left out. Only present for intra-broker (disk) movements.
+      type: object
+      additionalProperties:
         type: string

@@ -406,6 +406,10 @@ disks of each broker, grouped by the metric it is about -- currently the disk us
 * The summary shows the disk usage balance before and after the optimization, e.g. `Disk usage balance (before -> after):
   unbalanced disks 12 of 12 -> 0 of 12, max utilization 17.33% -> 6.18%, max spread within a broker 16.62pp -> 2.83pp.`
   (`diskStatisticsBefore` and `diskStatisticsAfter` in JSON, shaped like `diskStatistics`).
+* With `verbose=true`, a proposal that moves replicas between disks shows each replica as `brokerId-logdir` in plaintext (e.g.
+  `[0-/d1, 1-/d1] -> [0-/d2, 1-/d1]`), and the log directory of each replica before and after in JSON (`oldReplicaLogdirs`
+  and `newReplicaLogdirs`, keyed by broker id). A replica whose log directory is not known, e.g. on a dead broker, is shown
+  without it.
 
 When rebalancing a cluster, all the brokers in the cluster(except recently removed/demoted brokers if `exclude_recently_removed_brokers`/`exclude_recently_demoted_brokers` set to `true`) are eligible to give / receive replicas. All the brokers will be throttled during the partition movement. The throttling can be set in two ways.
 
@@ -594,8 +598,9 @@ Before generating proposals, Cruise Control validates that:
 Replica movements are limited to disks within the same broker — there is no inter-broker replica movement. `stop_ongoing_execution` and `dryrun` cannot both be set to `true`.
 
 If `verbose` is set to `true`, the response also shows the proposed replica movements -- including the log directories
-that each replica moves between -- and the load before the disk removal. The load after the disk removal shows the
-removed disks as empty, and the disk capacity of the brokers without the removed disks.
+that each replica moves between (`oldReplicaLogdirs` and `newReplicaLogdirs` in JSON, keyed by broker id) -- and the load
+before the disk removal. The load after the disk removal shows the removed disks as empty, and the disk capacity of the
+brokers without the removed disks.
 
 The summary shows the disk usage balance before and after the disk removal, as for `rebalance` with `rebalance_disk=true`. The
 disks to remove are only counted before the removal: e.g. removing one disk of each of three brokers with four disks each gives

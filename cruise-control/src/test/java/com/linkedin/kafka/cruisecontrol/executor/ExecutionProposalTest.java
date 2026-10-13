@@ -7,6 +7,7 @@ package com.linkedin.kafka.cruisecontrol.executor;
 import com.linkedin.kafka.cruisecontrol.model.ReplicaPlacementInfo;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.kafka.common.Node;
@@ -71,8 +72,34 @@ public class ExecutionProposalTest {
     Map<String, Object> json = p.getJsonStructure();
     Assert.assertEquals(List.of(0, 1), json.get("oldReplicas"));
     Assert.assertEquals(List.of(0, 1), json.get("newReplicas"));
-    Assert.assertEquals(List.of("tmp0", "tmp1"), json.get("oldReplicaLogdirs"));
-    Assert.assertEquals(List.of("tmp1", "tmp1"), json.get("newReplicaLogdirs"));
+    assertLogdirsByBrokerId(json.get("oldReplicaLogdirs"), 0, "tmp0", 1, "tmp1");
+    assertLogdirsByBrokerId(json.get("newReplicaLogdirs"), 0, "tmp1", 1, "tmp1");
+  }
+
+  @Test
+  public void testIntraBrokerReplicaMovementLogdirsAreKeyedByBroker() {
+    // The new replicas list the brokers in another order than the old replicas (the leader comes first), and broker 1 is
+    // dead: its logdir is not known.
+    ExecutionProposal p = new ExecutionProposal(TP, 0, _r0d0, Arrays.asList(_r1, _r0d0), Arrays.asList(_r0d1, _r1));
+    Assert.assertEquals(Collections.singleton(0), p.replicasToMoveBetweenDisksByBroker().keySet());
+    Assert.assertEquals("{topic-0, oldLeader: 0, [1, 0-tmp0] -> [0-tmp1, 1]}", p.toString());
+
+    Map<String, Object> json = p.getJsonStructure();
+    Assert.assertEquals(List.of(1, 0), json.get("oldReplicas"));
+    Assert.assertEquals(List.of(0, 1), json.get("newReplicas"));
+    // The logdir of each replica is found by its broker id, and a logdir that is not known is left out.
+    assertLogdirsByBrokerId(json.get("oldReplicaLogdirs"), 0, "tmp0");
+    assertLogdirsByBrokerId(json.get("newReplicaLogdirs"), 0, "tmp1");
+  }
+
+  private static void assertLogdirsByBrokerId(Object logdirsByBrokerId, Object... brokerIdsAndLogdirs) {
+    Map<Object, Object> expected = new LinkedHashMap<>();
+    for (int i = 0; i < brokerIdsAndLogdirs.length; i += 2) {
+      expected.put(brokerIdsAndLogdirs[i], brokerIdsAndLogdirs[i + 1]);
+    }
+    Assert.assertEquals(expected, logdirsByBrokerId);
+    // In the order of the replicas.
+    Assert.assertEquals(List.copyOf(expected.keySet()), List.copyOf(((Map<?, ?>) logdirsByBrokerId).keySet()));
   }
 
   @Test
