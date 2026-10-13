@@ -14,6 +14,7 @@ import com.linkedin.kafka.cruisecontrol.analyzer.OptimizerResult;
 import com.linkedin.kafka.cruisecontrol.common.TestConstants;
 import com.linkedin.kafka.cruisecontrol.config.BrokerCapacityInfo;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.executor.ExecutionProposal;
 import com.linkedin.kafka.cruisecontrol.executor.Executor;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
@@ -90,6 +91,19 @@ public class RemoveDisksRunnableTest {
   }
 
   @Test
+  public void testMovesReplicasOfExcludedTopicsOffRemovedDisks() throws Exception {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
+    // The only replica on the disk to remove belongs to a topic excluded from partition movement: the disk is emptied anyway.
+    OptimizerResult result = removeDisk(config, Collections.singleton(TP.topic()));
+
+    assertEquals(Collections.singleton(TP.topic()), result.excludedTopics());
+    assertEquals(1, result.goalProposals().size());
+    ExecutionProposal proposal = result.goalProposals().iterator().next();
+    assertEquals(TP, proposal.topicPartition());
+    assertEquals(LOGDIR1, proposal.replicasToMoveBetweenDisksByBroker().get(BROKER_ID).logdir());
+  }
+
+  @Test
   public void testVerbosePlaintextResponseHasNoDeadDisks() throws Exception {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
     String response = response(removeDisk(config), config, false);
@@ -114,6 +128,17 @@ public class RemoveDisksRunnableTest {
    * @return The optimizer result of the disk removal.
    */
   private static OptimizerResult removeDisk(KafkaCruiseControlConfig config) throws Exception {
+    return removeDisk(config, Collections.emptySet());
+  }
+
+  /**
+   * Same as {@link #removeDisk(KafkaCruiseControlConfig)}, with the given topics excluded from partition movement.
+   *
+   * @param config The Kafka Cruise Control config.
+   * @param excludedTopics Topics excluded from partition movement.
+   * @return The optimizer result of the disk removal.
+   */
+  private static OptimizerResult removeDisk(KafkaCruiseControlConfig config, Set<String> excludedTopics) throws Exception {
     ClusterModel clusterModel = clusterModel();
     GoalOptimizer goalOptimizer = new GoalOptimizer(config, null, Time.SYSTEM, new MetricRegistry(), EasyMock.mock(Executor.class),
                                                     EasyMock.mock(AdminClient.class));
@@ -134,7 +159,7 @@ public class RemoveDisksRunnableTest {
             .andReturn(clusterModel);
     EasyMock.expect(kafkaCruiseControl.executorState())
             .andReturn(ExecutorState.noTaskInProgress(Collections.emptySet(), Collections.emptySet()));
-    EasyMock.expect(kafkaCruiseControl.excludedTopics(clusterModel, null)).andReturn(Collections.emptySet());
+    EasyMock.expect(kafkaCruiseControl.excludedTopics(clusterModel, null)).andReturn(excludedTopics);
     EasyMock.expect(kafkaCruiseControl.optimizations(EasyMock.eq(clusterModel), EasyMock.anyObject(), EasyMock.anyObject(),
                                                      EasyMock.isNull(), EasyMock.anyObject(), EasyMock.anyObject(), EasyMock.anyObject()))
             .andAnswer(() -> goalOptimizer.optimizations(clusterModel, EasyMock.getCurrentArgument(1), EasyMock.getCurrentArgument(2),

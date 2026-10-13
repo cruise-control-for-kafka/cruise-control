@@ -98,9 +98,11 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
     }
 
     Set<String> excludedTopics = optimizationOptions.excludedTopics();
-    // Sort all the replicas for each disk based on disk utilization.
+    // Sort all the replicas for each disk based on disk utilization. Replicas of excluded topics are still moved off the disks
+    // marked for removal, which must be emptied.
     new SortedReplicasHelper().addSelectionFunc(ReplicaSortFunctionFactory.selectOnlineReplicas())
-                              .maybeAddSelectionFunc(ReplicaSortFunctionFactory.selectReplicasBasedOnExcludedTopics(excludedTopics),
+                              .maybeAddSelectionFunc(ReplicaSortFunctionFactory.selectReplicasBasedOnExcludedTopicsAndDisksToRemove(
+                                                         excludedTopics),
                                                      !excludedTopics.isEmpty())
                               .addPriorityFunc(ReplicaSortFunctionFactory.prioritizeDiskImmigrants())
                               .setScoreFunc(ReplicaSortFunctionFactory.reverseSortByMetricGroupValue(RESOURCE.name()))
