@@ -41,7 +41,7 @@ public class LoadRunnable extends OperationRunnable {
     }
     _modelCompletenessRequirements = new ModelCompletenessRequirements(1, minValidPartitionRatio, true);
     _allowCapacityEstimation = parameters.allowCapacityEstimation();
-    _populateDiskInfo = false;
+    _populateDiskInfo = parameters.populateDiskInfo();
     _capacityOnly = false;
   }
 

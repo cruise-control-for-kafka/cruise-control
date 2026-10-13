@@ -197,6 +197,7 @@ Supported parameters are:
 | partition                 | integer/range | partition number(e.g. 10) range(e.g. 1-10) to filter partition load to report                                     | null                          | yes       |
 | min_valid_partition_ratio | double        | minimal valid partition ratio requirement for cluster model                                                       | null                          | yes       |
 | brokerid                  | int           | broker id to to filter partition load to report                                                                   | null                          | yes       |
+| populate_disk_info        | boolean       | whether to show the logdir of the leader and of each follower of the partitions (JBOD only)                       | false                         | yes       |
 | doAs                      | string        | propagated user by the trusted proxy service                                                                      | null                          | yes       |
 | reason                    | string        | reason for the request                                                                                            | "No reason provided"          | yes       | 
 
@@ -207,6 +208,12 @@ By specifying `topic`,`partition` and/or `brokerid` parameter, client can filter
 The `min_valid_partition_ratio` specifies minimal monitored valid partition percentage needed to calculate the partition load. If this parameter is not set in request, the config value `min.valid.partition.ratio` will be used.
 
 The `max_load` parameter specifies whether report the maximal historical value or not. The `avg_load` parameter specifies whether report the average historical value or not. If both are not specified or specified as `false`, for `DISK` resource, latest value will be reported; for `NW_IN`/`NW_OUT`/`CPU` resource, average value will be reported.
+
+If `populate_disk_info` is set to `true`, the response also shows the logdir (disk) of the leader and of each follower of
+the partitions: `LEADER_LOGDIR` and `FOLLOWER_LOGDIRS` in plaintext, and `leaderLogdir` and `followerLogdirs` (in the
+same order as `followers`) in JSON. The logdir of a replica on a dead broker or a failed disk is not known: it is shown as
+`-` in plaintext, and as `null` in `followerLogdirs` (`leaderLogdir` is left out). As with `load`, this requires a JBOD
+Kafka deployment, i.e. per-logdir disk capacities for the brokers.
 
 ### Query partition and replica state
 The following GET request gives partition healthiness on the cluster:
