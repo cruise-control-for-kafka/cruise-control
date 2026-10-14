@@ -18,6 +18,7 @@ import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModelStats;
 import com.linkedin.kafka.cruisecontrol.model.Disk;
+import com.linkedin.kafka.cruisecontrol.model.Replica;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.RemoveDisksParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.response.OptimizationResult;
 import com.linkedin.kafka.cruisecontrol.servlet.response.stats.BrokerStats;
@@ -28,6 +29,8 @@ import java.util.Map;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.TreeSet;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
@@ -45,6 +48,7 @@ public class RemoveDisksRunnable extends GoalBasedOperationRunnable {
     private static final int CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS = 1;
     private static final int CLUSTER_CONCURRENT_LEADER_MOVEMENTS = 1;
     private static final int BROKER_CONCURRENT_LEADER_MOVEMENTS = 1;
+    private static final int MAX_OFFLINE_REPLICAS_TO_REPORT = 10;
     private final Map<Integer, Set<String>> _brokerIdAndLogdirs;
 
     public RemoveDisksRunnable(KafkaCruiseControl kafkaCruiseControl,
@@ -142,29 +146,60 @@ public class RemoveDisksRunnable extends GoalBasedOperationRunnable {
             Integer brokerId = entry.getKey();
             Set<String> logDirsToRemove = entry.getValue();
             Broker broker = clusterModel.broker(brokerId);
-            Set<String> brokerLogDirs = broker.disks().stream().map(Disk::logDir).collect(Collectors.toSet());
+            Set<String> brokerLogDirs = broker.disks().stream().map(Disk::logDir).collect(Collectors.toCollection(TreeSet::new));
             if (!brokerLogDirs.containsAll(logDirsToRemove)) {
                 LOG.error("Invalid log dirs provided for broker {}.", brokerId);
-                throw new IllegalArgumentException(String.format("Invalid log dirs provided for broker %d.", brokerId));
+                throw new IllegalArgumentException(String.format("Invalid log dirs provided for broker %d, whose log dirs are %s.",
+                                                                 brokerId, brokerLogDirs));
             }
-            if (broker.disks().size() == logDirsToRemove.size()) {
-                LOG.error("No log dir remaining to move replicas to for broker {}.", brokerId);
-                throw new IllegalArgumentException(String.format("No log dir remaining to move replicas to for broker %d.", brokerId));
-            }
-
-            double futureUsage = 0.0;
-            double remainingCapacity = 0.0;
-            for (Disk disk : broker.disks()) {
-                futureUsage += disk.utilization();
-                if (!logDirsToRemove.contains(disk.logDir())) {
-                    remainingCapacity += disk.capacity();
+            // Replicas cannot be moved off a failed disk, and Kafka reports no replica for a failed log dir: such a disk can be
+            // neither emptied nor checked to be empty.
+            for (String logDir : logDirsToRemove) {
+                Disk disk = broker.disk(logDir);
+                if (!disk.isAlive()) {
+                    LOG.error("Cannot remove disk {} of broker {}, which is {}.", logDir, brokerId, disk.state());
+                    throw new IllegalArgumentException(String.format("Cannot remove disk %s of broker %d: the disk is %s, and "
+                                                                     + "replicas cannot be moved off a failed disk to another disk of "
+                                                                     + "the broker. %s", logDir, brokerId, disk.state(),
+                                                                     offlineReplicasAdvice(broker)));
                 }
             }
-            if (futureUsage / remainingCapacity > capacityThreshold) {
+            List<Disk> remainingDisks = broker.disks().stream()
+                                              .filter(disk -> disk.isAlive() && !logDirsToRemove.contains(disk.logDir()))
+                                              .collect(Collectors.toList());
+            if (remainingDisks.isEmpty()) {
+                LOG.error("No alive log dir remaining to move replicas to for broker {}.", brokerId);
+                throw new IllegalArgumentException(String.format("No alive log dir remaining to move replicas to for broker %d.",
+                                                                 brokerId));
+            }
+
+            // The replicas of failed disks are offline, on no disk: only the replicas on alive disks are moved.
+            double futureUsage = broker.disks().stream().filter(Disk::isAlive).mapToDouble(Disk::utilization).sum();
+            double remainingCapacity = remainingDisks.stream().mapToDouble(Disk::capacity).sum();
+            if (futureUsage > remainingCapacity * capacityThreshold) {
                 LOG.error("Not enough remaining capacity to move replicas to for broker {}.", brokerId);
                 throw new IllegalArgumentException(String.format("Not enough remaining capacity to move replicas to for broker %d.", brokerId));
             }
         }
+    }
+
+    /**
+     * @param broker A broker with a failed disk.
+     * @return What to do with the offline replicas of the broker -- e.g. the replicas of its failed disks -- before its failed disk
+     * can be taken out of the broker.
+     */
+    private static String offlineReplicasAdvice(Broker broker) {
+        List<String> offlineReplicas = broker.replicas().stream().filter(Replica::isCurrentOffline)
+                                             .map(replica -> replica.topicPartition().toString()).sorted().collect(Collectors.toList());
+        if (offlineReplicas.isEmpty()) {
+            return String.format("Broker %d has no offline replica: take the disk out of the broker's log.dirs.", broker.id());
+        }
+        String replicas = offlineReplicas.size() <= MAX_OFFLINE_REPLICAS_TO_REPORT
+                          ? offlineReplicas.toString()
+                          : String.format("%s and %d more", offlineReplicas.subList(0, MAX_OFFLINE_REPLICAS_TO_REPORT),
+                                          offlineReplicas.size() - MAX_OFFLINE_REPLICAS_TO_REPORT);
+        return String.format("Offline replicas of broker %d: %s. Move them to other brokers with fix_offline_replicas, then take the "
+                             + "disk out of the broker's log.dirs.", broker.id(), replicas);
     }
 
     @Override

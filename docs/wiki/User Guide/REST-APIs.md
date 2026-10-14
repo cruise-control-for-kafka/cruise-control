@@ -592,8 +592,15 @@ Unlike most other optimization endpoints, `remove_disks` does not accept a `goal
 
 Before generating proposals, Cruise Control validates that:
 * Each specified logdir exists on the corresponding broker.
-* At least one logdir remains on each affected broker.
-* The remaining disk capacity on each affected broker is sufficient to absorb the load from the disks being removed (based on the configured disk capacity threshold, see `disk.capacity.threshold`).
+* No specified logdir is a failed (dead) disk. Replicas cannot be moved off a failed disk to another disk of the broker, and
+  Kafka reports no replica for a failed log dir, so such a disk can be neither emptied nor checked to be empty. The error
+  lists the offline replicas of the broker: move them to other brokers with `fix_offline_replicas`, then take the disk out
+  of the broker's `log.dirs`.
+* At least one alive logdir remains on each affected broker.
+* The remaining capacity of the alive disks on each affected broker is sufficient to absorb the load of its alive disks (based on the configured disk capacity threshold, see `disk.capacity.threshold`).
+
+Offline replicas elsewhere -- on a dead broker, or on a failed disk that is not removed -- do not prevent a disk removal:
+`remove_disks` only moves online replicas between the alive disks of the given brokers.
 
 Replica movements are limited to disks within the same broker — there is no inter-broker replica movement. `stop_ongoing_execution` and `dryrun` cannot both be set to `true`.
 

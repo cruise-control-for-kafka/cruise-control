@@ -17,10 +17,13 @@ import com.linkedin.kafka.cruisecontrol.common.TestConstants;
 import com.linkedin.kafka.cruisecontrol.config.BrokerCapacityInfo;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
+import com.linkedin.kafka.cruisecontrol.exception.KafkaCruiseControlException;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutionProposal;
 import com.linkedin.kafka.cruisecontrol.executor.Executor;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
+import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
+import com.linkedin.kafka.cruisecontrol.model.Disk;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelGeneration;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.RemoveDisksParameters;
@@ -44,6 +47,7 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 
 
 public class RemoveDisksRunnableTest {
@@ -174,6 +178,110 @@ public class RemoveDisksRunnableTest {
                                            + "50.00% -> 50.00%, max spread within a broker 50.00pp -> 0.00pp."));
   }
 
+  @Test
+  public void testRejectsAFailedDisk() throws Exception {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
+    String message = removeDisksFailure(config, clusterModelWithFailedDisk(true),
+                                        Collections.singletonMap(0, Collections.singleton(LOGDIR1)));
+    assertTrue(message, message.startsWith(String.format("Cannot remove disk %s of broker 0: the disk is DEAD, and replicas cannot be "
+                                                         + "moved off a failed disk", LOGDIR1)));
+    // Kafka reports no replica for a failed log dir: the offline replicas of the broker are named instead.
+    assertTrue(message, message.endsWith("Offline replicas of broker 0: [topic-1]. Move them to other brokers with "
+                                         + "fix_offline_replicas, then take the disk out of the broker's log.dirs."));
+
+    // A failed disk is rejected even if its broker has no offline replica: it cannot be checked to be empty.
+    message = removeDisksFailure(config, clusterModelWithFailedDisk(false), Collections.singletonMap(0, Collections.singleton(LOGDIR1)));
+    assertTrue(message, message.endsWith("Broker 0 has no offline replica: take the disk out of the broker's log.dirs."));
+  }
+
+  @Test
+  public void testRejectsWhenNoAliveDiskRemains() throws Exception {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
+    // The other disk of broker 0 failed, so no disk can take the replicas of the disk to remove.
+    String message = removeDisksFailure(config, clusterModelWithFailedDisk(true),
+                                        Collections.singletonMap(0, Collections.singleton(LOGDIR0)));
+    assertEquals("No alive log dir remaining to move replicas to for broker 0.", message);
+  }
+
+  @Test
+  public void testFailedDisksAndOfflineReplicasElsewhereDoNotBlock() throws Exception {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
+    // Broker 0 has three disks: LOGDIR0 to remove, LOGDIR1 failed -- its follower of topic-1 is offline -- and LOGDIR2, empty.
+    // Broker 1 is dead, with an offline follower of topic-0. Broker 2 leads topic-1.
+    ClusterModel clusterModel = new ClusterModel(new ModelGeneration(0, 0L), 1.0);
+    Map<Resource, Double> brokerCapacity = new HashMap<>(TestConstants.BROKER_CAPACITY);
+    brokerCapacity.put(Resource.DISK, 3 * DISK_CAPACITY);
+    createBroker(clusterModel, 0, new BrokerCapacityInfo(brokerCapacity, Map.of(LOGDIR0, DISK_CAPACITY, LOGDIR1, DISK_CAPACITY,
+                                                                                LOGDIR2, DISK_CAPACITY)));
+    clusterModel.handleDeadBroker("1", 1, new BrokerCapacityInfo(TestConstants.BROKER_CAPACITY));
+    createBroker(clusterModel, 2, new BrokerCapacityInfo(TestConstants.BROKER_CAPACITY, TestConstants.DISK_CAPACITY));
+    clusterModel.broker(0).disk(LOGDIR1).setState(Disk.State.DEAD);
+    TopicPartition replicaToMove = new TopicPartition("topic", 0);
+    createReplica(clusterModel, 0, replicaToMove, LOGDIR0, REPLICA_DISK_MB);
+    createOfflineFollower(clusterModel, 1, replicaToMove);
+    TopicPartition tp1 = new TopicPartition("topic", 1);
+    createReplica(clusterModel, 2, tp1, LOGDIR0, REPLICA_DISK_MB);
+    createOfflineFollower(clusterModel, 0, tp1);
+    clusterModel.setBrokerState(0, Broker.State.BAD_DISKS);
+    clusterModel.setBrokerState(1, Broker.State.DEAD);
+
+    OptimizerResult result = removeDisks(config, clusterModel, Collections.singletonMap(0, Collections.singleton(LOGDIR0)),
+                                         Collections.emptySet());
+
+    // The replica on the disk to remove moves to the alive disk; the failed disk and the offline replicas are left alone.
+    assertEquals(1, result.goalProposals().size());
+    ExecutionProposal proposal = result.goalProposals().iterator().next();
+    assertEquals(replicaToMove, proposal.topicPartition());
+    assertEquals(Collections.singleton(0), proposal.replicasToMoveBetweenDisksByBroker().keySet());
+    assertEquals(LOGDIR2, proposal.replicasToMoveBetweenDisksByBroker().get(0).logdir());
+  }
+
+  /**
+   * Brokers 0 and 1 with two disks each, where {@link TestConstants#LOGDIR1} of broker 0 failed, and broker 0 leads topic-0 on
+   * {@link TestConstants#LOGDIR0}. As in a cluster model built from Kafka, the replicas of the failed disk are offline and on no
+   * disk, since Kafka reports no replica for a failed log dir.
+   *
+   * @param withOfflineReplica {@code true} to have the follower of topic-1 (led by broker 1) on the failed disk.
+   * @return The cluster model.
+   */
+  private static ClusterModel clusterModelWithFailedDisk(boolean withOfflineReplica) {
+    ClusterModel clusterModel = new ClusterModel(new ModelGeneration(0, 0L), 1.0);
+    for (int brokerId = 0; brokerId < 2; brokerId++) {
+      createBroker(clusterModel, brokerId, new BrokerCapacityInfo(TestConstants.BROKER_CAPACITY, TestConstants.DISK_CAPACITY));
+    }
+    clusterModel.broker(0).disk(LOGDIR1).setState(Disk.State.DEAD);
+    createReplica(clusterModel, 0, new TopicPartition("topic", 0), LOGDIR0, REPLICA_DISK_MB);
+    if (withOfflineReplica) {
+      TopicPartition tp = new TopicPartition("topic", 1);
+      createReplica(clusterModel, 1, tp, LOGDIR0, REPLICA_DISK_MB);
+      createOfflineFollower(clusterModel, 0, tp);
+      clusterModel.setBrokerState(0, Broker.State.BAD_DISKS);
+    }
+    return clusterModel;
+  }
+
+  /**
+   * Run {@link #removeDisks(KafkaCruiseControlConfig, ClusterModel, Map, Set)} for a disk removal that is rejected before the
+   * optimization.
+   *
+   * @param config The Kafka Cruise Control config.
+   * @param clusterModel The cluster model.
+   * @param logdirsToRemove The logdirs of the disks to remove, by broker id.
+   * @return The message of the rejection.
+   */
+  private static String removeDisksFailure(KafkaCruiseControlConfig config,
+                                           ClusterModel clusterModel,
+                                           Map<Integer, Set<String>> logdirsToRemove) throws Exception {
+    try {
+      removeDisks(config, clusterModel, logdirsToRemove, Collections.emptySet());
+    } catch (KafkaCruiseControlException e) {
+      assertTrue(String.valueOf(e.getCause()), e.getCause() instanceof IllegalArgumentException);
+      return e.getCause().getMessage();
+    }
+    fail("The disk removal should be rejected.");
+    return null;
+  }
+
   /**
    * Run a dry-run removal of {@link TestConstants#LOGDIR0} from {@link #BROKER_ID}, optimizing the cluster model with the goal
    * optimizer.
@@ -272,6 +380,20 @@ public class RemoveDisksRunnableTest {
     String rack = Integer.toString(brokerId);
     clusterModel.createReplica(rack, brokerId, tp, 0, true, false, logdir, false);
     clusterModel.setReplicaLoad(rack, brokerId, tp, getAggregatedMetricValues(1.0, 10.0, 10.0, diskMB), Collections.singletonList(1L));
+  }
+
+  /**
+   * Create an offline follower of the given partition, on no disk, as Kafka reports no replica for a failed log dir or a dead
+   * broker.
+   *
+   * @param clusterModel The cluster model.
+   * @param brokerId The id of the broker of the follower.
+   * @param tp The partition of the follower.
+   */
+  private static void createOfflineFollower(ClusterModel clusterModel, int brokerId, TopicPartition tp) {
+    String rack = Integer.toString(brokerId);
+    clusterModel.createReplica(rack, brokerId, tp, 1, false, true, null, false);
+    clusterModel.setReplicaLoad(rack, brokerId, tp, getAggregatedMetricValues(1.0, 10.0, 0.0, 1000.0), Collections.singletonList(1L));
   }
 
   /**

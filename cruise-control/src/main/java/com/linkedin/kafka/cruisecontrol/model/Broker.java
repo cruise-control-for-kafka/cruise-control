@@ -550,7 +550,8 @@ public class Broker implements Serializable, Comparable<Broker> {
     if (disk == null) {
       throw new IllegalArgumentException(String.format("Broker %d does not have disk %s.", _id, logdir));
     }
-    // The capacity of a dead disk is already dropped from the broker capacity.
+    // A disk already marked for removal has dropped its capacity. The capacity of a dead disk is not dropped here: remove_disks
+    // rejects dead disks, and ClusterModel#markDiskDead drops the capacity of a disk that dies.
     double capacityToDrop = disk.isAlive() && !disk.isMarkedForRemoval() ? disk.capacity() : 0.0;
     _brokerCapacity[Resource.DISK.id()] -= capacityToDrop;
     disk.markDiskForRemoval();
