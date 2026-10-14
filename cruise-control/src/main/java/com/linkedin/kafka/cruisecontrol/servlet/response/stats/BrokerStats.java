@@ -156,7 +156,8 @@ public class BrokerStats extends AbstractCruiseControlResponse {
     }
 
     StringBuilder sb = new StringBuilder();
-    boolean hasDiskInfo = !_brokerStats.get(0).diskStatsByLogdir().isEmpty();
+    // A broker may have no disk information while others have it, e.g. a dead broker.
+    boolean hasDiskInfo = _brokerStats.stream().anyMatch(stats -> !stats.diskStatsByLogdir().isEmpty());
 
     // put broker stats.
     sb.append(String.format("%n%n%" + _hostFieldLength + "s%15s%" + _rackFieldLength + "s%" + _logdirFieldLength
@@ -165,8 +166,10 @@ public class BrokerStats extends AbstractCruiseControlResponse {
                             "NW_IN_CAP(KB/s)", "LEADER_NW_IN(KB/s)", "FOLLOWER_NW_IN(KB/s)", "NW_OUT_CAP(KB/s)", "NW_OUT(KB/s)",
                             "PNW_OUT(KB/s)", "LEADERS/REPLICAS"));
     for (SingleBrokerStats stats : _brokerStats) {
+      // A dead broker has no disk capacity, hence no disk utilization percentage.
+      boolean isDeadBroker = stats.state() == Broker.State.DEAD;
       sb.append(String.format("%" + _hostFieldLength + "s,%14d,%" + (_rackFieldLength - 1) + "s,%" + _logdirFieldLength
-                              + "s%19.3f,%19.3f/%05.2f," + coreNumStringFormatter(stats.numCore())
+                              + "s%19.3f,%19.3f/" + (isDeadBroker ? "%5s" : "%05.2f") + "," + coreNumStringFormatter(stats.numCore())
                               + ",%14.3f,%24.3f,%24.3f,%24.3f,%24.3f,%19.3f,%19.3f,%14d/%d%n",
                               stats.host(),
                               stats.id(),
@@ -174,7 +177,7 @@ public class BrokerStats extends AbstractCruiseControlResponse {
                               "",
                               stats.diskCapacity(),
                               stats.diskUtil(),
-                              stats.diskUtilPct(),
+                              isDeadBroker ? DEAD_STATE : stats.diskUtilPct(),
                               stats.numCore(),
                               stats.cpuUtil(),
                               stats.networkInCapacity(),

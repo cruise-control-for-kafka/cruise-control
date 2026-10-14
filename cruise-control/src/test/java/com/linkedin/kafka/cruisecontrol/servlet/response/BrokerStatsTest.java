@@ -155,6 +155,48 @@ public class BrokerStatsTest {
     assertEquals(deadDiskRow, 6, deadDiskRow.split("DEAD", -1).length - 1);
   }
 
+  @Test
+  public void testDiskRowsWithADeadBrokerFirst() {
+    // Broker 0 is dead, hence has no disk information, and comes first; brokers 1 and 2 have two disks each.
+    ClusterModel clusterModel = new ClusterModel(new ModelGeneration(0, 0), 1.0);
+    clusterModel.handleDeadBroker("0", 0, new BrokerCapacityInfo(TestConstants.BROKER_CAPACITY));
+    BrokerCapacityInfo capacity = new BrokerCapacityInfo(TestConstants.BROKER_CAPACITY, TestConstants.DISK_CAPACITY);
+    for (int brokerId = 1; brokerId < 3; brokerId++) {
+      clusterModel.createRack(Integer.toString(brokerId));
+      clusterModel.createBroker(Integer.toString(brokerId), Integer.toString(brokerId), brokerId, capacity, true);
+    }
+    createReplica(clusterModel, 0, 1, LOGDIR0, true, false);
+    createReplica(clusterModel, 0, 0, null, false, true);
+    createReplica(clusterModel, 1, 2, LOGDIR1, true, false);
+    createReplica(clusterModel, 1, 1, LOGDIR1, false, false);
+    clusterModel.setBrokerState(0, Broker.State.DEAD);
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
+    BrokerStats brokerStats = clusterModel.brokerStats(config);
+
+    List<String> lines = List.of(brokerStats.toString().split(System.lineSeparator()));
+    String header = lines.stream().filter(line -> line.trim().startsWith("HOST")).findFirst().orElseThrow();
+    assertTrue(header, header.contains("LOGDIR"));
+    // The disks of the alive brokers are shown, though the first broker has none.
+    assertEquals(2, lines.stream().filter(line -> line.contains(LOGDIR0)).count());
+    assertEquals(2, lines.stream().filter(line -> line.contains(LOGDIR1)).count());
+    // The dead broker has no disk utilization percentage: DEAD rather than -1.00, which keeps the column width.
+    String deadBrokerRow = lines.stream().filter(line -> line.trim().startsWith("UNKNOWN_HOST-0,")).findFirst().orElseThrow();
+    assertTrue(deadBrokerRow, deadBrokerRow.contains("/ DEAD,"));
+    assertFalse(deadBrokerRow, deadBrokerRow.contains("-1.00"));
+    String aliveBrokerRow = lines.stream().filter(line -> line.trim().startsWith("1,")).findFirst().orElseThrow();
+    assertEquals(columnEnd(aliveBrokerRow, String.format("%.3f/%05.2f", 2000.0, 2000.0 * 100 / TestConstants.LARGE_BROKER_CAPACITY)),
+                 columnEnd(deadBrokerRow, String.format("%.3f/ DEAD", 1000.0)));
+
+    // JSON is unchanged: a numeric DiskPct of -1 and no disk state for the dead broker.
+    Map<String, Object> json = new Gson().fromJson(new Gson().toJson(brokerStats.getJsonStructure()),
+                                                   new TypeToken<Map<String, Object>>() { }.getType());
+    List<Map<String, Object>> brokers = cast(json.get("brokers"));
+    Map<String, Object> deadBroker = brokers.stream().filter(b -> ((Number) b.get("Broker")).intValue() == 0).findFirst().orElseThrow();
+    assertEquals("DEAD", deadBroker.get("BrokerState"));
+    assertEquals(-1.0, (Double) deadBroker.get("DiskPct"), DELTA);
+    assertFalse(deadBroker.containsKey("DiskState"));
+  }
+
   private static int columnEnd(String row, String value) {
     int index = row.indexOf(value + ",");
     assertTrue(value + " not found in " + row, index >= 0);
