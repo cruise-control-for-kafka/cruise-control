@@ -15,12 +15,15 @@ import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
+import com.linkedin.kafka.cruisecontrol.model.Replica;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.Test;
 
@@ -74,6 +77,38 @@ public class IntraBrokerDiskUsageDistributionGoalTest {
     assertEquals(36_500.0, broker.disk(LOGDIR1).utilization(), DELTA);
     assertEquals(40_000.0, broker.disk(LOGDIR2).utilization(), DELTA);
     assertNumAttemptsIsBounded(goal, clusterModel);
+  }
+
+  /**
+   * Same disk layout as {@link #testSwapProceedsToNextCandidateDiskWhenNoSwapIsFeasibleWithFirstCandidate()}. Swapping the replica
+   * of 10,000 on {@link #LOGDIR0} with the replica of 7,500 on {@link #LOGDIR2} is expected to exchange the disks of both replicas,
+   * rather than only moving the source replica to the disk of the destination replica.
+   */
+  @Test
+  public void testSwapExchangesDisksOfBothReplicas() throws Exception {
+    Map<String, List<Double>> diskUsagesByLogdir = new TreeMap<>();
+    diskUsagesByLogdir.put(LOGDIR0, List.of(36_000.0, 10_000.0));
+    diskUsagesByLogdir.put(LOGDIR1, List.of(36_500.0));
+    diskUsagesByLogdir.put(LOGDIR2, List.of(30_000.0, 7_500.0));
+    ClusterModel clusterModel = createClusterModel(1, diskUsagesByLogdir);
+    IntraBrokerDiskUsageDistributionGoal goal = new IntraBrokerDiskUsageDistributionGoal(balancingConstraint());
+    goal.initGoalState(clusterModel, OPTIMIZATION_OPTIONS);
+
+    Broker broker = clusterModel.broker(0);
+    Replica sourceReplica = broker.replica(new TopicPartition(TOPIC, 1));
+    Replica destinationReplica = broker.replica(new TopicPartition(TOPIC, 4));
+    assertEquals(LOGDIR0, sourceReplica.disk().logDir());
+    assertEquals(LOGDIR2, destinationReplica.disk().logDir());
+
+    Replica swappedIn = goal.maybeSwapReplicaBetweenDisks(clusterModel, sourceReplica, new TreeSet<>(Set.of(destinationReplica)),
+                                                          Collections.emptySet());
+
+    assertEquals(destinationReplica, swappedIn);
+    assertEquals(LOGDIR2, sourceReplica.disk().logDir());
+    assertEquals(LOGDIR0, destinationReplica.disk().logDir());
+    assertEquals(43_500.0, broker.disk(LOGDIR0).utilization(), DELTA);
+    assertEquals(36_500.0, broker.disk(LOGDIR1).utilization(), DELTA);
+    assertEquals(40_000.0, broker.disk(LOGDIR2).utilization(), DELTA);
   }
 
   /**
