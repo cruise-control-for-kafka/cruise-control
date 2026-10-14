@@ -604,6 +604,14 @@ Offline replicas elsewhere -- on a dead broker, or on a failed disk that is not 
 
 Replica movements are limited to disks within the same broker — there is no inter-broker replica movement. `stop_ongoing_execution` and `dryrun` cannot both be set to `true`.
 
+`remove_disks` is a one-shot drain: Cruise Control keeps no record of the disks it removed. While a drained log dir is still
+in the broker's `log.dirs`, Kafka keeps using it. It puts each new replica of the broker -- of a new partition, or moved
+from another broker -- on the log dir with the fewest partitions, i.e. the drained one, and a later `rebalance` with
+`rebalance_disk=true` moves replicas back onto it as well. So take the disk out of the broker's `log.dirs` (a broker
+restart) and out of the broker capacity config, from which Cruise Control builds the disks of the broker, right after the
+drain. On Kafka versions that support cordoning log directories (KIP-1066), cordon the drained log dir with the dynamic
+`cordoned.log.dirs` broker config, so that Kafka places no new replica on it until the restart.
+
 If `verbose` is set to `true`, the response also shows the proposed replica movements -- including the log directories
 that each replica moves between (`oldReplicaLogdirs` and `newReplicaLogdirs` in JSON, keyed by broker id) -- and the load
 before the disk removal. The load after the disk removal shows the removed disks as empty, and the disk capacity of the
