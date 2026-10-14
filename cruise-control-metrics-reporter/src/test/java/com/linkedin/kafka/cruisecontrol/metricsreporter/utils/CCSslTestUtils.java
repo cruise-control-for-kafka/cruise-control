@@ -103,10 +103,9 @@ public final class CCSslTestUtils {
             signerBuilder = new BcRSAContentSignerBuilder(sigAlgId, digAlgId);
             ContentSigner sigGen = signerBuilder.build(privateKeyAsymKeyParam);
             Date now = new Date();
-            Date from = now;
             Date to = new Date(now.getTime() + (long) days * 86400000L);
             BigInteger sn = new BigInteger(64, new SecureRandom());
-            X509v3CertificateBuilder v3CertGen = new X509v3CertificateBuilder(dn, sn, from, to, dn, subPubKeyInfo);
+            X509v3CertificateBuilder v3CertGen = new X509v3CertificateBuilder(dn, sn, now, to, dn, subPubKeyInfo);
 
             X509CertificateHolder certificateHolder = v3CertGen.build(sigGen);
             return (new JcaX509CertificateConverter()).setProvider("BC").getCertificate(certificateHolder);

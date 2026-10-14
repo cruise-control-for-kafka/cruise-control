@@ -155,11 +155,11 @@ public final class CCKafkaTestUtils {
   public static String getRandomString(int length) {
     char[] chars = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
     Random random = new Random();
-    StringBuilder stringBuiler = new StringBuilder();
+    StringBuilder stringBuilder = new StringBuilder();
     for (int i = 0; i < length; i++) {
-      stringBuiler.append(chars[Math.abs(random.nextInt()) % 16]);
+      stringBuilder.append(chars[Math.abs(random.nextInt()) % 16]);
     }
-    return stringBuiler.toString();
+    return stringBuilder.toString();
   }
 
   /**

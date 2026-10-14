@@ -28,16 +28,16 @@ import static com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCSslTestUt
 
 public class CCSslConfigsBuilder {
     private final ConnectionMode _connectionMode;
-    private String _tlsProtocol;
+    private final String _tlsProtocol;
+    private final Password _trustStorePassword;
+    private final Password _keyStorePassword;
+    private final Password _keyPassword;
+    private final String _algorithm;
     private boolean _useClientCert;
     private boolean _createTrustStore;
     private File _trustStoreFile;
-    private Password _trustStorePassword;
-    private Password _keyStorePassword;
-    private Password _keyPassword;
     private String _certAlias;
     private String _cn;
-    private String _algorithm;
 
     public CCSslConfigsBuilder(ConnectionMode connectionMode) {
         this._connectionMode = connectionMode;

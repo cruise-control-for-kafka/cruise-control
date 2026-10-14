@@ -36,18 +36,11 @@ public class MetricSerde implements Serializer<CruiseControlMetric>, Deserialize
    */
   public static CruiseControlMetric fromBytes(byte[] bytes) throws UnknownVersionException {
     ByteBuffer buffer = ByteBuffer.wrap(bytes);
-    switch (CruiseControlMetric.MetricClassId.forId(buffer.get())) {
-      case BROKER_METRIC:
-        return BrokerMetric.fromBuffer(buffer);
-      case TOPIC_METRIC:
-        return TopicMetric.fromBuffer(buffer);
-      case PARTITION_METRIC:
-        return PartitionMetric.fromBuffer(buffer);
-      default:
-        // This could happen when a new type of metric is added but we are still running the old code.
-        // simply ignore the metric by returning a null.
-        return null;
-    }
+    return switch (CruiseControlMetric.MetricClassId.forId(buffer.get())) {
+      case BROKER_METRIC -> BrokerMetric.fromBuffer(buffer);
+      case TOPIC_METRIC -> TopicMetric.fromBuffer(buffer);
+      case PARTITION_METRIC -> PartitionMetric.fromBuffer(buffer);
+    };
   }
 
   @Override

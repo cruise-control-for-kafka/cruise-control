@@ -140,14 +140,14 @@ public class YammerMetricProcessor implements MetricProcessor<YammerMetricProces
   public void processGauge(MetricName metricName, Gauge<?> gauge, Context context) {
     if (MetricsUtils.isInterested(metricName)) {
       LOG.trace("Processing metric {} of type Gauge.", metricName);
-      if (!(gauge.value() instanceof Number)) {
+      if (!(gauge.value() instanceof Number value)) {
         throw new IllegalStateException(String.format("The value of yammer metric %s is %s, which is not a number",
                                                       metricName, gauge.value()));
       }
       CruiseControlMetric ccm = MetricsUtils.toCruiseControlMetric(context.time(),
                                                                    context.brokerId(),
                                                                    metricName,
-                                                                   ((Number) gauge.value()).doubleValue());
+                                                                   value.doubleValue());
       context.reporter().sendCruiseControlMetric(ccm);
     }
   }

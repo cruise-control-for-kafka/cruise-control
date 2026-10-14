@@ -145,7 +145,7 @@ public class CCKafkaRaftServer implements Server {
     }
 
     /**
-     * Bound broker port for the specified listener. Throws expection if no broker was initialized.
+     * Bound broker port for the specified listener. Throws if no broker was initialized.
      * @param listenerName name of the listener
      * @return port for the specified listener of the broker
      */
@@ -155,7 +155,7 @@ public class CCKafkaRaftServer implements Server {
     }
 
     /**
-     * Bound controller port for the specified listener. Throws expection if no controller was initialized.
+     * Bound controller port for the specified listener. Throws if no controller was initialized.
      * @return port for the controller
      */
     public int boundControllerPort() throws ExecutionException, InterruptedException {
