@@ -42,7 +42,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig.LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.model.Disk.State.DEAD;
 import static com.linkedin.kafka.cruisecontrol.monitor.metricdefinition.KafkaMetricDef.CPU_USAGE;
 
 
@@ -391,7 +390,15 @@ public final class MonitorUtils {
               }
             }
           } else {
-            clusterModel.broker(brokerId).disk(logdir).setState(DEAD);
+            Broker broker = clusterModel.broker(brokerId);
+            if (broker.disk(logdir) == null) {
+              // The capacity of the failed logdir is not reported (e.g. the logdirs of the broker differ from the ones of the
+              // default capacity it is estimated with), so it is added as a dead disk.
+              broker.addDeadDisk(logdir);
+            } else {
+              // Drop the capacity of the failed disk from its broker, host, rack and cluster. No replica is placed yet.
+              clusterModel.markDiskDead(brokerId, logdir);
+            }
           }
         });
       } catch (TimeoutException te) {

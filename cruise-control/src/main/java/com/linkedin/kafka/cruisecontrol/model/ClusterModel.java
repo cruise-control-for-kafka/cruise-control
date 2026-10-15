@@ -336,13 +336,14 @@ public class ClusterModel implements Serializable {
   }
 
   /**
-   * Set the given disk to dead state.
-   * This method is for testing only.
+   * Set the given disk to dead state, and drop its capacity from the capacity of its broker, host, rack and cluster.
+   * The replicas on the disk become offline. Marking a dead disk dead again drops no capacity.
+   * This is used during cluster model initialization for a logdir that Kafka reports as failed.
    *
    * @param brokerId Id of the broker on which the disk resides.
    * @param logdir   Log directory of the disk.
    */
-  void markDiskDead(int brokerId, String logdir) {
+  public void markDiskDead(int brokerId, String logdir) {
     Broker broker = broker(brokerId);
     if (broker == null) {
       throw new IllegalArgumentException("Broker " + brokerId + " does not exist.");

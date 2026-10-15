@@ -74,8 +74,9 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
   }
 
   /**
-   * Sanity checks: For each alive broker in the cluster, the load for {@link Resource#DISK} less than the limiting capacity
-   * determined by the total capacity of alive disks multiplied by the capacity threshold.
+   * Sanity checks: For each alive broker in the cluster, the load for {@link Resource#DISK} on its alive disks is less than
+   * the limiting capacity determined by the total capacity of alive disks multiplied by the capacity threshold.
+   * The offline replicas of a failed disk are on no alive disk, and this goal cannot move them, so they are left out.
    *
    * @param clusterModel The state of the cluster.
    * @param optimizationOptions Options to take into account during optimization.
@@ -85,8 +86,15 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
       throws OptimizationFailureException {
     // While proposals exclude the excludedTopics, the existingUtilization still considers replicas of the excludedTopics.
     for (Broker broker : clusterModel.aliveBrokers()) {
-      double existingUtilization = broker.load().expectedUtilizationFor(RESOURCE);
-      double allowedCapacity = broker.capacityFor(RESOURCE) * _balancingConstraint.capacityThreshold(RESOURCE);
+      double existingUtilization = 0.0;
+      double aliveDiskCapacity = 0.0;
+      for (Disk disk : broker.disks()) {
+        if (disk.isAlive()) {
+          existingUtilization += disk.utilization();
+          aliveDiskCapacity += disk.capacity();
+        }
+      }
+      double allowedCapacity = aliveDiskCapacity * _balancingConstraint.capacityThreshold(RESOURCE);
       if (allowedCapacity < existingUtilization) {
         double requiredCapacity = existingUtilization / _balancingConstraint.capacityThreshold(RESOURCE);
         ProvisionRecommendation recommendation = new ProvisionRecommendation.Builder(ProvisionStatus.UNDER_PROVISIONED)

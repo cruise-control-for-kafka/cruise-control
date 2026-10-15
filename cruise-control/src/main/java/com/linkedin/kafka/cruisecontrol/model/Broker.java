@@ -375,7 +375,7 @@ public class Broker implements Serializable, Comparable<Broker> {
    * @param logdir Logdir of the dead disk to be added to the current broker.
    * @return The dead disk that was added to this broker.
    */
-  Disk addDeadDisk(String logdir) {
+  public Disk addDeadDisk(String logdir) {
     Disk disk = new Disk(logdir, this, -1);
     _diskByLogdir.put(logdir, disk);
     return disk;
@@ -528,11 +528,11 @@ public class Broker implements Serializable, Comparable<Broker> {
    * Set the disk state to dead.
    *
    * @param logdir Log directory of the disk.
-   * @return Disk capacity due to disk death.
+   * @return Disk capacity lost due to disk death.
    */
   double markDiskDead(String logdir) {
     Disk disk = _diskByLogdir.get(logdir);
-    double diskCapacity = disk.capacity();
+    double diskCapacity = capacityCountedInBroker(disk);
     _brokerCapacity[Resource.DISK.id()] -= diskCapacity;
     disk.setState(Disk.State.DEAD);
     disk.replicas().forEach(Replica::markOriginalOffline);
@@ -556,9 +556,20 @@ public class Broker implements Serializable, Comparable<Broker> {
       throw new IllegalStateException("Cannot remove disk " + logdir + " on broker " + _id + " as it hosts replicas.");
     }
     _diskByLogdir.remove(logdir);
-    double diskCapacity = disk.capacity();
+    double diskCapacity = capacityCountedInBroker(disk);
     _brokerCapacity[Resource.DISK.id()] -= diskCapacity;
     return diskCapacity;
+  }
+
+  /**
+   * Get the capacity that the given disk still counts in the broker capacity. A dead disk (capacity -1) and a disk marked
+   * for removal (capacity 0) count none, so their capacity is not dropped again.
+   *
+   * @param disk Disk of this broker.
+   * @return The capacity that the disk counts in the broker capacity.
+   */
+  private static double capacityCountedInBroker(Disk disk) {
+    return Math.max(disk.capacity(), 0.0);
   }
 
   /**
