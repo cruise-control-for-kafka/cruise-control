@@ -207,6 +207,10 @@ public class MonitorUtilsTest {
   /**
    * Get the replica placement info of the given cluster model, with Kafka reporting the replica of {@link #T0P0} on
    * {@link TestConstants#LOGDIR0}, and the given other logdirs, for broker 0.
+   *
+   * @param clusterModel The cluster model to populate the replica placement info for.
+   * @param otherLogdirs The other logdirs that Kafka reports for broker 0.
+   * @return The replica placement info.
    */
   private static Map<TopicPartition, Map<Integer, String>> getReplicaPlacementInfo(ClusterModel clusterModel,
                                                                                    Map<String, LogDirDescription> otherLogdirs) {
