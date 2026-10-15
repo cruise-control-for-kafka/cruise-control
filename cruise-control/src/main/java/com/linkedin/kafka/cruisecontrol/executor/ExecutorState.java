@@ -82,6 +82,8 @@ public final class ExecutorState {
   @JsonResponseField(required = false)
   private static final String TOTAL_INTER_BROKER_DATA_TO_MOVE = "totalDataToMove";
   @JsonResponseField(required = false)
+  private static final String IN_PROGRESS_INTER_BROKER_MOVED_DATA = "inProgressMovedData";
+  @JsonResponseField(required = false)
   private static final String MAXIMUM_CONCURRENT_INTER_BROKER_PARTITION_MOVEMENTS_PER_BROKER = "maximumConcurrentPartitionMovementsPerBroker";
   @JsonResponseField(required = false)
   private static final String MINIMUM_CONCURRENT_INTER_BROKER_PARTITION_MOVEMENTS_PER_BROKER = "minimumConcurrentPartitionMovementsPerBroker";
@@ -118,6 +120,8 @@ public final class ExecutorState {
   private static final String FINISHED_INTRA_BROKER_DATA_MOVEMENT = "finishedIntraBrokerDataMovement";
   @JsonResponseField(required = false)
   private static final String TOTAL_INTRA_BROKER_DATA_TO_MOVE = "totalIntraBrokerDataToMove";
+  @JsonResponseField(required = false)
+  private static final String IN_PROGRESS_INTRA_BROKER_MOVED_DATA = "inProgressIntraBrokerMovedData";
   @JsonResponseField(required = false)
   private static final String MAXIMUM_CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_PER_BROKER
       = "maximumConcurrentIntraBrokerPartitionMovementsPerBroker";
@@ -424,6 +428,7 @@ public final class ExecutorState {
         execState.put(NUM_TOTAL_INTER_BROKER_PARTITION_MOVEMENTS, numTotalMovements(INTER_BROKER_REPLICA_ACTION));
         execState.put(FINISHED_INTER_BROKER_DATA_MOVEMENT, _executionTasksSummary.finishedInterBrokerDataMovementInMB());
         execState.put(TOTAL_INTER_BROKER_DATA_TO_MOVE, numTotalInterBrokerDataToMove());
+        execState.put(IN_PROGRESS_INTER_BROKER_MOVED_DATA, _executionTasksSummary.inProgressInterBrokerMovedDataInMB());
         if (verbose) {
           execState.put(IN_PROGRESS_INTER_BROKER_PARTITION_MOVEMENT, getTaskDetails(INTER_BROKER_REPLICA_ACTION, ExecutionTaskState.IN_PROGRESS));
           execState.put(PENDING_INTER_BROKER_PARTITION_MOVEMENT, getTaskDetails(INTER_BROKER_REPLICA_ACTION, ExecutionTaskState.PENDING));
@@ -450,6 +455,7 @@ public final class ExecutorState {
         execState.put(NUM_TOTAL_INTRA_BROKER_PARTITION_MOVEMENTS, numTotalMovements(INTRA_BROKER_REPLICA_ACTION));
         execState.put(FINISHED_INTRA_BROKER_DATA_MOVEMENT, _executionTasksSummary.finishedIntraBrokerDataMovementInMB());
         execState.put(TOTAL_INTRA_BROKER_DATA_TO_MOVE, numTotalIntraBrokerDataToMove());
+        execState.put(IN_PROGRESS_INTRA_BROKER_MOVED_DATA, _executionTasksSummary.inProgressIntraBrokerMovedDataInMB());
         if (verbose) {
           execState.put(IN_PROGRESS_INTRA_BROKER_PARTITION_MOVEMENT, getTaskDetails(INTRA_BROKER_REPLICA_ACTION, ExecutionTaskState.IN_PROGRESS));
           execState.put(PENDING_INTRA_BROKER_PARTITION_MOVEMENT, getTaskDetails(INTRA_BROKER_REPLICA_ACTION, ExecutionTaskState.PENDING));
@@ -539,8 +545,8 @@ public final class ExecutorState {
         }
 
         return String.format("{%s: %s, pending(%d)/in-progress(%d)/aborting(%d)/finished(%d)/total(%d) inter-broker partition movements,"
-                             + " completed(%d)/total(%d) bytes in MBs: %.2f%%, max/min/avg concurrent inter-broker partition movements per-broker:"
-                             + " %d/%d/%.2f, %s: %s, %s: %s%s%s}",
+                             + " completed(%d)/total(%d) bytes in MBs: %.2f%%, moved(%d) bytes in MBs by in-progress inter-broker partition"
+                             + " movements, max/min/avg concurrent inter-broker partition movements per-broker: %d/%d/%.2f, %s: %s, %s: %s%s%s}",
                              STATE, _state,
                              interBrokerPartitionMovementStats.get(ExecutionTaskState.PENDING),
                              interBrokerPartitionMovementStats.get(ExecutionTaskState.IN_PROGRESS),
@@ -550,6 +556,7 @@ public final class ExecutorState {
                              finishedInterBrokerDataMovementInMB,
                              numTotalInterBrokerDataToMove,
                              finishedInterBrokerDataPercent,
+                             _executionTasksSummary.inProgressInterBrokerMovedDataInMB(),
                              _executionConcurrencySummary.getMaxExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA),
                              _executionConcurrencySummary.getMinExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA),
                              _executionConcurrencySummary.getAvgExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA),
@@ -565,8 +572,8 @@ public final class ExecutorState {
         }
 
         return String.format("{%s: %s, pending(%d)/in-progress(%d)/aborting(%d)/finished(%d)/total(%d) intra-broker partition movements,"
-                             + "completed(%d)/total(%d) bytes in MBs: %.2f%%, max/min/avg concurrent intra-broker partition movements per-broker:"
-                             + "%d/%d/%.2f, %s: %s, %s: %s%s%s}",
+                             + "completed(%d)/total(%d) bytes in MBs: %.2f%%, moved(%d) bytes in MBs by in-progress intra-broker partition "
+                             + "movements, max/min/avg concurrent intra-broker partition movements per-broker:%d/%d/%.2f, %s: %s, %s: %s%s%s}",
                              STATE, _state,
                              intraBrokerPartitionMovementStats.get(ExecutionTaskState.PENDING),
                              intraBrokerPartitionMovementStats.get(ExecutionTaskState.IN_PROGRESS),
@@ -576,6 +583,7 @@ public final class ExecutorState {
                              finishedIntraBrokerDataMovementInMB,
                              numTotalIntraBrokerDataToMove,
                              finishedIntraBrokerDataPercent,
+                             _executionTasksSummary.inProgressIntraBrokerMovedDataInMB(),
                              _executionConcurrencySummary.getMaxExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA),
                              _executionConcurrencySummary.getMinExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA),
                              _executionConcurrencySummary.getAvgExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA),

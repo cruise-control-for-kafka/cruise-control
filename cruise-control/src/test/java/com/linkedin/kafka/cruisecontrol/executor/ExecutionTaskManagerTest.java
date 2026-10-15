@@ -26,6 +26,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 
 public class ExecutionTaskManagerTest {
@@ -121,6 +122,39 @@ public class ExecutionTaskManagerTest {
     }
     assertEquals(MOCK_DEFAULT_CONCURRENCY.get(ConcurrencyType.LEADERSHIP_CLUSTER).intValue(),
         taskManager.getExecutionConcurrencyManager().getExecutionClusterLeadershipConcurrency());
+  }
+
+  @Test
+  public void testInProgressDataMovementProgress() {
+    ReplicaPlacementInfo r0 = new ReplicaPlacementInfo(0);
+    ReplicaPlacementInfo r1 = new ReplicaPlacementInfo(1);
+    ReplicaPlacementInfo r2 = new ReplicaPlacementInfo(2);
+    ExecutionProposal proposal = new ExecutionProposal(new TopicPartition("topic", 0), 10, r2, Arrays.asList(r0, r2), Arrays.asList(r2, r1));
+    StrategyOptions strategyOptions = new StrategyOptions.Builder(generateExpectedCluster(proposal)).build();
+    taskManager.clear();
+    taskManager.addExecutionProposals(Collections.singletonList(proposal), Collections.emptySet(), strategyOptions, null);
+    List<ExecutionTask> tasks = taskManager.getInterBrokerReplicaMovementTasks();
+    assertEquals(1, tasks.size());
+    ExecutionTask task = tasks.get(0);
+    taskManager.markTasksInProgress(tasks);
+    assertEquals(0, taskManager.getExecutionTasksSummary(Collections.emptySet()).inProgressInterBrokerMovedDataInMB());
+
+    task.updateDataMovementProgress(3 * ExecutionTask.BYTES_IN_MB, 12 * ExecutionTask.BYTES_IN_MB);
+    ExecutionTaskTracker.ExecutionTasksSummary executionTasksSummary = taskManager.getExecutionTasksSummary(Collections.emptySet());
+    assertEquals(3, executionTasksSummary.inProgressInterBrokerMovedDataInMB());
+    assertEquals(0, executionTasksSummary.inProgressIntraBrokerMovedDataInMB());
+    ExecutorState executorState = ExecutorState.operationInProgress(ExecutorState.State.INTER_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS,
+                                                                    executionTasksSummary,
+                                                                    taskManager.getExecutionConcurrencyManager().getExecutionConcurrencySummary(),
+                                                                    "uuid", "reason", Collections.emptySet(), Collections.emptySet(), true);
+    assertEquals(3L, executorState.getJsonStructure(false).get("inProgressMovedData"));
+    assertTrue(executorState.getPlaintext().contains("moved(3) bytes in MBs by in-progress inter-broker partition movements"));
+
+    // Moved data of finished tasks is accounted for in finished data movement instead.
+    taskManager.markTaskDone(task);
+    executionTasksSummary = taskManager.getExecutionTasksSummary(Collections.emptySet());
+    assertEquals(0, executionTasksSummary.inProgressInterBrokerMovedDataInMB());
+    assertEquals(10, executionTasksSummary.finishedInterBrokerDataMovementInMB());
   }
 
   private void verifyStateChangeSequence(List<ExecutionTaskState> stateSequence,

@@ -116,6 +116,9 @@ ExecutorState:
     totalDataToMove:
       type: integer
       format: int64
+    inProgressMovedData:
+      type: integer
+      format: int64
     maximumConcurrentPartitionMovementsPerBroker:
       type: integer
       format: int32
@@ -178,6 +181,9 @@ ExecutorState:
     totalIntraBrokerDataToMove:
       type: integer
       format: int64
+    inProgressIntraBrokerMovedData:
+      type: integer
+      format: int64
     maximumConcurrentIntraBrokerPartitionMovementsPerBroker:
       type: integer
       format: int32
@@ -222,3 +228,9 @@ ExecutionTask:
     brokerId:
       type: integer
       format: int32
+    movedDataInMB:
+      type: integer
+      format: int64
+    totalDataToMoveInMB:
+      type: integer
+      format: int64

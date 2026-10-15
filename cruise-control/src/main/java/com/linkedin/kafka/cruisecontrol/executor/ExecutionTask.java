@@ -49,6 +49,13 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
   private static final String PROPOSAL = "proposal";
   @JsonResponseField
   private static final String BROKER_ID = "brokerId";
+  @JsonResponseField(required = false)
+  private static final String MOVED_DATA_IN_MB = "movedDataInMB";
+  @JsonResponseField(required = false)
+  private static final String TOTAL_DATA_TO_MOVE_IN_MB = "totalDataToMoveInMB";
+  public static final long BYTES_IN_MB = 1024L * 1024L;
+  // Indicates that the data movement progress of the task is unknown.
+  private static final long UNKNOWN_DATA_MOVEMENT_PROGRESS = -1L;
   private static final Map<ExecutionTaskState, Set<ExecutionTaskState>> VALID_TRANSFER = new HashMap<>();
   private final TaskType _type;
   private final long _executionId;
@@ -60,6 +67,9 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
   private long _endTimeMs;
   private long _alertTimeMs;
   private boolean _slowExecutionReported;
+  // Data movement progress of an in-progress replica action, as observed from the replica sizes reported by the brokers.
+  private volatile long _movedDataInBytes;
+  private volatile long _totalDataToMoveInBytes;
 
   static {
     VALID_TRANSFER.put(ExecutionTaskState.PENDING, new HashSet<>(Collections.singleton(ExecutionTaskState.IN_PROGRESS)));
@@ -98,6 +108,8 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
     _endTimeMs = -1L;
     _alertTimeMs = executionAlertingThresholdMs;
     _slowExecutionReported = false;
+    _movedDataInBytes = UNKNOWN_DATA_MOVEMENT_PROGRESS;
+    _totalDataToMoveInBytes = UNKNOWN_DATA_MOVEMENT_PROGRESS;
   }
 
   public ExecutionTask(long executionId, ExecutionProposal proposal, TaskType type, long executionAlertingThresholdMs) {
@@ -223,6 +235,41 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
   }
 
   /**
+   * Update the data movement progress of this replica action.
+   *
+   * @param movedDataInBytes Number of bytes that have already been moved, as observed from the replica size(s) at the destination.
+   * @param totalDataToMoveInBytes Total number of bytes to move, as observed from the replica size at the source.
+   */
+  public void updateDataMovementProgress(long movedDataInBytes, long totalDataToMoveInBytes) {
+    if (_type == TaskType.LEADER_ACTION) {
+      throw new IllegalStateException("Data movement progress is irrelevant to leadership movement task " + _executionId);
+    }
+    _movedDataInBytes = movedDataInBytes;
+    _totalDataToMoveInBytes = totalDataToMoveInBytes;
+  }
+
+  /**
+   * @return {@code true} if the data movement progress of this task is known, {@code false} otherwise.
+   */
+  public boolean hasDataMovementProgress() {
+    return _movedDataInBytes != UNKNOWN_DATA_MOVEMENT_PROGRESS;
+  }
+
+  /**
+   * @return Number of bytes that have already been moved by this task, or {@code -1} if unknown.
+   */
+  public long movedDataInBytes() {
+    return _movedDataInBytes;
+  }
+
+  /**
+   * @return Total number of bytes to move by this task, or {@code -1} if unknown.
+   */
+  public long totalDataToMoveInBytes() {
+    return _totalDataToMoveInBytes;
+  }
+
+  /**
    * If the task's execution time exceeds alerting threshold, add the task to the group of tasks for which an alert will
    * be sent out.
    * Note to avoid repetitive alerts for the same task, the task will be added to the group only for the first time the
@@ -260,6 +307,11 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
     executionStatsMap.put(PROPOSAL, _proposal.getJsonStructure());
     if (_type == TaskType.INTRA_BROKER_REPLICA_ACTION) {
       executionStatsMap.put(BROKER_ID, _brokerId);
+    }
+    // The last observed progress is only meaningful while the data is still being moved.
+    if (_state == ExecutionTaskState.IN_PROGRESS && hasDataMovementProgress()) {
+      executionStatsMap.put(MOVED_DATA_IN_MB, _movedDataInBytes / BYTES_IN_MB);
+      executionStatsMap.put(TOTAL_DATA_TO_MOVE_IN_MB, _totalDataToMoveInBytes / BYTES_IN_MB);
     }
     return executionStatsMap;
   }

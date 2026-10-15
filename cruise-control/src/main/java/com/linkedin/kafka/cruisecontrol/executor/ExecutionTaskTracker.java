@@ -17,6 +17,7 @@ import java.util.Set;
 import org.apache.kafka.common.utils.Time;
 
 import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils.EXECUTOR_SENSOR;
+import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTask.BYTES_IN_MB;
 import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTask.TaskType;
 
 /**
@@ -353,6 +354,18 @@ public class ExecutionTaskTracker {
   }
 
   /**
+   * @param type Task type.
+   * @return Number of MBs that have already been moved by the in-progress tasks with the given task type, as observed
+   * from their last known data movement progress.
+   */
+  private long inProgressMovedDataInMB(TaskType type) {
+    return _tasksByType.get(type).get(ExecutionTaskState.IN_PROGRESS).stream()
+                       .filter(ExecutionTask::hasDataMovementProgress)
+                       .mapToLong(ExecutionTask::movedDataInBytes)
+                       .sum() / BYTES_IN_MB;
+  }
+
+  /**
    * Get execution tasks summary.
    *
    * @param taskTypesToGetFullList Task types to return complete list of tasks.
@@ -365,6 +378,8 @@ public class ExecutionTaskTracker {
                                      _inExecutionIntraBrokerDataMovementInMB,
                                      _remainingInterBrokerDataToMoveInMB,
                                      _remainingIntraBrokerDataToMoveInMB,
+                                     inProgressMovedDataInMB(TaskType.INTER_BROKER_REPLICA_ACTION),
+                                     inProgressMovedDataInMB(TaskType.INTRA_BROKER_REPLICA_ACTION),
                                      taskStat(),
                                      filteredTasksByState(taskTypesToGetFullList)
     );
@@ -377,6 +392,8 @@ public class ExecutionTaskTracker {
     private final long _inExecutionIntraBrokerDataMovementInMB;
     private final long _remainingInterBrokerDataToMoveInMB;
     private final long _remainingIntraBrokerDataToMoveInMB;
+    private final long _inProgressInterBrokerMovedDataInMB;
+    private final long _inProgressIntraBrokerMovedDataInMB;
     private final Map<TaskType, Map<ExecutionTaskState, Integer>> _taskStat;
     private final Map<TaskType, Map<ExecutionTaskState, Set<ExecutionTask>>> _filteredTasksByState;
 
@@ -386,6 +403,8 @@ public class ExecutionTaskTracker {
                           long inExecutionIntraBrokerDataMovementInMB,
                           long remainingInterBrokerDataToMoveInMB,
                           long remainingIntraBrokerDataToMoveInMB,
+                          long inProgressInterBrokerMovedDataInMB,
+                          long inProgressIntraBrokerMovedDataInMB,
                           Map<TaskType, Map<ExecutionTaskState, Integer>> taskStat,
                           Map<TaskType, Map<ExecutionTaskState, Set<ExecutionTask>>> filteredTasksByState) {
       _finishedInterBrokerDataMovementInMB = finishedInterBrokerDataMovementInMB;
@@ -394,6 +413,8 @@ public class ExecutionTaskTracker {
       _inExecutionIntraBrokerDataMovementInMB = inExecutionIntraBrokerDataMovementInMB;
       _remainingInterBrokerDataToMoveInMB = remainingInterBrokerDataToMoveInMB;
       _remainingIntraBrokerDataToMoveInMB = remainingIntraBrokerDataToMoveInMB;
+      _inProgressInterBrokerMovedDataInMB = inProgressInterBrokerMovedDataInMB;
+      _inProgressIntraBrokerMovedDataInMB = inProgressIntraBrokerMovedDataInMB;
       _taskStat = taskStat;
       _filteredTasksByState = filteredTasksByState;
     }
@@ -420,6 +441,20 @@ public class ExecutionTaskTracker {
 
     public long remainingIntraBrokerDataToMoveInMB() {
       return _remainingIntraBrokerDataToMoveInMB;
+    }
+
+    /**
+     * @return Number of MBs that have already been moved by the in-progress inter-broker replica movement tasks.
+     */
+    public long inProgressInterBrokerMovedDataInMB() {
+      return _inProgressInterBrokerMovedDataInMB;
+    }
+
+    /**
+     * @return Number of MBs that have already been moved by the in-progress intra-broker replica movement tasks.
+     */
+    public long inProgressIntraBrokerMovedDataInMB() {
+      return _inProgressIntraBrokerMovedDataInMB;
     }
 
     public Map<TaskType, Map<ExecutionTaskState, Integer>> taskStat() {

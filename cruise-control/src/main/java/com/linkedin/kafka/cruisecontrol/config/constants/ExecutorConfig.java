@@ -197,6 +197,16 @@ public final class ExecutorConfig {
   public static final String LOGDIR_RESPONSE_TIMEOUT_MS_DOC = "Timeout in ms for broker logdir to respond";
 
   /**
+   * <code>partition.movement.progress.tracking.enabled</code>
+   */
+  public static final String PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_CONFIG = "partition.movement.progress.tracking.enabled";
+  public static final boolean DEFAULT_PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED = true;
+  public static final String PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_DOC = "Enable tracking the amount of data (in MB) that has "
+      + "already been moved by in-progress inter-broker and intra-broker partition movements. If enabled, at each execution progress "
+      + "check the executor sends a describeLogDirs request to the brokers involved in the in-progress partition movements, compares "
+      + "the size of the replicas being created with the size of their source replicas, and reports the result in the executor state.";
+
+  /**
    * <code>demotion.history.retention.time.ms</code>
    */
   public static final String DEMOTION_HISTORY_RETENTION_TIME_MS_CONFIG = "demotion.history.retention.time.ms";
@@ -605,6 +615,11 @@ public final class ExecutorConfig {
                             DEFAULT_LOGDIR_RESPONSE_TIMEOUT_MS,
                             ConfigDef.Importance.LOW,
                             LOGDIR_RESPONSE_TIMEOUT_MS_DOC)
+                    .define(PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_CONFIG,
+                            ConfigDef.Type.BOOLEAN,
+                            DEFAULT_PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED,
+                            ConfigDef.Importance.LOW,
+                            PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_DOC)
                     .define(DEMOTION_HISTORY_RETENTION_TIME_MS_CONFIG,
                             ConfigDef.Type.LONG,
                             DEFAULT_DEMOTION_HISTORY_RETENTION_TIME_MS,

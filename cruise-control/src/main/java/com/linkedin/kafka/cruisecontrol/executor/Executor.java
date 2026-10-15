@@ -142,6 +142,7 @@ public class Executor {
   private final TopicMinIsrCache _topicMinIsrCache;
   private final long _minExecutionProgressCheckIntervalMs;
   private final long _slowTaskAlertingBackoffTimeMs;
+  private final boolean _partitionMovementProgressTrackingEnabled;
   private final KafkaCruiseControlConfig _config;
   private final AtomicDouble _partitionMovementCountPerSec;
   private final AtomicDouble _partitionMovementMbPerSec;
@@ -230,6 +231,7 @@ public class Executor {
     _removalHistoryRetentionTimeMs = config.getLong(ExecutorConfig.REMOVAL_HISTORY_RETENTION_TIME_MS_CONFIG);
     _minExecutionProgressCheckIntervalMs = config.getLong(ExecutorConfig.MIN_EXECUTION_PROGRESS_CHECK_INTERVAL_MS_CONFIG);
     _slowTaskAlertingBackoffTimeMs = config.getLong(ExecutorConfig.SLOW_TASK_ALERTING_BACKOFF_TIME_MS_CONFIG);
+    _partitionMovementProgressTrackingEnabled = config.getBoolean(ExecutorConfig.PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_CONFIG);
     _concurrencyAdjusterEnabled = new ConcurrentHashMap<>(ConcurrencyType.cachedValues().size());
     _concurrencyAdjusterEnabled.put(ConcurrencyType.INTER_BROKER_REPLICA,
                                     config.getBoolean(ExecutorConfig.CONCURRENCY_ADJUSTER_INTER_BROKER_REPLICA_ENABLED_CONFIG));
@@ -1878,6 +1880,7 @@ public class Executor {
           setExecutionProgressCheckIntervalMs(_executionProgressCheckIntervalMs + EXECUTION_PROGRESS_CHECK_INTERVAL_ADJUSTING_MS);
         }
 
+        maybeUpdateDataMovementProgress(cluster);
         sendSlowExecutionAlert(slowTasksToReport);
         handleDeadInterBrokerReplicaTasks(deadInterBrokerReplicaTasks, stoppedInterBrokerReplicaTasks);
         updateOngoingExecutionState();
@@ -2003,6 +2006,7 @@ public class Executor {
             }
           }
         }
+        maybeUpdateDataMovementProgress(cluster);
         sendSlowExecutionAlert(slowTasksToReport);
         updateOngoingExecutionState();
       } while (!inExecutionTasks().isEmpty() && finishedTasks.isEmpty());
@@ -2081,12 +2085,28 @@ public class Executor {
       }
     }
 
+    /**
+     * Update the data movement progress of in-progress replica movement tasks if partition movement progress tracking is enabled.
+     *
+     * @param cluster The current cluster metadata.
+     */
+    private void maybeUpdateDataMovementProgress(Cluster cluster) {
+      if (_partitionMovementProgressTrackingEnabled) {
+        updateDataMovementProgress(inExecutionTasks(), cluster, _adminClient, _config);
+      }
+    }
+
     private void sendSlowExecutionAlert(List<ExecutionTask> slowTasksToReport) {
       if (!slowTasksToReport.isEmpty()) {
         StringBuilder sb = new StringBuilder();
         sb.append("Slow tasks are detected:\n");
         for (ExecutionTask task: slowTasksToReport) {
-          sb.append(String.format("\tID: %s\tstart_time:%s\tdetail:%s%n", task.executionId(), utcDateFor(task.startTimeMs()), task));
+          String progress = task.hasDataMovementProgress()
+                            ? String.format("\tmoved_data:%d/%d MB", task.movedDataInBytes() / ExecutionTask.BYTES_IN_MB,
+                                            task.totalDataToMoveInBytes() / ExecutionTask.BYTES_IN_MB)
+                            : "";
+          sb.append(String.format("\tID: %s\tstart_time:%s%s\tdetail:%s%n", task.executionId(), utcDateFor(task.startTimeMs()),
+                                  progress, task));
         }
         _executorNotifier.sendAlert(sb.toString());
         _lastSlowTaskReportingTimeMs = _time.milliseconds();
