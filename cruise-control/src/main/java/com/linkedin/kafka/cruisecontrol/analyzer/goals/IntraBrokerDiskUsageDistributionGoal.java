@@ -386,17 +386,24 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
                                          OptimizationOptions optimizationOptions) {
     long swapStartTimeMs = System.currentTimeMillis();
     Broker broker = disk.broker();
+    double balanceUpperThreshold = _balanceUpperThresholdByBroker.get(broker);
 
     PriorityQueue<Disk> candidateDiskPQ = new PriorityQueue<>(Comparator.comparingDouble(GoalUtils::diskUtilizationPercentage));
     for (Disk candidateDisk : broker.disks()) {
       // Get candidate disk on broker to try to swap replica with -- sorted in the order of trial (ascending load).
-      if (candidateDisk.isAlive() && diskUtilizationPercentage(candidateDisk) < _balanceUpperThresholdByBroker.get(broker)) {
+      if (candidateDisk.isAlive() && diskUtilizationPercentage(candidateDisk) < balanceUpperThreshold) {
         candidateDiskPQ.add(candidateDisk);
       }
     }
 
     while (!candidateDiskPQ.isEmpty()) {
+      if (remainingPerDiskSwapTimeMs(swapStartTimeMs) <= 0) {
+        LOG.debug("Swap load out timeout for disk {}.", disk.logDir());
+        break;
+      }
+
       Disk candidateDisk = candidateDiskPQ.poll();
+      boolean swapped = false;
       for (Replica sourceReplica : disk.trackedSortedReplicas(replicaSortName(this, true, false)).sortedReplicas(false)) {
         // Try swapping the source with the candidate replicas. Get the swapped in replica if successful, null otherwise.
         Replica swappedIn = maybeSwapReplicaBetweenDisks(clusterModel,
@@ -405,18 +412,22 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
                                                                       .sortedReplicas(false),
                                                          optimizedGoals);
         if (swappedIn != null) {
-          if (diskUtilizationPercentage(disk) < _balanceUpperThresholdByBroker.get(broker)) {
-            // Successfully balanced this broker by swapping in.
+          if (diskUtilizationPercentage(disk) < balanceUpperThreshold) {
+            // Successfully balanced this disk by swapping out.
             return;
           }
+          swapped = true;
           break;
+        } else if (remainingPerDiskSwapTimeMs(swapStartTimeMs) <= 0) {
+          LOG.debug("Swap load out timeout for source replica {} on disk {}.", sourceReplica, disk.logDir());
+          return;
         }
       }
-      if (remainingPerDiskSwapTimeMs(swapStartTimeMs) <= 0) {
-        LOG.debug("Swap load out timeout for disk {}.", disk.logDir());
-        break;
-      }
-      if (diskUtilizationPercentage(candidateDisk) < _balanceUpperThresholdByBroker.get(broker)) {
+
+      // The candidate disk is re-enqueued only if a swap with it succeeded -- i.e. the disks have changed and there might be
+      // other potential candidate replicas on it to swap with. If no swap was possible, retrying the same pair of disks in
+      // the same state would yield the same result, and would only burn CPU until the per disk swap timeout expires.
+      if (swapped && diskUtilizationPercentage(candidateDisk) < balanceUpperThreshold) {
         candidateDiskPQ.add(candidateDisk);
       }
     }
@@ -436,18 +447,25 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
                                         OptimizationOptions optimizationOptions) {
     long swapStartTimeMs = System.currentTimeMillis();
     Broker broker = disk.broker();
+    double balanceLowerThreshold = _balanceLowerThresholdByBroker.get(broker);
 
     PriorityQueue<Disk> candidateDiskPQ = new PriorityQueue<>(
         (d1, d2) -> Double.compare(diskUtilizationPercentage(d2), diskUtilizationPercentage(d1)));
     for (Disk candidateDisk : broker.disks()) {
       // Get candidate disk on broker to try to swap replica with -- sorted in the order of trial (descending load).
-      if (candidateDisk.isAlive() && diskUtilizationPercentage(candidateDisk) > _balanceLowerThresholdByBroker.get(broker)) {
+      if (candidateDisk.isAlive() && diskUtilizationPercentage(candidateDisk) > balanceLowerThreshold) {
         candidateDiskPQ.add(candidateDisk);
       }
     }
 
     while (!candidateDiskPQ.isEmpty()) {
+      if (remainingPerDiskSwapTimeMs(swapStartTimeMs) <= 0) {
+        LOG.debug("Swap load in timeout for disk {}.", disk.logDir());
+        break;
+      }
+
       Disk candidateDisk = candidateDiskPQ.poll();
+      boolean swapped = false;
       for (Replica sourceReplica : disk.trackedSortedReplicas(replicaSortName(this, false, false)).sortedReplicas(false)) {
         // Try swapping the source with the candidate replicas. Get the swapped in replica if successful, null otherwise.
         Replica swappedIn = maybeSwapReplicaBetweenDisks(clusterModel,
@@ -456,18 +474,22 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
                                                                       .sortedReplicas(false),
                                                          optimizedGoals);
         if (swappedIn != null) {
-          if (diskUtilizationPercentage(disk) > _balanceLowerThresholdByBroker.get(broker)) {
-            // Successfully balanced this broker by swapping in.
+          if (diskUtilizationPercentage(disk) > balanceLowerThreshold) {
+            // Successfully balanced this disk by swapping in.
             return;
           }
+          swapped = true;
           break;
+        } else if (remainingPerDiskSwapTimeMs(swapStartTimeMs) <= 0) {
+          LOG.debug("Swap load in timeout for source replica {} on disk {}.", sourceReplica, disk.logDir());
+          return;
         }
       }
-      if (remainingPerDiskSwapTimeMs(swapStartTimeMs) <= 0) {
-        LOG.debug("Swap load out timeout for disk {}.", disk.logDir());
-        break;
-      }
-      if (diskUtilizationPercentage(candidateDisk) > _balanceLowerThresholdByBroker.get(broker)) {
+
+      // The candidate disk is re-enqueued only if a swap with it succeeded -- i.e. the disks have changed and there might be
+      // other potential candidate replicas on it to swap with. If no swap was possible, retrying the same pair of disks in
+      // the same state would yield the same result, and would only burn CPU until the per disk swap timeout expires.
+      if (swapped && diskUtilizationPercentage(candidateDisk) > balanceLowerThreshold) {
         candidateDiskPQ.add(candidateDisk);
       }
     }
