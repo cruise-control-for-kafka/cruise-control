@@ -249,3 +249,6 @@ ExecutionTask:
     dataMovementRateInMBPerSec:
       type: number
       format: double
+    dataMovementProgressUpdateTimeMs:
+      type: integer
+      format: int64

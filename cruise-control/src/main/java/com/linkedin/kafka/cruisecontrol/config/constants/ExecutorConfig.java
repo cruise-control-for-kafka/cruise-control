@@ -210,8 +210,9 @@ public final class ExecutorConfig {
       + "(see partition.movement.progress.check.interval.ms) sends a describeLogDirs request to the brokers involved in "
       + "the in-progress partition movements, compares the size of the replicas being created with the size of their source "
       + "replicas, and reports the result -- along with the observed data movement rate and the estimated remaining time -- in the "
-      + "executor state. The observed data movement rate is also used to detect slow (e.g. stuck) partition movements (see "
-      + TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG + ").";
+      + "executor state and the partition data movement metrics. The observed data movement rate is also used to detect slow (e.g. "
+      + "stuck) partition movements (see " + TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG + "). If a check fails (e.g. a broker fails "
+      + "to respond), the last known progress is kept until the next check.";
 
   /**
    * <code>partition.movement.progress.check.interval.ms</code>

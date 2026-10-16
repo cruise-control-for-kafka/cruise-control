@@ -40,6 +40,10 @@ public class ExecutionTaskTracker {
   private final Meter _intraBrokerPartitionMovementRateMeter;
   private final Meter _leadershipMovementRateMeter;
   private final Meter _partitionDataMovementRateMeter;
+  // Bytes of the in-progress replica movement tasks that have been accounted for in _partitionDataMovementRateMeter.
+  private final Map<ExecutionTask, Long> _meteredDataMovementInBytesByTask;
+  // Bytes that have been moved but not yet marked in _partitionDataMovementRateMeter, which is marked in MBs.
+  private long _unmeteredDataMovementInBytes;
 
   public static final String INTER_BROKER_REPLICA_ACTION = "replica-action";
   public static final String INTRA_BROKER_REPLICA_ACTION = "intra-broker-replica-action";
@@ -81,6 +85,8 @@ public class ExecutionTaskTracker {
     _intraBrokerPartitionMovementRateMeter = new Meter();
     _leadershipMovementRateMeter = new Meter();
     _partitionDataMovementRateMeter = new Meter();
+    _meteredDataMovementInBytesByTask = new HashMap<>();
+    _unmeteredDataMovementInBytes = 0L;
 
     // Register gauge sensors.
     registerGaugeSensors(dropwizardMetricRegistry);
@@ -191,13 +197,46 @@ public class ExecutionTaskTracker {
     } else if (task.state() == ExecutionTaskState.ABORTED
                || task.state() == ExecutionTaskState.DEAD
                || task.state() == ExecutionTaskState.COMPLETED) {
-      _partitionDataMovementRateMeter.mark(dataToMove);
+      // Mark the data movement of the task that has not been marked while it was in progress.
+      Long meteredDataMovementInBytes = _meteredDataMovementInBytesByTask.remove(task);
+      markDataMovement(dataToMove * BYTES_IN_MB - (meteredDataMovementInBytes == null ? 0L : meteredDataMovementInBytes));
       if (task.type() == TaskType.INTRA_BROKER_REPLICA_ACTION) {
         _inExecutionIntraBrokerDataMovementInMB -= dataToMove;
         _finishedIntraBrokerDataMovementInMB += dataToMove;
       } else if (task.type() == TaskType.INTER_BROKER_REPLICA_ACTION) {
         _inExecutionInterBrokerDataMovementInMB -= dataToMove;
         _finishedInterBrokerDataMovementInMB += dataToMove;
+      }
+    }
+  }
+
+  /**
+   * Mark the data movement observed since the last call for the in-progress replica movement tasks in the partition data
+   * movement rate meter. This lets the meter report the data movement rate while partition movements are in progress,
+   * rather than only when they finish.
+   */
+  public void markInProgressDataMovement() {
+    for (TaskType type : List.of(TaskType.INTER_BROKER_REPLICA_ACTION, TaskType.INTRA_BROKER_REPLICA_ACTION)) {
+      for (ExecutionTask task : _tasksByType.get(type).get(ExecutionTaskState.IN_PROGRESS)) {
+        if (task.hasDataMovementProgress()) {
+          long meteredDataMovementInBytes = _meteredDataMovementInBytesByTask.getOrDefault(task, 0L);
+          // The moved data may shrink, e.g. due to retention on the destination replica -- this is not counted as progress.
+          if (task.movedDataInBytes() > meteredDataMovementInBytes) {
+            markDataMovement(task.movedDataInBytes() - meteredDataMovementInBytes);
+            _meteredDataMovementInBytesByTask.put(task, task.movedDataInBytes());
+          }
+        }
+      }
+    }
+  }
+
+  private void markDataMovement(long dataMovementInBytes) {
+    if (dataMovementInBytes > 0L) {
+      _unmeteredDataMovementInBytes += dataMovementInBytes;
+      long dataMovementInMB = _unmeteredDataMovementInBytes / BYTES_IN_MB;
+      if (dataMovementInMB > 0L) {
+        _partitionDataMovementRateMeter.mark(dataMovementInMB);
+        _unmeteredDataMovementInBytes -= dataMovementInMB * BYTES_IN_MB;
       }
     }
   }
@@ -267,6 +306,8 @@ public class ExecutionTaskTracker {
     _inExecutionIntraBrokerDataMovementInMB = 0L;
     _finishedInterBrokerDataMovementInMB = 0L;
     _finishedIntraBrokerDataMovementInMB = 0L;
+    _meteredDataMovementInBytesByTask.clear();
+    _unmeteredDataMovementInBytes = 0L;
     _stopRequested = false;
   }
 
@@ -358,7 +399,7 @@ public class ExecutionTaskTracker {
    * @return Number of MBs that have already been moved by the in-progress tasks with the given task type, as observed
    * from their last known data movement progress.
    */
-  private long inProgressMovedDataInMB(TaskType type) {
+  public long inProgressMovedDataInMB(TaskType type) {
     return _tasksByType.get(type).get(ExecutionTaskState.IN_PROGRESS).stream()
                        .filter(ExecutionTask::hasDataMovementProgress)
                        .mapToLong(ExecutionTask::movedDataInBytes)

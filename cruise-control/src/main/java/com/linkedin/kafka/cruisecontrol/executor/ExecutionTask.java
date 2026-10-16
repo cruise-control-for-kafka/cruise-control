@@ -55,6 +55,8 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
   private static final String TOTAL_DATA_TO_MOVE_IN_MB = "totalDataToMoveInMB";
   @JsonResponseField(required = false)
   private static final String DATA_MOVEMENT_RATE_IN_MB_PER_SEC = "dataMovementRateInMBPerSec";
+  @JsonResponseField(required = false)
+  private static final String DATA_MOVEMENT_PROGRESS_UPDATE_TIME_MS = "dataMovementProgressUpdateTimeMs";
   public static final long BYTES_IN_MB = 1024L * 1024L;
   // Indicates that the data movement progress (or rate) of the task is unknown.
   private static final long UNKNOWN_DATA_MOVEMENT_PROGRESS = -1L;
@@ -75,7 +77,7 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
   private volatile long _totalDataToMoveInBytes;
   // The data movement rate observed between the last two observations of the data movement progress.
   private volatile double _dataMovementRateInMBPerSec;
-  private long _lastDataMovementProgressObservationMs;
+  private volatile long _lastDataMovementProgressObservationMs;
 
   static {
     VALID_TRANSFER.put(ExecutionTaskState.PENDING, new HashSet<>(Collections.singleton(ExecutionTaskState.IN_PROGRESS)));
@@ -285,6 +287,13 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
   }
 
   /**
+   * @return The time (in ms) of the last observation of the data movement progress of this task, or {@code -1} if unknown.
+   */
+  public long dataMovementProgressUpdateTimeMs() {
+    return _lastDataMovementProgressObservationMs;
+  }
+
+  /**
    * @return {@code true} if the data movement rate of this task is known -- i.e. its data movement progress has been
    * observed at least twice, {@code false} otherwise.
    */
@@ -372,6 +381,8 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
     if (_state == ExecutionTaskState.IN_PROGRESS && hasDataMovementProgress()) {
       executionStatsMap.put(MOVED_DATA_IN_MB, _movedDataInBytes / BYTES_IN_MB);
       executionStatsMap.put(TOTAL_DATA_TO_MOVE_IN_MB, _totalDataToMoveInBytes / BYTES_IN_MB);
+      // Lets users tell a stale progress (e.g. a broker failed to respond) from a stuck data movement.
+      executionStatsMap.put(DATA_MOVEMENT_PROGRESS_UPDATE_TIME_MS, _lastDataMovementProgressObservationMs);
       if (hasDataMovementRate()) {
         executionStatsMap.put(DATA_MOVEMENT_RATE_IN_MB_PER_SEC, _dataMovementRateInMBPerSec);
       }

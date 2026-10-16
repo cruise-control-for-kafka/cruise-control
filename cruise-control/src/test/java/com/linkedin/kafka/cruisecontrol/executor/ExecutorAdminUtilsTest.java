@@ -104,6 +104,7 @@ public class ExecutorAdminUtilsTest {
     // 60 MB are moved in 60 seconds.
     logDirsByBrokerId.put(3, logDir("/d1", 60L, false));
     ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId, 60_000L);
+    assertEquals(60_000L, task.getJsonStructure().get("dataMovementProgressUpdateTimeMs"));
     assertEquals(160L * BYTES_IN_MB, task.movedDataInBytes());
     assertEquals(1.0, task.dataMovementRateInMBPerSec(), 1e-9);
     assertEquals(1.0, (double) task.getJsonStructure().get("dataMovementRateInMBPerSec"), 1e-9);
@@ -119,6 +120,8 @@ public class ExecutorAdminUtilsTest {
     logDirsByBrokerId.put(2, logDir("/d1", 200L, false));
     ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId, 120_000L);
     assertEquals(190L * BYTES_IN_MB, task.movedDataInBytes());
+    // The time of the last update tells that the progress is stale.
+    assertEquals(90_000L, task.getJsonStructure().get("dataMovementProgressUpdateTimeMs"));
     assertEquals(1.0, task.dataMovementRateInMBPerSec(), 1e-9);
 
     // The logdir of a destination broker is offline: the replica may be on it, so no progress is made since the last observation.
@@ -229,7 +232,7 @@ public class ExecutorAdminUtilsTest {
     EasyMock.replay(describeLogDirsResult, adminClient);
 
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
-    assertTrue(ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config, 0L));
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config, 0L);
     EasyMock.verify(describeLogDirsResult, adminClient);
     assertEquals(140L * BYTES_IN_MB, task.movedDataInBytes());
     assertEquals(600L * BYTES_IN_MB, task.totalDataToMoveInBytes());
@@ -244,10 +247,18 @@ public class ExecutorAdminUtilsTest {
     EasyMock.expect(adminClient.describeLogDirs(EasyMock.anyObject())).andReturn(describeLogDirsResult);
     EasyMock.replay(describeLogDirsResult, adminClient);
 
-    assertTrue(ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config, 0L));
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config, 1L);
     EasyMock.verify(describeLogDirsResult, adminClient);
     assertEquals(140L * BYTES_IN_MB, task.movedDataInBytes());
     assertEquals(600L * BYTES_IN_MB, task.totalDataToMoveInBytes());
+
+    // The describeLogDirs request fails altogether: keep the last known progress.
+    EasyMock.reset(describeLogDirsResult, adminClient);
+    EasyMock.expect(adminClient.describeLogDirs(EasyMock.anyObject())).andThrow(new IllegalStateException("Admin client is closed"));
+    EasyMock.replay(adminClient);
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config, 2L);
+    EasyMock.verify(adminClient);
+    assertEquals(140L * BYTES_IN_MB, task.movedDataInBytes());
   }
 
   @Test
@@ -255,8 +266,7 @@ public class ExecutorAdminUtilsTest {
     Admin adminClient = EasyMock.mock(Admin.class);
     EasyMock.replay(adminClient);
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
-    assertFalse(ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(interBrokerReplicaTask()), cluster(NODES.get(0)),
-                                                              adminClient, config, 0L));
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(interBrokerReplicaTask()), cluster(NODES.get(0)), adminClient, config, 0L);
     // No describeLogDirs request is sent, since the only task is pending.
     EasyMock.verify(adminClient);
   }

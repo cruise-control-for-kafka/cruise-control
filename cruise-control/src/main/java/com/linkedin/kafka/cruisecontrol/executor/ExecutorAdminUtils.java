@@ -99,14 +99,12 @@ public final class ExecutorAdminUtils {
    * @param adminClient The adminClient to send describeLogDirs request.
    * @param config The config object that holds all the Cruise Control related configs
    * @param nowMs The current time in milliseconds.
-   * @return {@code true} if describeLogDirs requests have been sent, {@code false} if there is no in-progress replica
-   * movement task to check.
    */
-  static boolean updateDataMovementProgress(Collection<ExecutionTask> tasks,
-                                            Cluster cluster,
-                                            Admin adminClient,
-                                            KafkaCruiseControlConfig config,
-                                            long nowMs) {
+  static void updateDataMovementProgress(Collection<ExecutionTask> tasks,
+                                         Cluster cluster,
+                                         Admin adminClient,
+                                         KafkaCruiseControlConfig config,
+                                         long nowMs) {
     List<ExecutionTask> tasksToUpdate = tasks.stream().filter(ExecutorAdminUtils::shouldTrackDataMovementProgress).collect(Collectors.toList());
     Set<Integer> brokersToDescribe = new HashSet<>();
     for (ExecutionTask task : tasksToUpdate) {
@@ -121,7 +119,7 @@ public final class ExecutorAdminUtils {
       }
     }
     if (brokersToDescribe.isEmpty()) {
-      return false;
+      return;
     }
 
     Map<Integer, Map<String, LogDirDescription>> logDirsByBrokerId = new HashMap<>();
@@ -140,10 +138,9 @@ public final class ExecutorAdminUtils {
       }
     } catch (RuntimeException e) {
       LOG.warn("Failed to describe logdirs of brokers {} to track the progress of partition movements.", brokersToDescribe, e);
-      return true;
+      return;
     }
     updateDataMovementProgress(tasksToUpdate, cluster, logDirsByBrokerId, nowMs);
-    return true;
   }
 
   /**
@@ -258,7 +255,12 @@ public final class ExecutorAdminUtils {
     return estimatedDataToMoveInMB * BYTES_IN_MB;
   }
 
-  private static boolean shouldTrackDataMovementProgress(ExecutionTask task) {
+  /**
+   * @param task The task to check.
+   * @return {@code true} if the data movement progress of the given task is tracked -- i.e. it is an in-progress replica
+   * movement task, {@code false} otherwise.
+   */
+  static boolean shouldTrackDataMovementProgress(ExecutionTask task) {
     return task.state() == ExecutionTaskState.IN_PROGRESS && task.type() != ExecutionTask.TaskType.LEADER_ACTION;
   }
 
