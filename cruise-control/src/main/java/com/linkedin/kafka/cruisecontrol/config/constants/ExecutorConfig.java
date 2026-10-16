@@ -161,7 +161,9 @@ public final class ExecutorConfig {
   public static final String INTER_BROKER_REPLICA_MOVEMENT_RATE_ALERTING_THRESHOLD_DOC = "Threshold of data movement rate (in MB/s) "
       + "for inter-broker replica movement task. If the task's data movement rate is lower than this and the task's execution time exceeds "
       + "the threshold set via " + TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG + ", an alert will be sent via notifier set by config "
-      + EXECUTOR_NOTIFIER_CLASS_CONFIG;
+      + EXECUTOR_NOTIFIER_CLASS_CONFIG + ". If partition.movement.progress.tracking.enabled is set, the data movement rate of an "
+      + "in-progress task is the rate observed between its last two partition movement progress checks; otherwise, it is estimated "
+      + "from the size of the partition.";
 
   /**
    * <code>intra.broker.replica.movement.rate.alerting.threshold</code>
@@ -172,7 +174,9 @@ public final class ExecutorConfig {
   public static final String INTRA_BROKER_REPLICA_MOVEMENT_RATE_ALERTING_THRESHOLD_DOC = "Threshold of data movement rate (in MB/s) "
       + "for intra-broker replica movement task. If task's data movement rate is lower than this and the task's execution time exceeds "
       + "the threshold set via " + TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG + ", an alert will be sent via notifier set by config "
-      + EXECUTOR_NOTIFIER_CLASS_CONFIG;
+      + EXECUTOR_NOTIFIER_CLASS_CONFIG + ". If partition.movement.progress.tracking.enabled is set, the data movement rate of an "
+      + "in-progress task is the rate observed between its last two partition movement progress checks; otherwise, it is estimated "
+      + "from the size of the partition.";
 
   // Put here to avoid forward reference.
   public static final String TASK_EXECUTION_ALERTING_THRESHOLD_MS_DOC = "Threshold of execution time to alert a replica/leader movement"
@@ -205,7 +209,9 @@ public final class ExecutorConfig {
       + "already been moved by in-progress inter-broker and intra-broker partition movements. If enabled, the executor periodically "
       + "(see partition.movement.progress.check.interval.ms) sends a describeLogDirs request to the brokers involved in "
       + "the in-progress partition movements, compares the size of the replicas being created with the size of their source "
-      + "replicas, and reports the result in the executor state.";
+      + "replicas, and reports the result -- along with the observed data movement rate and the estimated remaining time -- in the "
+      + "executor state. The observed data movement rate is also used to detect slow (e.g. stuck) partition movements (see "
+      + TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG + ").";
 
   /**
    * <code>partition.movement.progress.check.interval.ms</code>

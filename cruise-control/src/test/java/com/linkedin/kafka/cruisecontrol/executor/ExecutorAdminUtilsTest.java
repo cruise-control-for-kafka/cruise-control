@@ -22,6 +22,7 @@ import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.KafkaStorageException;
 import org.apache.kafka.common.errors.TimeoutException;
 import org.apache.kafka.common.internals.KafkaFutureImpl;
 import org.easymock.EasyMock;
@@ -74,6 +75,10 @@ public class ExecutorAdminUtilsTest {
         Collections.singletonMap(TP, new ReplicaInfo(sizeInMB * BYTES_IN_MB, 0L, isFuture))));
   }
 
+  private static Map<String, LogDirDescription> offlineLogDir(String path) {
+    return Collections.singletonMap(path, new LogDirDescription(new KafkaStorageException("Offline"), Collections.emptyMap()));
+  }
+
   @Test
   public void testUpdateInterBrokerReplicaMovementProgress() {
     ExecutionTask task = interBrokerReplicaTask();
@@ -84,30 +89,61 @@ public class ExecutorAdminUtilsTest {
     // The replica has not been created on broker 3 yet.
     logDirsByBrokerId.put(3, Collections.singletonMap("/d1", new LogDirDescription(null, Collections.emptyMap())));
 
-    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId);
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId, 0L);
     assertTrue(task.hasDataMovementProgress());
     assertEquals(100L * BYTES_IN_MB, task.movedDataInBytes());
     // Leader replica size (300 MB) for each of the two replicas being created.
     assertEquals(600L * BYTES_IN_MB, task.totalDataToMoveInBytes());
+    // The data movement rate is unknown until the progress is observed twice.
+    assertFalse(task.hasDataMovementRate());
     Map<String, Object> taskJson = task.getJsonStructure();
     assertEquals(100L, taskJson.get("movedDataInMB"));
     assertEquals(600L, taskJson.get("totalDataToMoveInMB"));
+    assertFalse(taskJson.containsKey("dataMovementRateInMBPerSec"));
 
-    // The replica on broker 3 is created and the leader replica size is unavailable: fall back to the estimated partition size.
-    logDirsByBrokerId.put(3, logDir("/d1", 5L, false));
-    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(null), logDirsByBrokerId);
-    assertEquals(105L * BYTES_IN_MB, task.movedDataInBytes());
-    assertEquals(2 * PARTITION_SIZE_IN_MB * BYTES_IN_MB, task.totalDataToMoveInBytes());
+    // 60 MB are moved in 60 seconds.
+    logDirsByBrokerId.put(3, logDir("/d1", 60L, false));
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId, 60_000L);
+    assertEquals(160L * BYTES_IN_MB, task.movedDataInBytes());
+    assertEquals(1.0, task.dataMovementRateInMBPerSec(), 1e-9);
+    assertEquals(1.0, (double) task.getJsonStructure().get("dataMovementRateInMBPerSec"), 1e-9);
 
-    // A destination broker fails to respond: keep the last known progress.
+    // The partition has no leader (e.g. the leader broker is offline): keep the last known total.
+    logDirsByBrokerId.put(3, logDir("/d1", 90L, false));
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(null), logDirsByBrokerId, 90_000L);
+    assertEquals(190L * BYTES_IN_MB, task.movedDataInBytes());
+    assertEquals(600L * BYTES_IN_MB, task.totalDataToMoveInBytes());
+
+    // A destination broker fails to respond (e.g. it is offline): keep the last known progress and rate.
     logDirsByBrokerId.remove(3);
     logDirsByBrokerId.put(2, logDir("/d1", 200L, false));
-    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId);
-    assertEquals(105L * BYTES_IN_MB, task.movedDataInBytes());
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId, 120_000L);
+    assertEquals(190L * BYTES_IN_MB, task.movedDataInBytes());
+    assertEquals(1.0, task.dataMovementRateInMBPerSec(), 1e-9);
+
+    // The logdir of a destination broker is offline: the replica may be on it, so no progress is made since the last observation.
+    logDirsByBrokerId.put(3, offlineLogDir("/d1"));
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId, 150_000L);
+    assertEquals(190L * BYTES_IN_MB, task.movedDataInBytes());
+    assertEquals(0.0, task.dataMovementRateInMBPerSec(), 1e-9);
 
     // Progress is not reported once the task is no longer in progress.
     task.completed(1L);
     assertFalse(task.getJsonStructure().containsKey("movedDataInMB"));
+    assertFalse(task.getJsonStructure().containsKey("dataMovementRateInMBPerSec"));
+  }
+
+  @Test
+  public void testFallBackToEstimatedPartitionSizeWithoutLeader() {
+    ExecutionTask task = interBrokerReplicaTask();
+    task.inProgress(0L);
+    Map<Integer, Map<String, LogDirDescription>> logDirsByBrokerId = new HashMap<>();
+    logDirsByBrokerId.put(2, logDir("/d1", 1L, false));
+    logDirsByBrokerId.put(3, logDir("/d1", 2L, false));
+
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(null), logDirsByBrokerId, 0L);
+    assertEquals(3L * BYTES_IN_MB, task.movedDataInBytes());
+    assertEquals(2 * PARTITION_SIZE_IN_MB * BYTES_IN_MB, task.totalDataToMoveInBytes());
   }
 
   @Test
@@ -119,17 +155,43 @@ public class ExecutorAdminUtilsTest {
     logDirs.put("/d2", new LogDirDescription(null, Collections.emptyMap()));
     Map<Integer, Map<String, LogDirDescription>> logDirsByBrokerId = Collections.singletonMap(0, logDirs);
 
-    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId);
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId, 0L);
     assertEquals(0L, task.movedDataInBytes());
     assertEquals(50L * BYTES_IN_MB, task.totalDataToMoveInBytes());
 
+    // 20 MB are moved in 10 seconds.
     logDirs.putAll(logDir("/d2", 20L, true));
-    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId);
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId, 10_000L);
     assertEquals(20L * BYTES_IN_MB, task.movedDataInBytes());
     assertEquals(50L * BYTES_IN_MB, task.totalDataToMoveInBytes());
+    assertEquals(2.0, task.dataMovementRateInMBPerSec(), 1e-9);
     Map<String, Object> taskJson = task.getJsonStructure();
     assertEquals(20L, taskJson.get("movedDataInMB"));
     assertEquals(50L, taskJson.get("totalDataToMoveInMB"));
+
+    // The destination disk goes offline: the future replica may be on it, so no progress is made since the last observation.
+    logDirs.putAll(offlineLogDir("/d2"));
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), logDirsByBrokerId, 20_000L);
+    assertEquals(20L * BYTES_IN_MB, task.movedDataInBytes());
+    assertEquals(0.0, task.dataMovementRateInMBPerSec(), 1e-9);
+  }
+
+  @Test
+  public void testIntraBrokerReplicaMovementCompletedBetweenChecks() {
+    ExecutionTask task = intraBrokerReplicaTask();
+    task.inProgress(0L);
+    Map<String, LogDirDescription> logDirs = new HashMap<>(logDir("/d1", 50L, false));
+    logDirs.putAll(logDir("/d2", 40L, true));
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), Collections.singletonMap(0, logDirs), 0L);
+    assertEquals(40L * BYTES_IN_MB, task.movedDataInBytes());
+
+    // The future replica has replaced the current replica on the destination disk: all data has been moved.
+    Map<String, LogDirDescription> logDirsAfterCompletion = new HashMap<>(logDir("/d2", 50L, false));
+    logDirsAfterCompletion.put("/d1", new LogDirDescription(null, Collections.emptyMap()));
+    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)),
+                                                  Collections.singletonMap(0, logDirsAfterCompletion), 10_000L);
+    assertEquals(50L * BYTES_IN_MB, task.movedDataInBytes());
+    assertEquals(50L * BYTES_IN_MB, task.totalDataToMoveInBytes());
   }
 
   @Test
@@ -143,7 +205,7 @@ public class ExecutorAdminUtilsTest {
       logDirsByBrokerId.put(brokerId, logDir("/d1", 100L, false));
     }
 
-    ExecutorAdminUtils.updateDataMovementProgress(Arrays.asList(pendingTask, leaderTask), cluster(NODES.get(0)), logDirsByBrokerId);
+    ExecutorAdminUtils.updateDataMovementProgress(Arrays.asList(pendingTask, leaderTask), cluster(NODES.get(0)), logDirsByBrokerId, 0L);
     assertFalse(pendingTask.hasDataMovementProgress());
     assertFalse(leaderTask.hasDataMovementProgress());
     assertFalse(pendingTask.getJsonStructure().containsKey("movedDataInMB"));
@@ -167,7 +229,7 @@ public class ExecutorAdminUtilsTest {
     EasyMock.replay(describeLogDirsResult, adminClient);
 
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
-    assertTrue(ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config));
+    assertTrue(ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config, 0L));
     EasyMock.verify(describeLogDirsResult, adminClient);
     assertEquals(140L * BYTES_IN_MB, task.movedDataInBytes());
     assertEquals(600L * BYTES_IN_MB, task.totalDataToMoveInBytes());
@@ -182,7 +244,7 @@ public class ExecutorAdminUtilsTest {
     EasyMock.expect(adminClient.describeLogDirs(EasyMock.anyObject())).andReturn(describeLogDirsResult);
     EasyMock.replay(describeLogDirsResult, adminClient);
 
-    assertTrue(ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config));
+    assertTrue(ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config, 0L));
     EasyMock.verify(describeLogDirsResult, adminClient);
     assertEquals(140L * BYTES_IN_MB, task.movedDataInBytes());
     assertEquals(600L * BYTES_IN_MB, task.totalDataToMoveInBytes());
@@ -194,7 +256,7 @@ public class ExecutorAdminUtilsTest {
     EasyMock.replay(adminClient);
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
     assertFalse(ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(interBrokerReplicaTask()), cluster(NODES.get(0)),
-                                                              adminClient, config));
+                                                              adminClient, config, 0L));
     // No describeLogDirs request is sent, since the only task is pending.
     EasyMock.verify(adminClient);
   }

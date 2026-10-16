@@ -144,6 +144,9 @@ public class Executor {
   private final long _slowTaskAlertingBackoffTimeMs;
   private final boolean _partitionMovementProgressTrackingEnabled;
   private final long _partitionMovementProgressCheckIntervalMs;
+  private final long _taskExecutionAlertingThresholdMs;
+  private final double _interBrokerReplicaMovementRateAlertingThreshold;
+  private final double _intraBrokerReplicaMovementRateAlertingThreshold;
   // The last time the data movement progress of in-progress partition movements was checked, or -1 if never.
   private long _lastPartitionMovementProgressCheckMs;
   private final KafkaCruiseControlConfig _config;
@@ -236,6 +239,11 @@ public class Executor {
     _slowTaskAlertingBackoffTimeMs = config.getLong(ExecutorConfig.SLOW_TASK_ALERTING_BACKOFF_TIME_MS_CONFIG);
     _partitionMovementProgressTrackingEnabled = config.getBoolean(ExecutorConfig.PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_CONFIG);
     _partitionMovementProgressCheckIntervalMs = config.getLong(ExecutorConfig.PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS_CONFIG);
+    _taskExecutionAlertingThresholdMs = config.getLong(ExecutorConfig.TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG);
+    _interBrokerReplicaMovementRateAlertingThreshold =
+        config.getDouble(ExecutorConfig.INTER_BROKER_REPLICA_MOVEMENT_RATE_ALERTING_THRESHOLD_CONFIG);
+    _intraBrokerReplicaMovementRateAlertingThreshold =
+        config.getDouble(ExecutorConfig.INTRA_BROKER_REPLICA_MOVEMENT_RATE_ALERTING_THRESHOLD_CONFIG);
     _lastPartitionMovementProgressCheckMs = -1L;
     _concurrencyAdjusterEnabled = new ConcurrentHashMap<>(ConcurrencyType.cachedValues().size());
     _concurrencyAdjusterEnabled.put(ConcurrencyType.INTER_BROKER_REPLICA,
@@ -1640,6 +1648,8 @@ public class Executor {
       long totalDataToMoveInMB = _executionTaskManager.remainingInterBrokerDataToMoveInMB();
       long startTime = System.currentTimeMillis();
       LOG.info("User task {}: Starting {} inter-broker partition movements.", _uuid, numTotalPartitionMovements);
+      // Check the data movement progress as soon as the first partition movements are in progress.
+      setLastPartitionMovementProgressCheckMs(-1L);
 
       int partitionsToMove = numTotalPartitionMovements;
       // Exhaust all the pending partition movements.
@@ -1709,6 +1719,8 @@ public class Executor {
       long totalDataToMoveInMB = _executionTaskManager.remainingIntraBrokerDataToMoveInMB();
       long startTime = System.currentTimeMillis();
       LOG.info("User task {}: Starting {} intra-broker partition movements.", _uuid, numTotalPartitionMovements);
+      // Check the data movement progress as soon as the first partition movements are in progress.
+      setLastPartitionMovementProgressCheckMs(-1L);
 
       int partitionsToMove = numTotalPartitionMovements;
       // Exhaust all the pending partition movements.
@@ -1887,7 +1899,8 @@ public class Executor {
             handleProgressWithCompletion(task, finishedTasks);
           } else {
             if (shouldReportSlowTasks) {
-              task.maybeReportExecutionTooSlow(_time.milliseconds(), slowTasksToReport);
+              task.maybeReportExecutionTooSlow(_time.milliseconds(), _taskExecutionAlertingThresholdMs,
+                                               _interBrokerReplicaMovementRateAlertingThreshold, slowTasksToReport);
             }
             if (maybeMarkTaskAsDead(cluster, null, task, deadUponSubmission)) {
               deadTaskIds.add(task.executionId());
@@ -2025,7 +2038,8 @@ public class Executor {
             handleProgressWithCompletion(task, finishedTasks);
           } else {
             if (shouldReportSlowTasks) {
-              task.maybeReportExecutionTooSlow(_time.milliseconds(), slowTasksToReport);
+              task.maybeReportExecutionTooSlow(_time.milliseconds(), _taskExecutionAlertingThresholdMs,
+                                               _intraBrokerReplicaMovementRateAlertingThreshold, slowTasksToReport);
             }
             if (maybeMarkTaskAsDead(cluster, logDirInfoByTask, task, null)) {
               deadTaskIds.add(task.executionId());
@@ -2120,7 +2134,7 @@ public class Executor {
      */
     private void maybeUpdateDataMovementProgress(Cluster cluster) {
       long nowMs = _time.milliseconds();
-      if (isPartitionMovementProgressCheckDue(nowMs) && updateDataMovementProgress(inExecutionTasks(), cluster, _adminClient, _config)) {
+      if (isPartitionMovementProgressCheckDue(nowMs) && updateDataMovementProgress(inExecutionTasks(), cluster, _adminClient, _config, nowMs)) {
         _lastPartitionMovementProgressCheckMs = nowMs;
       }
     }
@@ -2134,6 +2148,9 @@ public class Executor {
                             ? String.format("\tmoved_data:%d/%d MB", task.movedDataInBytes() / ExecutionTask.BYTES_IN_MB,
                                             task.totalDataToMoveInBytes() / ExecutionTask.BYTES_IN_MB)
                             : "";
+          if (task.hasDataMovementRate()) {
+            progress += String.format("\tdata_movement_rate:%.3f MB/s", task.dataMovementRateInMBPerSec());
+          }
           sb.append(String.format("\tID: %s\tstart_time:%s%s\tdetail:%s%n", task.executionId(), utcDateFor(task.startTimeMs()),
                                   progress, task));
         }

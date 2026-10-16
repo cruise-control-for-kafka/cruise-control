@@ -26,6 +26,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 
@@ -139,22 +140,52 @@ public class ExecutionTaskManagerTest {
     taskManager.markTasksInProgress(tasks);
     assertEquals(0, taskManager.getExecutionTasksSummary(Collections.emptySet()).inProgressInterBrokerMovedDataInMB());
 
-    task.updateDataMovementProgress(3 * ExecutionTask.BYTES_IN_MB, 12 * ExecutionTask.BYTES_IN_MB);
+    task.updateDataMovementProgress(3 * ExecutionTask.BYTES_IN_MB, 12 * ExecutionTask.BYTES_IN_MB, 0L);
     ExecutionTaskTracker.ExecutionTasksSummary executionTasksSummary = taskManager.getExecutionTasksSummary(Collections.emptySet());
     assertEquals(3, executionTasksSummary.inProgressInterBrokerMovedDataInMB());
     assertEquals(0, executionTasksSummary.inProgressIntraBrokerMovedDataInMB());
-    ExecutorState executorState = ExecutorState.operationInProgress(ExecutorState.State.INTER_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS,
-                                                                    executionTasksSummary,
-                                                                    taskManager.getExecutionConcurrencyManager().getExecutionConcurrencySummary(),
-                                                                    "uuid", "reason", Collections.emptySet(), Collections.emptySet(), true);
-    assertEquals(3L, executorState.getJsonStructure(false).get("inProgressMovedData"));
-    assertTrue(executorState.getPlaintext().contains("moved(3) bytes in MBs by in-progress inter-broker partition movements"));
+    // The data movement rate (hence the remaining time) is unknown until the progress is observed twice.
+    assertEquals(-1.0, executionTasksSummary.inProgressInterBrokerDataMovementRateInMBPerSec(), 1e-9);
+    ExecutorState executorState = interBrokerReplicaMovementInProgressState(executionTasksSummary);
+    Map<String, Object> executorStateJson = executorState.getJsonStructure(false);
+    assertEquals(3L, executorStateJson.get("inProgressMovedData"));
+    assertFalse(executorStateJson.containsKey("inProgressDataMovementRate"));
+    assertFalse(executorStateJson.containsKey("estimatedRemainingTimeMs"));
+    assertTrue(executorState.getPlaintext().contains("moved(3) bytes in MBs by in-progress inter-broker partition movements, "
+                                                     + "data movement rate of in-progress movements: unknown, estimated remaining time: unknown"));
+
+    // 3 MB are moved in 3 seconds: 4 MB of the (estimated) 10 MB remain to be moved at 1 MB/s.
+    task.updateDataMovementProgress(6 * ExecutionTask.BYTES_IN_MB, 12 * ExecutionTask.BYTES_IN_MB, 3000L);
+    executionTasksSummary = taskManager.getExecutionTasksSummary(Collections.emptySet());
+    assertEquals(1.0, executionTasksSummary.inProgressInterBrokerDataMovementRateInMBPerSec(), 1e-9);
+    executorState = interBrokerReplicaMovementInProgressState(executionTasksSummary);
+    executorStateJson = executorState.getJsonStructure(false);
+    assertEquals(6L, executorStateJson.get("inProgressMovedData"));
+    assertEquals(1.0, (double) executorStateJson.get("inProgressDataMovementRate"), 1e-9);
+    assertEquals(4000L, executorStateJson.get("estimatedRemainingTimeMs"));
+    assertTrue(executorState.getPlaintext().contains("moved(6) bytes in MBs by in-progress inter-broker partition movements, "
+                                                     + "data movement rate of in-progress movements: 1.00 MB/s, "
+                                                     + "estimated remaining time: 4.00 seconds"));
+
+    // The data movement is stuck: the remaining time is unknown.
+    task.updateDataMovementProgress(6 * ExecutionTask.BYTES_IN_MB, 12 * ExecutionTask.BYTES_IN_MB, 6000L);
+    executorState = interBrokerReplicaMovementInProgressState(taskManager.getExecutionTasksSummary(Collections.emptySet()));
+    executorStateJson = executorState.getJsonStructure(false);
+    assertEquals(0.0, (double) executorStateJson.get("inProgressDataMovementRate"), 1e-9);
+    assertFalse(executorStateJson.containsKey("estimatedRemainingTimeMs"));
 
     // Moved data of finished tasks is accounted for in finished data movement instead.
     taskManager.markTaskDone(task);
     executionTasksSummary = taskManager.getExecutionTasksSummary(Collections.emptySet());
     assertEquals(0, executionTasksSummary.inProgressInterBrokerMovedDataInMB());
     assertEquals(10, executionTasksSummary.finishedInterBrokerDataMovementInMB());
+  }
+
+  private ExecutorState interBrokerReplicaMovementInProgressState(ExecutionTaskTracker.ExecutionTasksSummary executionTasksSummary) {
+    return ExecutorState.operationInProgress(ExecutorState.State.INTER_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS,
+                                             executionTasksSummary,
+                                             taskManager.getExecutionConcurrencyManager().getExecutionConcurrencySummary(),
+                                             "uuid", "reason", Collections.emptySet(), Collections.emptySet(), true);
   }
 
   private void verifyStateChangeSequence(List<ExecutionTaskState> stateSequence,

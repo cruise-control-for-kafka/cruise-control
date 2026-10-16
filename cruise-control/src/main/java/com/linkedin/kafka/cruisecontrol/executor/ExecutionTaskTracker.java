@@ -366,6 +366,19 @@ public class ExecutionTaskTracker {
   }
 
   /**
+   * @param type Task type.
+   * @return The sum of the last observed data movement rates (in MB/s) of the in-progress tasks with the given task type,
+   * or {@code -1} if the data movement rate of none of these tasks is known.
+   */
+  private double inProgressDataMovementRateInMBPerSec(TaskType type) {
+    return _tasksByType.get(type).get(ExecutionTaskState.IN_PROGRESS).stream()
+                       .filter(ExecutionTask::hasDataMovementRate)
+                       .mapToDouble(ExecutionTask::dataMovementRateInMBPerSec)
+                       .reduce(Double::sum)
+                       .orElse(-1.0);
+  }
+
+  /**
    * Get execution tasks summary.
    *
    * @param taskTypesToGetFullList Task types to return complete list of tasks.
@@ -380,6 +393,8 @@ public class ExecutionTaskTracker {
                                      _remainingIntraBrokerDataToMoveInMB,
                                      inProgressMovedDataInMB(TaskType.INTER_BROKER_REPLICA_ACTION),
                                      inProgressMovedDataInMB(TaskType.INTRA_BROKER_REPLICA_ACTION),
+                                     inProgressDataMovementRateInMBPerSec(TaskType.INTER_BROKER_REPLICA_ACTION),
+                                     inProgressDataMovementRateInMBPerSec(TaskType.INTRA_BROKER_REPLICA_ACTION),
                                      taskStat(),
                                      filteredTasksByState(taskTypesToGetFullList)
     );
@@ -394,6 +409,8 @@ public class ExecutionTaskTracker {
     private final long _remainingIntraBrokerDataToMoveInMB;
     private final long _inProgressInterBrokerMovedDataInMB;
     private final long _inProgressIntraBrokerMovedDataInMB;
+    private final double _inProgressInterBrokerDataMovementRateInMBPerSec;
+    private final double _inProgressIntraBrokerDataMovementRateInMBPerSec;
     private final Map<TaskType, Map<ExecutionTaskState, Integer>> _taskStat;
     private final Map<TaskType, Map<ExecutionTaskState, Set<ExecutionTask>>> _filteredTasksByState;
 
@@ -405,6 +422,8 @@ public class ExecutionTaskTracker {
                           long remainingIntraBrokerDataToMoveInMB,
                           long inProgressInterBrokerMovedDataInMB,
                           long inProgressIntraBrokerMovedDataInMB,
+                          double inProgressInterBrokerDataMovementRateInMBPerSec,
+                          double inProgressIntraBrokerDataMovementRateInMBPerSec,
                           Map<TaskType, Map<ExecutionTaskState, Integer>> taskStat,
                           Map<TaskType, Map<ExecutionTaskState, Set<ExecutionTask>>> filteredTasksByState) {
       _finishedInterBrokerDataMovementInMB = finishedInterBrokerDataMovementInMB;
@@ -415,6 +434,8 @@ public class ExecutionTaskTracker {
       _remainingIntraBrokerDataToMoveInMB = remainingIntraBrokerDataToMoveInMB;
       _inProgressInterBrokerMovedDataInMB = inProgressInterBrokerMovedDataInMB;
       _inProgressIntraBrokerMovedDataInMB = inProgressIntraBrokerMovedDataInMB;
+      _inProgressInterBrokerDataMovementRateInMBPerSec = inProgressInterBrokerDataMovementRateInMBPerSec;
+      _inProgressIntraBrokerDataMovementRateInMBPerSec = inProgressIntraBrokerDataMovementRateInMBPerSec;
       _taskStat = taskStat;
       _filteredTasksByState = filteredTasksByState;
     }
@@ -455,6 +476,22 @@ public class ExecutionTaskTracker {
      */
     public long inProgressIntraBrokerMovedDataInMB() {
       return _inProgressIntraBrokerMovedDataInMB;
+    }
+
+    /**
+     * @return The sum of the last observed data movement rates (in MB/s) of the in-progress inter-broker replica movement
+     * tasks, or {@code -1} if unknown.
+     */
+    public double inProgressInterBrokerDataMovementRateInMBPerSec() {
+      return _inProgressInterBrokerDataMovementRateInMBPerSec;
+    }
+
+    /**
+     * @return The sum of the last observed data movement rates (in MB/s) of the in-progress intra-broker replica movement
+     * tasks, or {@code -1} if unknown.
+     */
+    public double inProgressIntraBrokerDataMovementRateInMBPerSec() {
+      return _inProgressIntraBrokerDataMovementRateInMBPerSec;
     }
 
     public Map<TaskType, Map<ExecutionTaskState, Integer>> taskStat() {

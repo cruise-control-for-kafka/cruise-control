@@ -98,13 +98,15 @@ public final class ExecutorAdminUtils {
    * @param cluster The current cluster metadata.
    * @param adminClient The adminClient to send describeLogDirs request.
    * @param config The config object that holds all the Cruise Control related configs
+   * @param nowMs The current time in milliseconds.
    * @return {@code true} if describeLogDirs requests have been sent, {@code false} if there is no in-progress replica
    * movement task to check.
    */
   static boolean updateDataMovementProgress(Collection<ExecutionTask> tasks,
                                             Cluster cluster,
                                             Admin adminClient,
-                                            KafkaCruiseControlConfig config) {
+                                            KafkaCruiseControlConfig config,
+                                            long nowMs) {
     List<ExecutionTask> tasksToUpdate = tasks.stream().filter(ExecutorAdminUtils::shouldTrackDataMovementProgress).collect(Collectors.toList());
     Set<Integer> brokersToDescribe = new HashSet<>();
     for (ExecutionTask task : tasksToUpdate) {
@@ -129,6 +131,7 @@ public final class ExecutorAdminUtils {
       Map<Integer, KafkaFuture<Map<String, LogDirDescription>>> futureByBrokerId = adminClient.describeLogDirs(brokersToDescribe).descriptions();
       for (Map.Entry<Integer, KafkaFuture<Map<String, LogDirDescription>>> entry : futureByBrokerId.entrySet()) {
         try {
+          // All brokers share the same deadline, so an unresponsive (e.g. offline) broker delays the check by at most the timeout.
           long remainingTimeMs = Math.max(0L, deadlineMs - System.currentTimeMillis());
           logDirsByBrokerId.put(entry.getKey(), entry.getValue().get(remainingTimeMs, TimeUnit.MILLISECONDS));
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
@@ -139,7 +142,7 @@ public final class ExecutorAdminUtils {
       LOG.warn("Failed to describe logdirs of brokers {} to track the progress of partition movements.", brokersToDescribe, e);
       return true;
     }
-    updateDataMovementProgress(tasksToUpdate, cluster, logDirsByBrokerId);
+    updateDataMovementProgress(tasksToUpdate, cluster, logDirsByBrokerId, nowMs);
     return true;
   }
 
@@ -150,58 +153,109 @@ public final class ExecutorAdminUtils {
    * <ul>
    *   <li>{@code INTER_BROKER_REPLICA_ACTION}: The moved data is the total size of the replicas being created on the
    *   destination brokers. The total data to move is the size of the leader replica multiplied by the number of replicas
-   *   being created (or the estimated partition size if the leader replica size is unavailable).</li>
+   *   being created.</li>
    *   <li>{@code INTRA_BROKER_REPLICA_ACTION}: The moved data is the size of the future replica being created on the
-   *   destination disk. The total data to move is the size of the current replica (or the estimated partition size if
-   *   the current replica size is unavailable).</li>
+   *   destination disk. The total data to move is the size of the current replica.</li>
    * </ul>
+   *
+   * If a destination broker failed to respond, the task keeps its last known progress. If a replica being created may
+   * be on an offline logdir, the task is considered to have made no progress since the last observation. If the size of
+   * the source replica is unavailable (e.g. the partition has no leader), the last known (or estimated) total is used.
    *
    * @param tasks The tasks whose data movement progress will be updated -- tasks other than in-progress inter-broker or
    *              intra-broker replica movement tasks are ignored.
    * @param cluster The current cluster metadata.
    * @param logDirsByBrokerId Logdir descriptions by broker id, as returned by a describeLogDirs request. Brokers that
    *                          failed to respond are expected to be missing.
+   * @param nowMs The current time in milliseconds.
    */
   static void updateDataMovementProgress(Collection<ExecutionTask> tasks,
                                          Cluster cluster,
-                                         Map<Integer, Map<String, LogDirDescription>> logDirsByBrokerId) {
+                                         Map<Integer, Map<String, LogDirDescription>> logDirsByBrokerId,
+                                         long nowMs) {
     for (ExecutionTask task : tasks) {
       if (!shouldTrackDataMovementProgress(task)) {
         continue;
       }
-      TopicPartition tp = task.proposal().topicPartition();
       if (task.type() == ExecutionTask.TaskType.INTER_BROKER_REPLICA_ACTION) {
-        Set<ReplicaPlacementInfo> replicasToAdd = task.proposal().replicasToAdd();
-        long movedDataInBytes = 0L;
-        boolean isProgressKnown = true;
-        for (ReplicaPlacementInfo replicaToAdd : replicasToAdd) {
-          Map<String, LogDirDescription> logDirs = logDirsByBrokerId.get(replicaToAdd.brokerId());
-          if (logDirs == null) {
-            isProgressKnown = false;
-            break;
-          }
-          // The replica may not have been created on the destination broker yet.
-          movedDataInBytes += Math.max(0L, replicaSizeInBytes(logDirs, tp, false));
-        }
-        if (isProgressKnown) {
-          Node leader = cluster.leaderFor(tp);
-          long leaderSizeInBytes = leader == null ? -1L : replicaSizeInBytes(logDirsByBrokerId.get(leader.id()), tp, false);
-          long totalDataToMoveInBytes = leaderSizeInBytes >= 0L ? leaderSizeInBytes * replicasToAdd.size()
-                                                                : task.proposal().interBrokerDataToMoveInMB() * BYTES_IN_MB;
-          task.updateDataMovementProgress(movedDataInBytes, totalDataToMoveInBytes);
-        }
+        updateInterBrokerDataMovementProgress(task, cluster, logDirsByBrokerId, nowMs);
       } else {
-        Map<String, LogDirDescription> logDirs = logDirsByBrokerId.get(task.brokerId());
-        if (logDirs != null) {
-          // The future replica may not have been created on the destination disk yet.
-          long movedDataInBytes = Math.max(0L, replicaSizeInBytes(logDirs, tp, true));
-          long currentReplicaSizeInBytes = replicaSizeInBytes(logDirs, tp, false);
-          long totalDataToMoveInBytes = currentReplicaSizeInBytes >= 0L ? currentReplicaSizeInBytes
-                                                                        : task.proposal().intraBrokerDataToMoveInMB() * BYTES_IN_MB;
-          task.updateDataMovementProgress(movedDataInBytes, totalDataToMoveInBytes);
-        }
+        updateIntraBrokerDataMovementProgress(task, logDirsByBrokerId, nowMs);
       }
     }
+  }
+
+  private static void updateInterBrokerDataMovementProgress(ExecutionTask task,
+                                                            Cluster cluster,
+                                                            Map<Integer, Map<String, LogDirDescription>> logDirsByBrokerId,
+                                                            long nowMs) {
+    TopicPartition tp = task.proposal().topicPartition();
+    Set<ReplicaPlacementInfo> replicasToAdd = task.proposal().replicasToAdd();
+    long movedDataInBytes = 0L;
+    boolean isReplicaToAddUnavailable = false;
+    for (ReplicaPlacementInfo replicaToAdd : replicasToAdd) {
+      Map<String, LogDirDescription> logDirs = logDirsByBrokerId.get(replicaToAdd.brokerId());
+      if (logDirs == null) {
+        // The destination broker failed to respond.
+        return;
+      }
+      Map.Entry<String, ReplicaInfo> replica = findReplica(logDirs, tp, false);
+      if (replica != null) {
+        movedDataInBytes += replica.getValue().size();
+      } else if (hasOfflineLogDir(logDirs)) {
+        isReplicaToAddUnavailable = true;
+      }
+      // Otherwise, the replica has not been created on the destination broker yet.
+    }
+    if (isReplicaToAddUnavailable && task.hasDataMovementProgress()) {
+      movedDataInBytes = task.movedDataInBytes();
+    }
+    Node leader = cluster.leaderFor(tp);
+    Map.Entry<String, ReplicaInfo> leaderReplica = leader == null ? null : findReplica(logDirsByBrokerId.get(leader.id()), tp, false);
+    long totalDataToMoveInBytes = leaderReplica != null ? leaderReplica.getValue().size() * replicasToAdd.size()
+                                                        : lastKnownOrEstimatedTotalDataToMoveInBytes(task);
+    task.updateDataMovementProgress(movedDataInBytes, totalDataToMoveInBytes, nowMs);
+  }
+
+  private static void updateIntraBrokerDataMovementProgress(ExecutionTask task,
+                                                            Map<Integer, Map<String, LogDirDescription>> logDirsByBrokerId,
+                                                            long nowMs) {
+    Map<String, LogDirDescription> logDirs = logDirsByBrokerId.get(task.brokerId());
+    if (logDirs == null) {
+      // The broker failed to respond.
+      return;
+    }
+    TopicPartition tp = task.proposal().topicPartition();
+    String destinationLogDir = task.proposal().replicasToMoveBetweenDisksByBroker().get(task.brokerId()).logdir();
+    Map.Entry<String, ReplicaInfo> currentReplica = findReplica(logDirs, tp, false);
+    Map.Entry<String, ReplicaInfo> futureReplica = findReplica(logDirs, tp, true);
+    long movedDataInBytes;
+    long totalDataToMoveInBytes;
+    if (currentReplica != null && currentReplica.getKey().equals(destinationLogDir)) {
+      // The future replica has replaced the current replica since the last check of the task's completion.
+      movedDataInBytes = currentReplica.getValue().size();
+      totalDataToMoveInBytes = movedDataInBytes;
+    } else {
+      if (futureReplica != null) {
+        movedDataInBytes = futureReplica.getValue().size();
+      } else if (hasOfflineLogDir(logDirs) && task.hasDataMovementProgress()) {
+        movedDataInBytes = task.movedDataInBytes();
+      } else {
+        // The future replica has not been created on the destination disk yet.
+        movedDataInBytes = 0L;
+      }
+      totalDataToMoveInBytes = currentReplica != null ? currentReplica.getValue().size() : lastKnownOrEstimatedTotalDataToMoveInBytes(task);
+    }
+    task.updateDataMovementProgress(movedDataInBytes, totalDataToMoveInBytes, nowMs);
+  }
+
+  private static long lastKnownOrEstimatedTotalDataToMoveInBytes(ExecutionTask task) {
+    if (task.hasDataMovementProgress()) {
+      return task.totalDataToMoveInBytes();
+    }
+    long estimatedDataToMoveInMB = task.type() == ExecutionTask.TaskType.INTER_BROKER_REPLICA_ACTION
+                                   ? task.proposal().interBrokerDataToMoveInMB() : task.proposal().intraBrokerDataToMoveInMB();
+    return estimatedDataToMoveInMB * BYTES_IN_MB;
   }
 
   private static boolean shouldTrackDataMovementProgress(ExecutionTask task) {
@@ -210,21 +264,26 @@ public final class ExecutorAdminUtils {
 
   /**
    * @param logDirs Logdir descriptions of a broker, or {@code null} if unavailable.
-   * @param tp The topic partition whose replica size is requested.
-   * @param isFuture {@code true} to get the size of the future replica (i.e. the replica being moved to another disk),
-   *                 {@code false} to get the size of the current replica.
-   * @return The size of the requested replica of the given partition in bytes, or {@code -1} if it does not exist.
+   * @param tp The topic partition whose replica is requested.
+   * @param isFuture {@code true} to get the future replica (i.e. the replica being moved to another disk), {@code false}
+   *                 to get the current replica.
+   * @return The requested replica of the given partition along with the logdir hosting it, or {@code null} if it does
+   * not exist in any online logdir.
    */
-  private static long replicaSizeInBytes(Map<String, LogDirDescription> logDirs, TopicPartition tp, boolean isFuture) {
+  private static Map.Entry<String, ReplicaInfo> findReplica(Map<String, LogDirDescription> logDirs, TopicPartition tp, boolean isFuture) {
     if (logDirs != null) {
-      for (LogDirDescription logDir : logDirs.values()) {
-        ReplicaInfo replicaInfo = logDir.error() == null ? logDir.replicaInfos().get(tp) : null;
+      for (Map.Entry<String, LogDirDescription> logDir : logDirs.entrySet()) {
+        ReplicaInfo replicaInfo = logDir.getValue().error() == null ? logDir.getValue().replicaInfos().get(tp) : null;
         if (replicaInfo != null && replicaInfo.isFuture() == isFuture) {
-          return replicaInfo.size();
+          return Map.entry(logDir.getKey(), replicaInfo);
         }
       }
     }
-    return -1L;
+    return null;
+  }
+
+  private static boolean hasOfflineLogDir(Map<String, LogDirDescription> logDirs) {
+    return logDirs.values().stream().anyMatch(logDir -> logDir.error() != null);
   }
 
   /**
