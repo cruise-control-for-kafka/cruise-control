@@ -88,6 +88,11 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
   @Override
   protected void initGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions) {
     _requestedBrokerIds = optimizationOptions.requestedDestinationBrokerIds();
+    // Thresholds are per-request: a request limited to some brokers must not inherit entries left by an earlier,
+    // wider one, because Broker#equals is on the broker id and stale keys would match. actionAcceptance() relies on
+    // the absence of a broker from these maps to mean that the broker is not balanced by this goal.
+    _balanceUpperThresholdByBroker.clear();
+    _balanceLowerThresholdByBroker.clear();
     double balancePercentageWithMargin = (_balancingConstraint.resourceBalancePercentage(RESOURCE) - 1) * BALANCE_MARGIN;
     for (Broker broker : brokersToBalance(clusterModel)) {
       double averageDiskUtilization = averageDiskUtilizationPercentage(broker);
