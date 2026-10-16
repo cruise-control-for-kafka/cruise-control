@@ -39,7 +39,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
@@ -163,35 +162,29 @@ public class UserTaskManager implements Closeable {
     Long defaultCompletedUserTaskRetentionTimeMs = config.getLong(UserTaskManagerConfig.COMPLETED_USER_TASK_RETENTION_TIME_MS_CONFIG);
     for (CruiseControlEndpointType endpointType : endpointTypes) {
       Integer maxCachedCompletedUserTasks;
-      Long completedUserTaskRetentionTimeMs;
-      switch (endpointType) {
-        case CRUISE_CONTROL_ADMIN:
+      Long completedUserTaskRetentionTimeMs = switch (endpointType) {
+        case CRUISE_CONTROL_ADMIN -> {
           maxCachedCompletedUserTasks =
-              config.getInt(UserTaskManagerConfig.MAX_CACHED_COMPLETED_CRUISE_CONTROL_ADMIN_USER_TASKS_CONFIG);
-          completedUserTaskRetentionTimeMs =
-              config.getLong(UserTaskManagerConfig.COMPLETED_CRUISE_CONTROL_ADMIN_USER_TASK_RETENTION_TIME_MS_CONFIG);
-          break;
-        case KAFKA_ADMIN:
+                  config.getInt(UserTaskManagerConfig.MAX_CACHED_COMPLETED_CRUISE_CONTROL_ADMIN_USER_TASKS_CONFIG);
+          yield config.getLong(UserTaskManagerConfig.COMPLETED_CRUISE_CONTROL_ADMIN_USER_TASK_RETENTION_TIME_MS_CONFIG);
+        }
+        case KAFKA_ADMIN -> {
           maxCachedCompletedUserTasks =
-              config.getInt(UserTaskManagerConfig.MAX_CACHED_COMPLETED_KAFKA_ADMIN_USER_TASKS_CONFIG);
-          completedUserTaskRetentionTimeMs =
-              config.getLong(UserTaskManagerConfig.COMPLETED_KAFKA_ADMIN_USER_TASK_RETENTION_TIME_MS_CONFIG);
-          break;
-        case CRUISE_CONTROL_MONITOR:
+                  config.getInt(UserTaskManagerConfig.MAX_CACHED_COMPLETED_KAFKA_ADMIN_USER_TASKS_CONFIG);
+          yield config.getLong(UserTaskManagerConfig.COMPLETED_KAFKA_ADMIN_USER_TASK_RETENTION_TIME_MS_CONFIG);
+        }
+        case CRUISE_CONTROL_MONITOR -> {
           maxCachedCompletedUserTasks =
-              config.getInt(UserTaskManagerConfig.MAX_CACHED_COMPLETED_CRUISE_CONTROL_MONITOR_USER_TASKS_CONFIG);
-          completedUserTaskRetentionTimeMs =
-              config.getLong(UserTaskManagerConfig.COMPLETED_CRUISE_CONTROL_MONITOR_USER_TASK_RETENTION_TIME_MS_CONFIG);
-          break;
-        case KAFKA_MONITOR:
+                  config.getInt(UserTaskManagerConfig.MAX_CACHED_COMPLETED_CRUISE_CONTROL_MONITOR_USER_TASKS_CONFIG);
+          yield config.getLong(UserTaskManagerConfig.COMPLETED_CRUISE_CONTROL_MONITOR_USER_TASK_RETENTION_TIME_MS_CONFIG);
+        }
+        case KAFKA_MONITOR -> {
           maxCachedCompletedUserTasks =
-              config.getInt(UserTaskManagerConfig.MAX_CACHED_COMPLETED_KAFKA_MONITOR_USER_TASKS_CONFIG);
-          completedUserTaskRetentionTimeMs =
-              config.getLong(UserTaskManagerConfig.COMPLETED_KAFKA_MONITOR_USER_TASK_RETENTION_TIME_MS_CONFIG);
-          break;
-        default:
-          throw new IllegalStateException("Unknown endpoint type " + endpointType);
-      }
+                  config.getInt(UserTaskManagerConfig.MAX_CACHED_COMPLETED_KAFKA_MONITOR_USER_TASKS_CONFIG);
+          yield config.getLong(UserTaskManagerConfig.COMPLETED_KAFKA_MONITOR_USER_TASK_RETENTION_TIME_MS_CONFIG);
+        }
+        default -> throw new IllegalStateException("Unknown endpoint type " + endpointType);
+      };
       Integer mapSize = maxCachedCompletedUserTasks == null ? defaultMaxCachedCompletedUserTasks : maxCachedCompletedUserTasks;
       _uuidToCompletedUserTaskInfoMap.put(endpointType, new LinkedHashMap<>() {
         @Override
@@ -223,7 +216,7 @@ public class UserTaskManager implements Closeable {
                                                    Function<String, OperationFuture> function,
                                                    int step,
                                                    boolean isAsyncRequest,
-                                                   CruiseControlParameters parameters) throws Exception {
+                                                   CruiseControlParameters parameters) {
     UUID userTaskId = getUserTaskId(requestContext);
     UserTaskInfo userTaskInfo = getUserTaskByUserTaskId(userTaskId, requestContext);
     if (userTaskInfo != null) {
@@ -512,8 +505,7 @@ public class UserTaskManager implements Closeable {
     if (_inExecutionUserTaskInfo != null) {
       allUserTasks.add(_inExecutionUserTaskInfo);
     }
-    allUserTasks.addAll(_uuidToCompletedUserTaskInfoMap.values().stream().flatMap(map -> map.values().stream())
-                                                       .collect(Collectors.toList()));
+    allUserTasks.addAll(_uuidToCompletedUserTaskInfoMap.values().stream().flatMap(map -> map.values().stream()).toList());
     return allUserTasks;
   }
 

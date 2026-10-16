@@ -295,7 +295,7 @@ public final class SamplingUtils {
       LOG.warn("{}broker {} because all broker metrics are missing.", SKIP_BUILDING_SAMPLE_PREFIX, brokerId);
       return true;
     } else if (!brokerLoad.minRequiredBrokerMetricsAvailable()) {
-      if (brokerLoad.missingBrokerMetricsInMinSupportedVersion().size() == 0) {
+      if (brokerLoad.missingBrokerMetricsInMinSupportedVersion().isEmpty()) {
         LOG.warn("{}broker {} because there are not enough topic metrics to generate broker metrics.",
                  SKIP_BUILDING_SAMPLE_PREFIX, brokerId);
       } else {

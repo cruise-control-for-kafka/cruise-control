@@ -29,7 +29,7 @@ public class KafkaBrokerMetricSampleAggregator extends MetricSampleAggregator<St
   private static final int MIN_VALID_WINDOWS = 1;
   private static final boolean INCLUDE_INVALID_ENTITIES = false;
 
-  private final int _maxAllowedExtrapoloationsPerBroker;
+  private final int _maxAllowedExtrapolationsPerBroker;
   /**
    * Construct the metric sample aggregator.
    *
@@ -41,7 +41,7 @@ public class KafkaBrokerMetricSampleAggregator extends MetricSampleAggregator<St
           config.getInt(MonitorConfig.MIN_SAMPLES_PER_BROKER_METRICS_WINDOW_CONFIG).byteValue(),
           config.getInt(MonitorConfig.BROKER_METRIC_SAMPLE_AGGREGATOR_COMPLETENESS_CACHE_SIZE_CONFIG),
           KafkaMetricDef.brokerMetricDef());
-    _maxAllowedExtrapoloationsPerBroker =
+    _maxAllowedExtrapolationsPerBroker =
         config.getInt(MonitorConfig.MAX_ALLOWED_EXTRAPOLATIONS_PER_BROKER_CONFIG);
     _sampleType = SampleType.BROKER;
   }
@@ -54,7 +54,7 @@ public class KafkaBrokerMetricSampleAggregator extends MetricSampleAggregator<St
   public MetricSampleAggregationResult<String, BrokerEntity> aggregate(Set<BrokerEntity> brokerEntities) {
     AggregationOptions<String, BrokerEntity> aggregationOptions =
         new AggregationOptions<>(MIN_VALID_BROKER_RATIO, MIN_VALID_GROUP_RATIO, MIN_VALID_WINDOWS,
-                                 _maxAllowedExtrapoloationsPerBroker, brokerEntities,
+                                 _maxAllowedExtrapolationsPerBroker, brokerEntities,
                                  AggregationOptions.Granularity.ENTITY, INCLUDE_INVALID_ENTITIES);
     if (super.numAvailableWindows() < 1) {
       LOG.trace("No window is available for any broker.");

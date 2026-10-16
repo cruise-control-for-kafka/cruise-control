@@ -233,7 +233,7 @@ public class SelfHealingNotifier implements AnomalyNotifier {
     long nowMs = _time.milliseconds();
     long alertTimeMs = earliestFailureTimeMs + _brokerFailureAlertThresholdMs;
     long selfHealingTimeMs = earliestFailureTimeMs + _selfHealingThresholdMs;
-    AnomalyNotificationResult result = null;
+    AnomalyNotificationResult result;
     if (nowMs < alertTimeMs) {
       // Not reaching alerting threshold yet.
       long delayMs = alertTimeMs - nowMs;

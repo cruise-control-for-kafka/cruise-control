@@ -253,7 +253,7 @@ public final class ExecutionUtils {
 
     for (Map.Entry<String, StringBuilder> entry : overLimitDetailsByMetricName.entrySet()) {
       StringBuilder brokersWithValues = entry.getValue();
-      if (brokersWithValues.length() > 0) {
+      if (!brokersWithValues.isEmpty()) {
         LOG.info("{} was over the acceptable limit for brokers with values: {}.", entry.getKey(), brokersWithValues);
       }
     }
@@ -517,7 +517,7 @@ public final class ExecutionUtils {
    *
    * @param partitionsInMovement The partitions that are being moved in kafka cluster
    * @param candidateTasksToReexecute The candidate inter-broker replica movement tasks to re-execute.
-   * @return the set of inter-broker replica movement tasks to re-execute
+   * @return the list of inter-broker replica movement tasks to re-execute
    */
   public static List<ExecutionTask> getInterBrokerReplicaTasksToReexecute(Set<TopicPartition> partitionsInMovement,
                                                                           Collection<ExecutionTask> candidateTasksToReexecute) {
@@ -685,16 +685,12 @@ public final class ExecutionUtils {
    */
   static boolean isInterBrokerReplicaActionDone(Cluster cluster, ExecutionTask task) {
     PartitionInfo partitionInfo = cluster.partition(task.proposal().topicPartition());
-    switch (task.state()) {
-      case IN_PROGRESS:
-        return task.proposal().isInterBrokerMovementCompleted(partitionInfo);
-      case ABORTING:
-        return task.proposal().isInterBrokerMovementAborted(partitionInfo);
-      case DEAD:
-        return true;
-      default:
-        throw new IllegalStateException("Should never be here. State " + task.state());
-    }
+    return switch (task.state()) {
+      case IN_PROGRESS -> task.proposal().isInterBrokerMovementCompleted(partitionInfo);
+      case ABORTING -> task.proposal().isInterBrokerMovementAborted(partitionInfo);
+      case DEAD -> true;
+      default -> throw new IllegalStateException("Should never be here. State " + task.state());
+    };
   }
 
   /**

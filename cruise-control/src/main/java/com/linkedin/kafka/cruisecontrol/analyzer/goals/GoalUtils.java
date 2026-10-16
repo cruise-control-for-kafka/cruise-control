@@ -50,7 +50,6 @@ public final class GoalUtils {
   public static final int DENOMINATOR_FOR_MIN_VALID_WINDOWS_FOR_SELF_HEALING = 14;
   private static final double DEAD_BROKER_UTILIZATION = 1.0;
   private static final double DEAD_DISK_UTILIZATION = 1.0;
-  private static final String KAFKA_CRUISE_CONTROL_OBJECT_CONFIG = "kafka.cruise.control.object";
 
   private GoalUtils() {
 
@@ -81,7 +80,7 @@ public final class GoalUtils {
    * @param startTimeMs Start time in milliseconds.
    * @return Remaining time in milliseconds.
    */
-  protected static long remainingTimeMs(long timeoutMs, long startTimeMs) {
+  static long remainingTimeMs(long timeoutMs, long startTimeMs) {
     return timeoutMs - (System.currentTimeMillis() - startTimeMs);
   }
 
@@ -214,15 +213,13 @@ public final class GoalUtils {
                                   Broker destinationBroker,
                                   ClusterModel clusterModel,
                                   ActionType actionType) {
-    switch (actionType) {
-      case INTER_BROKER_REPLICA_MOVEMENT:
-        return clusterModel.partition(replica.topicPartition()).canAssignReplicaToBroker(destinationBroker)
-               && destinationBroker.replica(replica.topicPartition()) == null;
-      case LEADERSHIP_MOVEMENT:
-        return replica.isLeader() && destinationBroker.replica(replica.topicPartition()) != null;
-      default:
-        return false;
-    }
+    return switch (actionType) {
+      case INTER_BROKER_REPLICA_MOVEMENT ->
+        clusterModel.partition(replica.topicPartition()).canAssignReplicaToBroker(destinationBroker)
+          && destinationBroker.replica(replica.topicPartition()) == null;
+      case LEADERSHIP_MOVEMENT -> replica.isLeader() && destinationBroker.replica(replica.topicPartition()) != null;
+      default -> false;
+    };
   }
 
   /**
@@ -337,24 +334,6 @@ public final class GoalUtils {
         }
       }
     }
-  }
-
-  /**
-   * Get a filtered set of leaders from the given broker based on given filtering requirements.
-   *
-   * @param broker Broker whose replicas will be filters.
-   * @param immigrantsOnly {@code true} if replicas should be filtered to ensure that they contain only the immigrants.
-   * @return A filtered set of leaders from the given broker based on given filtering requirements.
-   */
-  public static Set<Replica> filterLeaders(Broker broker, boolean immigrantsOnly) {
-    Set<Replica> filteredLeaders;
-    if (immigrantsOnly) {
-      filteredLeaders = new HashSet<>(broker.immigrantReplicas());
-      filteredLeaders.removeIf(replica -> !replica.isLeader());
-    } else {
-      filteredLeaders = broker.leaderReplicas();
-    }
-    return filteredLeaders;
   }
 
   /**
@@ -484,11 +463,11 @@ public final class GoalUtils {
   }
 
   /**
-   * Whenever appropriate, provide a message that is intended to help with the mitigation of of optimization failures
+   * Whenever appropriate, provide a message that is intended to help with the mitigation of optimization failures
    * with the given optimization options.
    *
    * @param optimizationOptions Options to take into account during optimization.
-   * @return A message that is intended to help with the mitigation of of optimization failures.
+   * @return A message that is intended to help with the mitigation of optimization failures.
    */
   public static String mitigationForOptimizationFailures(OptimizationOptions optimizationOptions) {
     StringBuilder sb = new StringBuilder();
@@ -520,7 +499,7 @@ public final class GoalUtils {
                               EXCLUDED_TOPICS_PARAM));
     }
 
-    if (sb.length() > 0) {
+    if (!sb.isEmpty()) {
       sb.append(" Then, re-run your original request.");
     }
 
@@ -531,7 +510,7 @@ public final class GoalUtils {
    * Compute the utilization upper/lower threshold in percent for the given type of resource.
    *  There are two cases described below (note that this description demonstrates the general idea):
    *
-   *    1. Low utilization case (the average utilization percentage is not greater than the low utilization threshold
+   *    1. Low utilization case (the average utilization percentage is not greater than the low utilization threshold)
    *      Threshold lower bound = zero
    *      Threshold upper bound = the low utilization threshold multiplied with the balance margin
    *

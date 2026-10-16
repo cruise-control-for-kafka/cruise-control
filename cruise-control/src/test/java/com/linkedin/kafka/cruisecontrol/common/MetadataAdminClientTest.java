@@ -152,7 +152,7 @@ public class MetadataAdminClientTest {
     EasyMock.replay(_mockAdmin, listTopicsResult, failingFuture);
 
     MetadataAdminClient client = new MetadataAdminClient(_mockAdmin);
-    RuntimeException ex = assertThrows(RuntimeException.class, () -> client.cluster());
+    RuntimeException ex = assertThrows(RuntimeException.class, client::cluster);
     assertTrue(ex.getMessage().contains("no cached metadata available"));
     assertEquals(exception.getClass(), ex.getCause().getClass());
 

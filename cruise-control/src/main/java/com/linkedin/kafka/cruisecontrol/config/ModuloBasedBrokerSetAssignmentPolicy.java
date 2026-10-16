@@ -32,8 +32,8 @@ public class ModuloBasedBrokerSetAssignmentPolicy implements BrokerSetAssignment
                                                                         final Map<String, Set<Integer>> existingBrokerSetMapping) {
     Set<Broker> allMappedBrokers = existingBrokerSetMapping.values()
                                                            .stream()
-                                                           .flatMap(brokerIds -> brokerIds.stream())
-                                                           .map(brokerId -> clusterModel.broker(brokerId))
+                                                           .flatMap(Collection::stream)
+                                                           .map(clusterModel::broker)
                                                            .filter(Objects::nonNull)
                                                            .collect(Collectors.toSet());
 

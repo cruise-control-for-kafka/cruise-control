@@ -430,15 +430,11 @@ public class Broker implements Serializable, Comparable<Broker> {
   }
 
   private void removeSortedReplicas(Replica replica) {
-    _sortedReplicas.values().forEach(sr -> {
-      sr.remove(replica);
-    });
+    _sortedReplicas.values().forEach(sr -> sr.remove(replica));
   }
 
   private void addSortedReplicas(Replica replica) {
-    _sortedReplicas.values().forEach(sr -> {
-      sr.add(replica);
-    });
+    _sortedReplicas.values().forEach(sr -> sr.add(replica));
   }
 
   /**

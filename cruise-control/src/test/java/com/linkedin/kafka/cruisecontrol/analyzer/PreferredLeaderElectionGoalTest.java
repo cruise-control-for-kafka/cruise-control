@@ -25,7 +25,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
@@ -267,7 +266,7 @@ public class PreferredLeaderElectionGoalTest {
         if (originalReplicaDistribution.get(tp).contains(2)) {
           if (originalLeaderDistribution.get(tp).brokerId() == 2) {
             List<Integer> replicas = optimizedReplicaDistribution.get(tp).stream().mapToInt(ReplicaPlacementInfo::brokerId)
-                                                                 .boxed().collect(Collectors.toList());
+                                                                 .boxed().toList();
             assertEquals("Tp " + tp, 2, replicas.get(replicas.size() - 1).intValue());
           } else {
             assertEquals("Tp " + tp, originalReplicaDistribution.get(tp), optimizedReplicaDistribution.get(tp));
@@ -301,7 +300,7 @@ public class PreferredLeaderElectionGoalTest {
         TopicPartition tp = new TopicPartition(t, p);
         if (originalLeaderDistribution.get(tp).brokerId() == 0 && t.equals(TOPIC0)) {
           List<Integer> replicas = optimizedReplicaDistribution.get(tp).stream().mapToInt(ReplicaPlacementInfo::brokerId)
-                                                               .boxed().collect(Collectors.toList());
+                                                               .boxed().toList();
           assertEquals("Tp " + tp, 0, replicas.get(replicas.size() - 1).intValue());
         } else {
           assertEquals("Tp " + tp, originalLeaderDistribution.get(tp), optimizedLeaderDistribution.get(tp));

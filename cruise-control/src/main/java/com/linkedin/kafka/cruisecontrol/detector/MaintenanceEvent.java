@@ -105,10 +105,9 @@ public class MaintenanceEvent extends KafkaAnomaly {
     if (this == o) {
       return true;
     }
-    if (!(o instanceof MaintenanceEvent)) {
+    if (!(o instanceof MaintenanceEvent that)) {
       return false;
     }
-    MaintenanceEvent that = (MaintenanceEvent) o;
     // Equality check excludes _goalBasedOperationRunnable.
     return _maintenanceEventType == that._maintenanceEventType && Objects.equals(_brokers, that._brokers)
            && Objects.equals(_topicsWithRFUpdate, that._topicsWithRFUpdate);

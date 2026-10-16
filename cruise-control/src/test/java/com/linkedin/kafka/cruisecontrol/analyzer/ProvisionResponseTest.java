@@ -42,18 +42,12 @@ public class ProvisionResponseTest {
       .build();
 
   private static ProvisionResponse generateProvisionResponse(ProvisionStatus status) {
-    switch (status) {
-      case UNDER_PROVISIONED:
-        return new ProvisionResponse(ProvisionStatus.UNDER_PROVISIONED, UNDER_PROV_REC, RECOMMENDER_UP);
-      case RIGHT_SIZED:
-        return new ProvisionResponse(ProvisionStatus.RIGHT_SIZED);
-      case OVER_PROVISIONED:
-        return new ProvisionResponse(ProvisionStatus.OVER_PROVISIONED, OVER_PROV_REC, RECOMMENDER_OP);
-      case UNDECIDED:
-        return new ProvisionResponse(ProvisionStatus.UNDECIDED);
-      default:
-        throw new IllegalArgumentException("Unsupported provision status " + status + " is provided.");
-    }
+    return switch (status) {
+      case UNDER_PROVISIONED -> new ProvisionResponse(ProvisionStatus.UNDER_PROVISIONED, UNDER_PROV_REC, RECOMMENDER_UP);
+      case RIGHT_SIZED -> new ProvisionResponse(ProvisionStatus.RIGHT_SIZED);
+      case OVER_PROVISIONED -> new ProvisionResponse(ProvisionStatus.OVER_PROVISIONED, OVER_PROV_REC, RECOMMENDER_OP);
+      case UNDECIDED -> new ProvisionResponse(ProvisionStatus.UNDECIDED);
+    };
   }
 
   @Test

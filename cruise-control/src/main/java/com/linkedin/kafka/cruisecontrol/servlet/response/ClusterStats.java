@@ -49,7 +49,7 @@ public class ClusterStats {
   protected final double _stdLeadersPerBroker;
 
   public ClusterStats(int numTopics, Map<Integer, Integer> replicaCountByBrokerId, Map<Integer, Integer> leaderCountByBrokerId) {
-    _numBrokers = replicaCountByBrokerId.keySet().size();
+    _numBrokers = replicaCountByBrokerId.size();
     _numTopics = numTopics;
     _numReplicas = replicaCountByBrokerId.values().stream().mapToInt(i -> i).sum();
     _numLeaders = leaderCountByBrokerId.values().stream().mapToInt(i -> i).sum();

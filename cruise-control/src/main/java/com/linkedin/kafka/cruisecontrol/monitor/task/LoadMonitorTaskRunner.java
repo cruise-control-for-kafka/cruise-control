@@ -260,7 +260,7 @@ public class LoadMonitorTaskRunner {
     try {
       _samplingScheduler.awaitTermination(1000, TimeUnit.MILLISECONDS);
       if (!_samplingScheduler.isTerminated()) {
-        LOG.warn("The sampling scheduler failed to shutdown in " + _samplingIntervalMs + " ms.");
+        LOG.warn("The sampling scheduler failed to shutdown in {} ms.", _samplingIntervalMs);
       }
     } catch (InterruptedException e) {
       LOG.warn("Interrupted while waiting for metric fetcher manager to shutdown.");

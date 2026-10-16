@@ -181,23 +181,20 @@ class BootstrapTask implements Runnable {
                 _mode, _bootstrappedRangeStartMs, _bootstrappedRangeEndMs, now,
                 _metricSampleAggregator.allWindows(), _samplingIntervalMs);
     }
-    switch (_mode) {
-      case RANGE:
-        return _bootstrappedRangeStartMs == _startMs && _bootstrappedRangeEndMs == _endMs;
-      case SINCE:
-        return _bootstrappedRangeStartMs == _startMs
-               && _bootstrappedRangeEndMs > now - _samplingIntervalMs;
-      case RECENT:
+    return switch (_mode) {
+      case RANGE -> _bootstrappedRangeStartMs == _startMs && _bootstrappedRangeEndMs == _endMs;
+      case SINCE -> _bootstrappedRangeStartMs == _startMs
+              && _bootstrappedRangeEndMs > now - _samplingIntervalMs;
+      case RECENT -> {
         // Because we know that the sampling range end is always up to date. As long as we have enough snapshots
         // in the metric sample aggregator and our sampled range starting time is already no later than the
         // earliest snapshot window starting time, we know the bootstrap has finished.
         List<Long> snapshotWindows = _metricSampleAggregator.allWindows();
-        return snapshotWindows.size() >= _configuredNumSnapshots + 1
-               && snapshotWindows.get(0) - _configuredSnapshotWindowMs >= _bootstrappedRangeStartMs
-               && _bootstrappedRangeEndMs > now - _samplingIntervalMs;
-      default:
-        throw new IllegalStateException("Should never be here");
-    }
+        yield snapshotWindows.size() >= _configuredNumSnapshots + 1
+              && snapshotWindows.get(0) - _configuredSnapshotWindowMs >= _bootstrappedRangeStartMs
+              && _bootstrappedRangeEndMs > now - _samplingIntervalMs;
+      }
+    };
   }
 
   private double progress() {

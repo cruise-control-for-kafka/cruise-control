@@ -21,12 +21,10 @@ import com.linkedin.kafka.cruisecontrol.model.ReplicaSortFunctionFactory;
 import com.linkedin.kafka.cruisecontrol.model.SortedReplicasHelper;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.SortedSet;
 import java.util.TreeSet;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -144,17 +142,17 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
     Replica sourceReplica = clusterModel.broker(action.sourceBrokerId()).replica(action.topicPartition());
     Disk destinationDisk = clusterModel.broker(action.destinationBrokerId()).disk(action.destinationBrokerLogdir());
 
-    switch (action.balancingAction()) {
-      case INTRA_BROKER_REPLICA_SWAP:
+    return switch (action.balancingAction()) {
+      case INTRA_BROKER_REPLICA_SWAP -> {
         Replica destinationReplica = clusterModel.broker(action.destinationBrokerId()).replica(action.destinationTopicPartition());
-        return isSwapAcceptableForCapacity(sourceReplica, destinationReplica) ? ACCEPT : REPLICA_REJECT;
-      case INTRA_BROKER_REPLICA_MOVEMENT:
-        return isMovementAcceptableForCapacity(sourceReplica, destinationDisk) ? ACCEPT : REPLICA_REJECT;
-      case LEADERSHIP_MOVEMENT:
-        return ACCEPT;
-      default:
+        yield isSwapAcceptableForCapacity(sourceReplica, destinationReplica) ? ACCEPT : REPLICA_REJECT;
+      }
+      case INTRA_BROKER_REPLICA_MOVEMENT ->
+        isMovementAcceptableForCapacity(sourceReplica, destinationDisk) ? ACCEPT : REPLICA_REJECT;
+      case LEADERSHIP_MOVEMENT -> ACCEPT;
+      default ->
         throw new IllegalArgumentException("Unsupported balancing action " + action.balancingAction() + " is provided.");
-    }
+    };
   }
 
   @Override
@@ -192,19 +190,16 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
 
     // Get alive disk over capacity limit.
     List<Disk> disksOverUtilized = broker.disks().stream().filter(Disk::isAlive)
-                                         .filter(this::isUtilizationOverLimit).collect(Collectors.toList());
+                                         .filter(this::isUtilizationOverLimit).toList();
     if (disksOverUtilized.isEmpty()) {
       return;
     }
     List<Disk> candidateDisks = new ArrayList<>(broker.disks());
     candidateDisks.removeAll(disksOverUtilized);
-    candidateDisks.sort(new Comparator<Disk>() {
-      @Override
-      public int compare(Disk disk1, Disk disk2) {
-        double allowanceForDisk1 = disk1.capacity() * _balancingConstraint.capacityThreshold(RESOURCE) - disk1.utilization();
-        double allowanceForDisk2 = disk2.capacity() * _balancingConstraint.capacityThreshold(RESOURCE) - disk2.utilization();
-        return ((Double) (allowanceForDisk2 - allowanceForDisk1)).intValue();
-      }
+    candidateDisks.sort((disk1, disk2) -> {
+      double allowanceForDisk1 = disk1.capacity() * _balancingConstraint.capacityThreshold(RESOURCE) - disk1.utilization();
+      double allowanceForDisk2 = disk2.capacity() * _balancingConstraint.capacityThreshold(RESOURCE) - disk2.utilization();
+      return Double.compare(allowanceForDisk2, allowanceForDisk1);
     });
 
     for (Disk disk : disksOverUtilized) {

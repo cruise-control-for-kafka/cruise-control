@@ -44,6 +44,6 @@ public class NoOpBrokerSetAssignmentPolicyTest {
     mappedBrokers.put("bs1", Set.of(0, 1, 2));
     mappedBrokers.put("bs2", Set.of(5));
     NO_OP_BROKER_SET_ASSIGNMENT_POLICY.assignBrokerSetsForUnresolvedBrokers(brokers, mappedBrokers);
-    assertEquals(mappedBrokers.get(NoOpBrokerSetAssignmentPolicy.UNMAPPED_BROKER_SET_ID).size(), 2);
+    assertEquals(2, mappedBrokers.get(NoOpBrokerSetAssignmentPolicy.UNMAPPED_BROKER_SET_ID).size());
   }
 }

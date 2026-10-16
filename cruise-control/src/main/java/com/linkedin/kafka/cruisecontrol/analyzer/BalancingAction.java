@@ -22,7 +22,7 @@ public class BalancingAction {
   private static final String SOURCE_BROKER_ID = "sourceBrokerId";
   private static final String SOURCE_BROKER_LOGDIR = "sourceBrokerLogdir";
   private static final String DESTINATION_BROKER_ID = "destinationBrokerId";
-  private static final String DESTINATION_BROKER_LOGIR = "destinationBrokerLogdir";
+  private static final String DESTINATION_BROKER_LOGDIR = "destinationBrokerLogdir";
   private static final String DESTINATION_TOPIC_PARTITION = "destinationTopicPartition";
   private static final String ACTION_TYPE = "actionType";
   private final TopicPartition _tp;
@@ -233,7 +233,7 @@ public class BalancingAction {
     // _sourceBrokerLogdir and _destinationBrokerLogdir are guaranteed to both be null or neither be null.
     if (_sourceBrokerLogdir != null) {
       proposalMap.put(SOURCE_BROKER_LOGDIR, _sourceBrokerLogdir);
-      proposalMap.put(DESTINATION_BROKER_LOGIR, _destinationBrokerLogdir);
+      proposalMap.put(DESTINATION_BROKER_LOGDIR, _destinationBrokerLogdir);
     }
     return proposalMap;
   }
@@ -261,7 +261,7 @@ public class BalancingAction {
    */
   @Override
   public boolean equals(Object other) {
-    if (!(other instanceof BalancingAction)) {
+    if (!(other instanceof BalancingAction otherAction)) {
       return false;
     }
 
@@ -269,7 +269,6 @@ public class BalancingAction {
       return true;
     }
 
-    BalancingAction otherAction = (BalancingAction) other;
     return Objects.equals(_sourceBrokerId, otherAction._sourceBrokerId)
            && Objects.equals(_sourceBrokerLogdir, otherAction._sourceBrokerLogdir)
            && Objects.equals(_tp, otherAction._tp)

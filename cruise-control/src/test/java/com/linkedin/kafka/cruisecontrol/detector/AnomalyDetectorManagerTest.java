@@ -214,10 +214,10 @@ public class AnomalyDetectorManagerTest {
       assertEquals(1, anomalyDetectorManager.numCheckedWithDelay());
       assertTrue(executorService.awaitTermination(MOCK_ANOMALY_DETECTOR_SHUTDOWN_MS, TimeUnit.MILLISECONDS));
       AnomalyDetectorState anomalyDetectorState = anomalyDetectorManager.anomalyDetectorState();
-      assertEquals((long) anomalyDetectorState.metrics().get(NUM_SELF_HEALING_STARTED), 0L);
-      assertEquals(anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.BROKER_FAILURE).size(), 1);
-      assertEquals(anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.GOAL_VIOLATION).size(), 0);
-      assertEquals(anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.METRIC_ANOMALY).size(), 0);
+      assertEquals(0L, (long) anomalyDetectorState.metrics().get(NUM_SELF_HEALING_STARTED));
+      assertEquals(1, anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.BROKER_FAILURE).size());
+      assertEquals(0, anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.GOAL_VIOLATION).size());
+      assertEquals(0, anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.METRIC_ANOMALY).size());
     } finally {
       executorService.shutdown();
     }
@@ -494,8 +494,8 @@ public class AnomalyDetectorManagerTest {
       assertEquals(0, anomalyDetectorManager.numCheckedWithDelay());
       assertTrue(executorService.awaitTermination(MOCK_ANOMALY_DETECTOR_SHUTDOWN_MS, TimeUnit.MILLISECONDS));
       AnomalyDetectorState anomalyDetectorState = anomalyDetectorManager.anomalyDetectorState();
-      assertEquals((long) anomalyDetectorState.metrics().get(NUM_SELF_HEALING_STARTED), 1L);
-      assertEquals(anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.BROKER_FAILURE).size(), 0);
+      assertEquals(1L, (long) anomalyDetectorState.metrics().get(NUM_SELF_HEALING_STARTED));
+      assertEquals(0, anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.BROKER_FAILURE).size());
       assertEquals(anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.GOAL_VIOLATION).size(),
                    anomalyType == KafkaAnomalyType.GOAL_VIOLATION ? 1 : 0);
       assertEquals(anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.DISK_FAILURE).size(),
@@ -567,10 +567,10 @@ public class AnomalyDetectorManagerTest {
       assertEquals(0, anomalyDetectorManager.numCheckedWithDelay());
       assertTrue(executorService.awaitTermination(MOCK_ANOMALY_DETECTOR_SHUTDOWN_MS, TimeUnit.MILLISECONDS));
       AnomalyDetectorState anomalyDetectorState = anomalyDetectorManager.anomalyDetectorState();
-      assertEquals((long) anomalyDetectorState.metrics().get(NUM_SELF_HEALING_STARTED), 0L);
-      assertEquals(anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.BROKER_FAILURE).size(), 0);
-      assertEquals(anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.GOAL_VIOLATION).size(), 1);
-      assertEquals(anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.METRIC_ANOMALY).size(), 0);
+      assertEquals(0L, (long) anomalyDetectorState.metrics().get(NUM_SELF_HEALING_STARTED));
+      assertEquals(0, anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.BROKER_FAILURE).size());
+      assertEquals(1, anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.GOAL_VIOLATION).size());
+      assertEquals(0, anomalyDetectorState.recentAnomaliesByType().get(KafkaAnomalyType.METRIC_ANOMALY).size());
     } finally {
       executorService.shutdown();
     }

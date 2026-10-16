@@ -195,16 +195,16 @@ public class ConcurrencyAdjusterTest {
         TOPIC2, new MinIsrWithTime((short) 2, MOCK_TIME_MS));
     concurrencyAdjustingRecommendation = ExecutionUtils.recommendedConcurrency(cluster, minIsrWithTimeByTopic);
     assertTrue(concurrencyAdjustingRecommendation.shouldStopExecution());
-    assertFalse(concurrencyAdjustingRecommendation.STOP_EXECUTION.shouldDecreaseClusterConcurrency());
-    assertFalse(concurrencyAdjustingRecommendation.STOP_EXECUTION.shouldIncreaseClusterConcurrency());
+    assertFalse(ConcurrencyAdjustingRecommendation.STOP_EXECUTION.shouldDecreaseClusterConcurrency());
+    assertFalse(ConcurrencyAdjustingRecommendation.STOP_EXECUTION.shouldIncreaseClusterConcurrency());
 
     // 3. Verify that if the minISR value for topics containing (At/Under)MinISR partitions in the given Kafka cluster is missing from the
     // given cache, then no change in concurrency is recommended.
     concurrencyAdjustingRecommendation = ExecutionUtils.recommendedConcurrency(cluster, Collections.emptyMap());
     assertFalse(concurrencyAdjustingRecommendation.shouldStopExecution());
     assertTrue(concurrencyAdjustingRecommendation.noChangeRecommended());
-    assertFalse(concurrencyAdjustingRecommendation.STOP_EXECUTION.shouldDecreaseClusterConcurrency());
-    assertFalse(concurrencyAdjustingRecommendation.STOP_EXECUTION.shouldIncreaseClusterConcurrency());
+    assertFalse(ConcurrencyAdjustingRecommendation.STOP_EXECUTION.shouldDecreaseClusterConcurrency());
+    assertFalse(ConcurrencyAdjustingRecommendation.STOP_EXECUTION.shouldIncreaseClusterConcurrency());
 
     // 4. Verify no change in concurrency due to lack of (At/Under)MinISR partitions (i.e. concurrency types is irrelevant)
     // Cluster with an all in-sync partition.
@@ -216,8 +216,8 @@ public class ConcurrencyAdjusterTest {
     concurrencyAdjustingRecommendation = ExecutionUtils.recommendedConcurrency(cluster, minIsrWithTimeByTopic);
     assertFalse(concurrencyAdjustingRecommendation.shouldStopExecution());
     assertTrue(concurrencyAdjustingRecommendation.noChangeRecommended());
-    assertFalse(concurrencyAdjustingRecommendation.STOP_EXECUTION.shouldDecreaseClusterConcurrency());
-    assertFalse(concurrencyAdjustingRecommendation.STOP_EXECUTION.shouldIncreaseClusterConcurrency());
+    assertFalse(ConcurrencyAdjustingRecommendation.STOP_EXECUTION.shouldDecreaseClusterConcurrency());
+    assertFalse(ConcurrencyAdjustingRecommendation.STOP_EXECUTION.shouldIncreaseClusterConcurrency());
 
     // 5. Verify no change in concurrency due to (At/Under)MinISR partitions with an offline replica (i.e. concurrency types is irrelevant)
     // Cluster with an offline out of sync partition.
@@ -226,8 +226,8 @@ public class ConcurrencyAdjusterTest {
                                                                    minIsrWithTimeByTopic);
     assertFalse(concurrencyAdjustingRecommendation.shouldStopExecution());
     assertTrue(concurrencyAdjustingRecommendation.noChangeRecommended());
-    assertFalse(concurrencyAdjustingRecommendation.STOP_EXECUTION.shouldDecreaseClusterConcurrency());
-    assertFalse(concurrencyAdjustingRecommendation.STOP_EXECUTION.shouldIncreaseClusterConcurrency());
+    assertFalse(ConcurrencyAdjustingRecommendation.STOP_EXECUTION.shouldDecreaseClusterConcurrency());
+    assertFalse(ConcurrencyAdjustingRecommendation.STOP_EXECUTION.shouldIncreaseClusterConcurrency());
   }
 
   @Test

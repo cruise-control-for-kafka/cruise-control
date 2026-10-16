@@ -158,7 +158,7 @@ public class GoalOptimizer implements Runnable {
       LoadMonitorTaskRunner.LoadMonitorTaskRunnerState loadMonitorTaskRunnerState = _loadMonitor.taskRunnerState();
       long sleepTimeMs = _proposalExpirationMs;
       if (loadMonitorTaskRunnerState == LOADING || loadMonitorTaskRunnerState == BOOTSTRAPPING) {
-        LOG.info("Skipping proposal precomputing because load monitor is in " + loadMonitorTaskRunnerState + " state.");
+        LOG.info("Skipping proposal precomputing because load monitor is in {} state.", loadMonitorTaskRunnerState);
         // Check in {@value HALF_MINUTE_IN_MS} to see if the load monitor state has changed.
         sleepTimeMs = HALF_MINUTE_IN_MS;
       } else if (!_loadMonitor.meetCompletenessRequirements(_requirementsWithAvailableValidWindows)) {
@@ -210,7 +210,7 @@ public class GoalOptimizer implements Runnable {
 
   private void computeCachedProposal(boolean allowCapacityEstimation) {
     long start = _time.milliseconds();
-    Future future = _proposalPrecomputingExecutor.submit(new ProposalCandidateComputer(allowCapacityEstimation));
+    Future<?> future = _proposalPrecomputingExecutor.submit(new ProposalCandidateComputer(allowCapacityEstimation));
 
     try {
       boolean done = false;
@@ -352,7 +352,7 @@ public class GoalOptimizer implements Runnable {
   }
 
   /**
-   * Depending the existence of dead/decommissioned brokers in the given cluster:
+   * Depending on the existence of dead/decommissioned brokers in the given cluster:
    * (1) Re-balance: Generates proposals to update the state of the cluster to achieve a final balanced state.
    * (2) Self-healing: Generates proposals to move replicas away from decommissioned brokers.
    *
@@ -404,7 +404,7 @@ public class GoalOptimizer implements Runnable {
   }
 
   /**
-   * Depending the existence of dead/broken/decommissioned brokers in the given cluster:
+   * Depending on the existence of dead/broken/decommissioned brokers in the given cluster:
    * (1) Re-balance: Generates proposals to update the state of the cluster to achieve a final balanced state.
    * (2) Self-healing: Generates proposals to move replicas away from decommissioned brokers and broken disks.
    * Returns a map from goal names to stats. Initial stats are returned under goal name "init".

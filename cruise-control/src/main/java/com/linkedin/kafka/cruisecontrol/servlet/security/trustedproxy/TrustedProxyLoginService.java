@@ -51,8 +51,8 @@ public class TrustedProxyLoginService extends ContainerLifeCycle implements Logi
   private final SpnegoLoginService _fallbackSpnegoLoginService;
   // we can fall back to spnego and authenticate the service user only if no doAs user provided
   private final boolean _fallbackToSpnegoAllowed;
+  private final IdentityService _identityService;
   private Pattern _trustedProxyIpPattern;
-  private IdentityService _identityService;
 
   /**
    * Creates a new instance based on the kerberos realm, the list of trusted proxies, and their allowed IP pattern.

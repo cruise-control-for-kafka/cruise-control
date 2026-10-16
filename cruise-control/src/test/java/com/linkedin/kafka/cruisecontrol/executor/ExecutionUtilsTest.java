@@ -118,9 +118,9 @@ public class ExecutionUtilsTest {
             .andReturn(getKafkaFutureByTopicPartition(new ExecutionException(kafkaTimeoutException)))
             .times(2);
     EasyMock.replay(result);
-    Exception thrownException = assertThrows(IllegalStateException.class, () -> {
-      ExecutionUtils.processAlterPartitionReassignmentsResult(result, Collections.emptySet(), Collections.emptySet(), Collections.emptySet());
-    });
+    Exception thrownException = assertThrows(IllegalStateException.class, () ->
+      ExecutionUtils.processAlterPartitionReassignmentsResult(result, Collections.emptySet(), Collections.emptySet(), Collections.emptySet())
+    );
     Assert.assertEquals(kafkaTimeoutException, thrownException.getCause());
     EasyMock.verify(result);
     EasyMock.reset(result);

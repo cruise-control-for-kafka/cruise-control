@@ -242,53 +242,46 @@ public class LoadMonitor {
     // Get the window to monitored partitions percentage mapping.
     SortedMap<Long, Float> validPartitionRatio = _partitionMetricSampleAggregator.validPartitionRatioByWindows(cluster);
 
-    switch (state) {
-      case NOT_STARTED:
-        return LoadMonitorState.notStarted();
-      case RUNNING:
-        return LoadMonitorState.running(numValidSnapshotWindows(),
-                                        validPartitionRatio,
-                                        monitoredPartitionsPercentage(),
-                                        _totalNumPartitions,
-                                        numPartitionsWithExtrapolations(),
-                                        _loadMonitorTaskRunner.reasonOfLatestPauseOrResume());
-      case SAMPLING:
-        return LoadMonitorState.sampling(numValidSnapshotWindows(),
-                                         validPartitionRatio,
-                                         monitoredPartitionsPercentage(),
-                                         _totalNumPartitions,
-                                         numPartitionsWithExtrapolations());
-      case PAUSED:
-        return LoadMonitorState.paused(numValidSnapshotWindows(),
-                                       validPartitionRatio,
-                                       monitoredPartitionsPercentage(),
-                                       _totalNumPartitions,
-                                       numPartitionsWithExtrapolations(),
-                                       _loadMonitorTaskRunner.reasonOfLatestPauseOrResume());
-      case BOOTSTRAPPING:
-        double bootstrapProgress = _loadMonitorTaskRunner.bootStrapProgress();
-        // Handle the race between querying the state and getting the progress.
-        return LoadMonitorState.bootstrapping(numValidSnapshotWindows(),
-                                              validPartitionRatio,
-                                              monitoredPartitionsPercentage(),
-                                              _totalNumPartitions,
-                                              bootstrapProgress >= 0 ? bootstrapProgress : 1.0,
-                                              numPartitionsWithExtrapolations());
-      case TRAINING:
-        return LoadMonitorState.training(numValidSnapshotWindows(),
-                                         validPartitionRatio,
-                                         monitoredPartitionsPercentage(),
-                                         _totalNumPartitions,
-                                         numPartitionsWithExtrapolations());
-      case LOADING:
-        return LoadMonitorState.loading(numValidSnapshotWindows(),
-                                        validPartitionRatio,
-                                        monitoredPartitionsPercentage(),
-                                        _totalNumPartitions,
-                                        _loadMonitorTaskRunner.sampleLoadingProgress());
-      default:
-        throw new IllegalStateException("Should never be here.");
-    }
+    return switch (state) {
+      case NOT_STARTED -> LoadMonitorState.notStarted();
+      case RUNNING -> LoadMonitorState.running(numValidSnapshotWindows(),
+              validPartitionRatio,
+              monitoredPartitionsPercentage(),
+              _totalNumPartitions,
+              numPartitionsWithExtrapolations(),
+              _loadMonitorTaskRunner.reasonOfLatestPauseOrResume());
+      case SAMPLING -> LoadMonitorState.sampling(numValidSnapshotWindows(),
+              validPartitionRatio,
+              monitoredPartitionsPercentage(),
+              _totalNumPartitions,
+              numPartitionsWithExtrapolations());
+      case PAUSED -> LoadMonitorState.paused(numValidSnapshotWindows(),
+              validPartitionRatio,
+              monitoredPartitionsPercentage(),
+              _totalNumPartitions,
+              numPartitionsWithExtrapolations(),
+              _loadMonitorTaskRunner.reasonOfLatestPauseOrResume());
+      case BOOTSTRAPPING -> {
+          double bootstrapProgress = _loadMonitorTaskRunner.bootStrapProgress();
+          // Handle the race between querying the state and getting the progress.
+          yield LoadMonitorState.bootstrapping(numValidSnapshotWindows(),
+                  validPartitionRatio,
+                  monitoredPartitionsPercentage(),
+                  _totalNumPartitions,
+                  bootstrapProgress >= 0 ? bootstrapProgress : 1.0,
+                  numPartitionsWithExtrapolations());
+      }
+      case TRAINING -> LoadMonitorState.training(numValidSnapshotWindows(),
+              validPartitionRatio,
+              monitoredPartitionsPercentage(),
+              _totalNumPartitions,
+              numPartitionsWithExtrapolations());
+      case LOADING -> LoadMonitorState.loading(numValidSnapshotWindows(),
+              validPartitionRatio,
+              monitoredPartitionsPercentage(),
+              _totalNumPartitions,
+              _loadMonitorTaskRunner.sampleLoadingProgress());
+    };
   }
 
   /**

@@ -37,9 +37,9 @@ public class BrokerSetResolutionHelper {
     _brokersByBrokerSetId = brokerSetResolver.brokerIdsByBrokerSetId(rackIdByBrokerId);
     _brokerSetIdByBrokerId = new HashMap<>();
 
-    _brokersByBrokerSetId.forEach((brokerSet, brokers) -> {
-      brokers.forEach(broker -> _brokerSetIdByBrokerId.put(broker, brokerSet));
-    });
+    _brokersByBrokerSetId.forEach((brokerSet, brokers) ->
+      brokers.forEach(broker -> _brokerSetIdByBrokerId.put(broker, brokerSet))
+    );
   }
 
   /**

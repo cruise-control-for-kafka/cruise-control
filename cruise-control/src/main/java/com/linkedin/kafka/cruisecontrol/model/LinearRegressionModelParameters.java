@@ -56,7 +56,7 @@ public class LinearRegressionModelParameters {
   }
 
   public synchronized boolean trainingCompleted() {
-    return COEFFICIENTS.size() > 0;
+    return !COEFFICIENTS.isEmpty();
   }
 
   public Double getCoefficient(ModelCoefficient coefficient) {
@@ -93,7 +93,7 @@ public class LinearRegressionModelParameters {
                COEFFICIENTS.get(ModelCoefficient.FOLLOWER_BYTES_IN));
       return true;
     } catch (Exception e) {
-      LOG.warn("received exception {}", e);
+      LOG.warn("received exception", e);
     }
     return false;
   }

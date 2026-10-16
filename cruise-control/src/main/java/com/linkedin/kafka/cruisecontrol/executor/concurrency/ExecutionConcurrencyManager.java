@@ -143,7 +143,7 @@ public class ExecutionConcurrencyManager {
 
   /**
    * Returns whether the concurrency manager is initialized
-   * @return true if the concurrency manager is initialzed
+   * @return true if the concurrency manager is initialized
    */
   public boolean isInitialized() {
     return _initialized;
@@ -157,16 +157,12 @@ public class ExecutionConcurrencyManager {
    * @return The movement concurrency of the given concurrency type.
    */
   public synchronized int getExecutionBrokerConcurrency(int brokerId, ConcurrencyType concurrencyType) {
-    switch (concurrencyType) {
-      case INTER_BROKER_REPLICA:
-        return interBrokerPartitionMovementConcurrency(brokerId);
-      case INTRA_BROKER_REPLICA:
-        return intraBrokerPartitionMovementConcurrency(brokerId);
-      case LEADERSHIP_BROKER:
-        return leadershipMovementConcurrency(brokerId);
-      default:
-        throw new IllegalArgumentException("Unsupported concurrency type " + concurrencyType + " is provided.");
-    }
+    return switch (concurrencyType) {
+      case INTER_BROKER_REPLICA -> interBrokerPartitionMovementConcurrency(brokerId);
+      case INTRA_BROKER_REPLICA -> intraBrokerPartitionMovementConcurrency(brokerId);
+      case LEADERSHIP_BROKER -> leadershipMovementConcurrency(brokerId);
+      default -> throw new IllegalArgumentException("Unsupported concurrency type " + concurrencyType + " is provided.");
+    };
   }
 
   /**
@@ -184,16 +180,12 @@ public class ExecutionConcurrencyManager {
    * @return The movement concurrency of the given concurrency type.
    */
   public synchronized Map<Integer, Integer> getExecutionConcurrencyPerBroker(ConcurrencyType concurrencyType) {
-    switch (concurrencyType) {
-      case INTER_BROKER_REPLICA:
-        return _interBrokerPartitionMovementConcurrency;
-      case INTRA_BROKER_REPLICA:
-        return _intraBrokerPartitionMovementConcurrency;
-      case LEADERSHIP_BROKER:
-        return _brokerLeadershipMovementConcurrency;
-      default:
-        throw new IllegalArgumentException("Unsupported concurrency type " + concurrencyType + " is provided.");
-    }
+    return switch (concurrencyType) {
+      case INTER_BROKER_REPLICA -> _interBrokerPartitionMovementConcurrency;
+      case INTRA_BROKER_REPLICA -> _intraBrokerPartitionMovementConcurrency;
+      case LEADERSHIP_BROKER -> _brokerLeadershipMovementConcurrency;
+      default -> throw new IllegalArgumentException("Unsupported concurrency type " + concurrencyType + " is provided.");
+    };
   }
 
   /**

@@ -256,7 +256,7 @@ public class AnomalyDetectorManager {
     try {
       _detectorScheduler.awaitTermination(SCHEDULER_SHUTDOWN_TIMEOUT_MS, TimeUnit.MILLISECONDS);
       if (!_detectorScheduler.isTerminated()) {
-        LOG.warn("The sampling scheduler failed to shutdown in " + SCHEDULER_SHUTDOWN_TIMEOUT_MS + " ms.");
+        LOG.warn("The sampling scheduler failed to shutdown in {} ms.", SCHEDULER_SHUTDOWN_TIMEOUT_MS);
       }
     } catch (InterruptedException e) {
       LOG.warn("Interrupted while waiting for anomaly detector to shutdown.");

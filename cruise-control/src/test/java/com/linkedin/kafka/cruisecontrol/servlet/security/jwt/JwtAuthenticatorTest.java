@@ -14,7 +14,6 @@ import org.eclipse.jetty.security.AuthenticationState;
 import org.eclipse.jetty.security.Authenticator;
 import org.eclipse.jetty.security.DefaultIdentityService;
 import org.eclipse.jetty.security.PropertyUserStore;
-import org.eclipse.jetty.security.ServerAuthException;
 import org.eclipse.jetty.security.authentication.LoginAuthenticator;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
@@ -24,7 +23,6 @@ import org.powermock.api.easymock.PowerMock;
 import org.powermock.core.classloader.annotations.PowerMockIgnore;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
-import java.io.IOException;
 import java.util.List;
 
 import static org.easymock.EasyMock.expect;
@@ -104,7 +102,7 @@ public class JwtAuthenticatorTest {
   }
 
   @Test
-  public void testRedirect() throws IOException, ServerAuthException {
+  public void testRedirect() {
     JwtAuthenticator authenticator = new JwtAuthenticator(TOKEN_PROVIDER, JWT_TOKEN);
 
     Request request = mock(Request.class);

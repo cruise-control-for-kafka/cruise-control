@@ -135,8 +135,8 @@ public class BrokerSetAwareGoal extends AbstractGoal {
 
     _mustHaveTopicLeadersPerBroker = Collections.unmodifiableSet(
         Utils.getTopicNamesMatchedWithPattern(_balancingConstraint.topicsWithMinLeadersPerBrokerPattern(), clusterModel::topics));
-    _excludedTopics = Collections.unmodifiableSet(
-        Stream.of(_mustHaveTopicLeadersPerBroker, optimizationOptions.excludedTopics()).flatMap(Set::stream).collect(Collectors.toSet()));
+    _excludedTopics = Stream.of(
+        _mustHaveTopicLeadersPerBroker, optimizationOptions.excludedTopics()).flatMap(Set::stream).collect(Collectors.toUnmodifiableSet());
 
     /*
     Replicas using selection/priority/score functions can be filtered/ordered/scored to be picked for movement during balancing act.

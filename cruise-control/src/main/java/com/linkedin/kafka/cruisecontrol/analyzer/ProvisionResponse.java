@@ -129,7 +129,7 @@ public class ProvisionResponse {
   }
 
   private void clearRecommendation() {
-    if (_humanReadableRecommendation.length() > 0) {
+    if (!_humanReadableRecommendation.isEmpty()) {
       _humanReadableRecommendation.setLength(0);
     }
     _recommendationByRecommender.clear();
@@ -138,13 +138,13 @@ public class ProvisionResponse {
   private void aggregateRecommendations(ProvisionResponse other) {
     String otherRecommendation = other.recommendation();
     if (!otherRecommendation.isEmpty()) {
-      _humanReadableRecommendation.append(_humanReadableRecommendation.length() == 0 ? "" : " ").append(otherRecommendation);
+      _humanReadableRecommendation.append(_humanReadableRecommendation.isEmpty() ? "" : " ").append(otherRecommendation);
     }
     _recommendationByRecommender.putAll(other.recommendationByRecommender());
   }
 
   @Override
   public String toString() {
-    return String.format("%s%s", _status, _humanReadableRecommendation.length() == 0 ? "" : String.format(" (%s)", recommendation()));
+    return String.format("%s%s", _status, _humanReadableRecommendation.isEmpty() ? "" : String.format(" (%s)", recommendation()));
   }
 }

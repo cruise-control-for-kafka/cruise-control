@@ -63,8 +63,7 @@ public class KafkaCruiseControlRequestHandler {
                 Map<String, Object> requestConfigOverrides = new HashMap<>();
                 requestConfigOverrides.put(KAFKA_CRUISE_CONTROL_REQUEST_HANDLER_OBJECT_CONFIG, this);
 
-                Map<String, Object> parameterConfigOverrides = new HashMap<>();
-                parameterConfigOverrides.putAll(context.getParameterConfigOverrides());
+                Map<String, Object> parameterConfigOverrides = new HashMap<>(context.getParameterConfigOverrides());
                 parameterConfigOverrides.put(KAFKA_CRUISE_CONTROL_CONFIG_OBJECT_CONFIG, _cruiseControlEndPoints.config());
                 switch (context.getMethod()) {
                     case GET_METHOD:

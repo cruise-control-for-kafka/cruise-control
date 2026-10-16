@@ -287,15 +287,12 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
 
   @Override
   public String toString() {
-    switch (_type) {
-      case INTRA_BROKER_REPLICA_ACTION:
-        return String.format("{EXE_ID: %d, %s(%d), %s, %s}", _executionId, _type, _brokerId, _proposal, _state);
-      case INTER_BROKER_REPLICA_ACTION:
-      case LEADER_ACTION:
-        return String.format("{EXE_ID: %d, %s, %s, %s}", _executionId, _type, _proposal, _state);
-      default:
-        throw new IllegalStateException("Unknown task type " + _type);
-    }
+    return switch (_type) {
+      case INTRA_BROKER_REPLICA_ACTION ->
+              String.format("{EXE_ID: %d, %s(%d), %s, %s}", _executionId, _type, _brokerId, _proposal, _state);
+      case INTER_BROKER_REPLICA_ACTION, LEADER_ACTION ->
+              String.format("{EXE_ID: %d, %s, %s, %s}", _executionId, _type, _proposal, _state);
+    };
   }
 
   @Override

@@ -202,18 +202,16 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
 
     Broker broker = clusterModel.broker(action.sourceBrokerId());
     Replica sourceReplica = broker.replica(action.topicPartition());
-    switch (action.balancingAction()) {
-      case INTRA_BROKER_REPLICA_SWAP:
+    return switch (action.balancingAction()) {
+      case INTRA_BROKER_REPLICA_SWAP -> {
         Replica destinationReplica = broker.replica(action.destinationTopicPartition());
-        return destinationReplica.load().expectedUtilizationFor(RESOURCE)
-               - sourceReplica.load().expectedUtilizationFor(RESOURCE);
-      case LEADERSHIP_MOVEMENT:
-        return 0;
-      case INTRA_BROKER_REPLICA_MOVEMENT:
-        return - sourceReplica.load().expectedUtilizationFor(RESOURCE);
-      default:
+        yield destinationReplica.load().expectedUtilizationFor(RESOURCE) - sourceReplica.load().expectedUtilizationFor(RESOURCE);
+      }
+      case LEADERSHIP_MOVEMENT -> 0;
+      case INTRA_BROKER_REPLICA_MOVEMENT -> -sourceReplica.load().expectedUtilizationFor(RESOURCE);
+      default ->
         throw new IllegalArgumentException("Unsupported balancing action " + action.balancingAction() + " is provided.");
-    }
+    };
   }
 
   private boolean isChangeViolatingLimit(double sourceUtilizationDelta, Disk sourceDisk, Disk destinationDisk) {
@@ -354,7 +352,7 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
         Replica replica = iterator.next();
         Disk d = maybeMoveReplicaBetweenDisks(clusterModel, replica, Collections.singleton(candidateDisk), optimizedGoals);
         // Only need to check status if the action is taken. This will also handle the case that no replica can be
-        // move to destination disk. In that case we will never re-enqueue that destination disk.
+        // moved to destination disk. In that case we will never re-enqueue that destination disk.
         if (d != null) {
           if (diskUtilizationPercentage(disk) < _balanceUpperThresholdByBroker.get(broker)) {
             return false;

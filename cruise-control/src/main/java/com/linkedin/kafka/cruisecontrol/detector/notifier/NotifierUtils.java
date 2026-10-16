@@ -52,19 +52,13 @@ public final class NotifierUtils {
    * @param anomalyType The alert anomaly type
    * @return the {@link AlertSeverity} which correspond to the provided anomaly type
    */
-  protected static AlertSeverity getAlertSeverity(AnomalyType anomalyType) {
-    switch (anomalyType.priority()) {
-      case 0:
-        return AlertSeverity.CRITICAL;
-      case 1:
-      case 2:
-        return AlertSeverity.MAJOR;
-      case 3:
-      case 4:
-        return AlertSeverity.MINOR;
-      default:
-        return AlertSeverity.WARNING;
-    }
+  static AlertSeverity getAlertSeverity(AnomalyType anomalyType) {
+    return switch (anomalyType.priority()) {
+      case 0 -> AlertSeverity.CRITICAL;
+      case 1, 2 -> AlertSeverity.MAJOR;
+      case 3, 4 -> AlertSeverity.MINOR;
+      default -> AlertSeverity.WARNING;
+    };
   }
 
 }

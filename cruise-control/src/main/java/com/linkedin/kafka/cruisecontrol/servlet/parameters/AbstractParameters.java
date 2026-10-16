@@ -78,7 +78,7 @@ public abstract class AbstractParameters implements CruiseControlParameters {
       try {
         handleParameterParseException(e, requestContext, e.getMessage(), _json, _wantResponseSchema);
       } catch (IOException ioe) {
-        LOG.error(String.format("Failed to write parse parameter exception to output stream. Endpoint: %s.", _endPoint), ioe);
+        LOG.error("Failed to write parse parameter exception to output stream. Endpoint: {}.", _endPoint, ioe);
       }
       return true;
     }

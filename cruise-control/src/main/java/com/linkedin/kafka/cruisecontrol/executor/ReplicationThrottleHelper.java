@@ -61,7 +61,7 @@ class ReplicationThrottleHelper {
     this._adminClient = adminClient;
     this._throttleRate = throttleRate;
     this._retries = retries;
-    this._deadBrokers = new HashSet<Integer>();
+    this._deadBrokers = new HashSet<>();
   }
 
   ReplicationThrottleHelper(AdminClient adminClient, Long throttleRate, int retries, Set<Integer> deadBrokers) {
@@ -229,7 +229,7 @@ class ReplicationThrottleHelper {
 
       // Merge new throttled replicas with existing configuration values.
       Set<String> newThrottledReplicas = new TreeSet<>(replicas);
-      if (currThrottledReplicas != null && !currThrottledReplicas.value().equals("")) {
+      if (currThrottledReplicas != null && !currThrottledReplicas.value().isEmpty()) {
         newThrottledReplicas.addAll(Arrays.asList(currThrottledReplicas.value().split(",")));
       }
       ops.add(new AlterConfigOp(new ConfigEntry(replicaThrottleConfigKey, String.join(",", newThrottledReplicas)), AlterConfigOp.OpType.SET));

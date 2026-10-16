@@ -23,7 +23,6 @@ import com.linkedin.kafka.cruisecontrol.model.SortedReplicasHelper;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -89,16 +88,16 @@ public abstract class CapacityGoal extends AbstractGoal {
     Replica sourceReplica = clusterModel.broker(action.sourceBrokerId()).replica(action.topicPartition());
     Broker destinationBroker = clusterModel.broker(action.destinationBrokerId());
 
-    switch (action.balancingAction()) {
-      case INTER_BROKER_REPLICA_SWAP:
+    return switch (action.balancingAction()) {
+      case INTER_BROKER_REPLICA_SWAP -> {
         Replica destinationReplica = destinationBroker.replica(action.destinationTopicPartition());
-        return isSwapAcceptableForCapacity(sourceReplica, destinationReplica) ? ACCEPT : REPLICA_REJECT;
-      case INTER_BROKER_REPLICA_MOVEMENT:
-      case LEADERSHIP_MOVEMENT:
-        return isMovementAcceptableForCapacity(sourceReplica, destinationBroker) ? ACCEPT : REPLICA_REJECT;
-      default:
+        yield isSwapAcceptableForCapacity(sourceReplica, destinationReplica) ? ACCEPT : REPLICA_REJECT;
+      }
+      case INTER_BROKER_REPLICA_MOVEMENT, LEADERSHIP_MOVEMENT ->
+        isMovementAcceptableForCapacity(sourceReplica, destinationBroker) ? ACCEPT : REPLICA_REJECT;
+      default ->
         throw new IllegalArgumentException("Unsupported balancing action " + action.balancingAction() + " is provided.");
-    }
+    };
   }
 
   @Override
@@ -300,7 +299,7 @@ public abstract class CapacityGoal extends AbstractGoal {
         // Get online followers of this leader and sort them in ascending order by their broker resource utilization.
         List<Replica> onlineFollowers = clusterModel.partition(leader.topicPartition()).onlineFollowers();
         sortReplicasInAscendingOrderByBrokerResourceUtilization(onlineFollowers, currentResource);
-        List<Broker> eligibleBrokers = onlineFollowers.stream().map(Replica::broker).collect(Collectors.toList());
+        List<Broker> eligibleBrokers = onlineFollowers.stream().map(Replica::broker).toList();
 
         Broker b = maybeApplyBalancingAction(clusterModel, leader, eligibleBrokers,
                                              ActionType.LEADERSHIP_MOVEMENT, optimizedGoals, optimizationOptions);

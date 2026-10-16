@@ -849,8 +849,7 @@ public final class DeterministicCluster {
    * @return Cluster model for the tests.
    */
   public static ClusterModel brokerSetSatisfiable3() {
-    ClusterModel cluster = getHomogeneousCluster(RACK_BY_BROKER4, TestConstants.BROKER_CAPACITY, null);
-    return cluster;
+    return getHomogeneousCluster(RACK_BY_BROKER4, TestConstants.BROKER_CAPACITY, null);
   }
 
   /**
@@ -1079,8 +1078,7 @@ public final class DeterministicCluster {
    * @return Cluster model for the tests.
    */
   public static ClusterModel brokerSetSatisfiable6() {
-    ClusterModel cluster = getHomogeneousCluster(RACK_BY_BROKER3, TestConstants.BROKER_CAPACITY, null);
-    return cluster;
+    return getHomogeneousCluster(RACK_BY_BROKER3, TestConstants.BROKER_CAPACITY, null);
   }
 
   /**

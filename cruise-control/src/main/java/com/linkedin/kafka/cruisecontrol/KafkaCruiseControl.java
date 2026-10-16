@@ -97,11 +97,11 @@ public class KafkaCruiseControl {
     try (InputStream resourceStream = KafkaCruiseControl.class.getResourceAsStream("/cruise-control/cruise-control-version.properties")) {
       props.load(resourceStream);
     } catch (Exception e) {
-      LOG.warn("Error while loading cruise-control-version.properties :" + e.getMessage());
+      LOG.warn("Error while loading cruise-control-version.properties :{}", e.getMessage());
     }
     VERSION = props.getProperty("version", "unknown").trim();
     COMMIT_ID = props.getProperty("commitId", "unknown").trim();
-    LOG.info("COMMIT INFO: " + VERSION + "---" + COMMIT_ID);
+    LOG.info("COMMIT INFO: {} --- {}", VERSION, COMMIT_ID);
   }
 
   /**

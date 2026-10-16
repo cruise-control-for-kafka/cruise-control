@@ -166,7 +166,7 @@ public class UserPermissionsIntegrationTest extends CruiseControlIntegrationTest
     private String getResponse(HttpURLConnection endpoint) throws Exception {
         BufferedReader in = new BufferedReader(new InputStreamReader(endpoint.getInputStream(), StandardCharsets.UTF_8));
         String inputLine;
-        StringBuffer response = new StringBuffer();
+        StringBuilder response = new StringBuilder();
         response.append("[");
         while ((inputLine = in.readLine()) != null) {
             response.append(inputLine + ", ");

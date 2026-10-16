@@ -43,16 +43,12 @@ public class ExecutionConcurrencySummary {
     }
 
     sanityCheckValidity();
-    switch (concurrencyType) {
-      case INTER_BROKER_REPLICA:
-        return Collections.min(_interBrokerPartitionMovementConcurrency.values());
-      case INTRA_BROKER_REPLICA:
-        return Collections.min(_intraBrokerPartitionMovementConcurrency.values());
-      case LEADERSHIP_BROKER:
-        return Collections.min(_brokerLeadershipMovementConcurrency.values());
-      default:
-        throw new IllegalArgumentException("Unsupported concurrency type " + concurrencyType + " is provided.");
-    }
+    return switch (concurrencyType) {
+      case INTER_BROKER_REPLICA -> Collections.min(_interBrokerPartitionMovementConcurrency.values());
+      case INTRA_BROKER_REPLICA -> Collections.min(_intraBrokerPartitionMovementConcurrency.values());
+      case LEADERSHIP_BROKER -> Collections.min(_brokerLeadershipMovementConcurrency.values());
+      default -> throw new IllegalArgumentException("Unsupported concurrency type " + concurrencyType + " is provided.");
+    };
   }
 
   /**
@@ -66,16 +62,12 @@ public class ExecutionConcurrencySummary {
     }
 
     sanityCheckValidity();
-    switch (concurrencyType) {
-      case INTER_BROKER_REPLICA:
-        return Collections.max(_interBrokerPartitionMovementConcurrency.values());
-      case INTRA_BROKER_REPLICA:
-        return Collections.max(_intraBrokerPartitionMovementConcurrency.values());
-      case LEADERSHIP_BROKER:
-        return Collections.max(_brokerLeadershipMovementConcurrency.values());
-      default:
-        throw new IllegalArgumentException("Unsupported concurrency type " + concurrencyType + " is provided.");
-    }
+    return switch (concurrencyType) {
+      case INTER_BROKER_REPLICA -> Collections.max(_interBrokerPartitionMovementConcurrency.values());
+      case INTRA_BROKER_REPLICA -> Collections.max(_intraBrokerPartitionMovementConcurrency.values());
+      case LEADERSHIP_BROKER -> Collections.max(_brokerLeadershipMovementConcurrency.values());
+      default -> throw new IllegalArgumentException("Unsupported concurrency type " + concurrencyType + " is provided.");
+    };
   }
 
   /**
@@ -89,19 +81,16 @@ public class ExecutionConcurrencySummary {
     }
 
     sanityCheckValidity();
-    switch (concurrencyType) {
-      case INTER_BROKER_REPLICA:
-        return _interBrokerPartitionMovementConcurrency.values().stream().mapToDouble(d -> d).average()
-                                                       .orElse(-1);
-      case INTRA_BROKER_REPLICA:
-        return _intraBrokerPartitionMovementConcurrency.values().stream().mapToDouble(d -> d).average()
-                                                       .orElse(-1);
-      case LEADERSHIP_BROKER:
-        return _brokerLeadershipMovementConcurrency.values().stream().mapToDouble(d -> d).average()
-                                             .orElse(-1);
-      default:
+    return switch (concurrencyType) {
+      case INTER_BROKER_REPLICA ->
+        _interBrokerPartitionMovementConcurrency.values().stream().mapToDouble(d -> d).average().orElse(-1);
+      case INTRA_BROKER_REPLICA ->
+        _intraBrokerPartitionMovementConcurrency.values().stream().mapToDouble(d -> d).average().orElse(-1);
+      case LEADERSHIP_BROKER ->
+        _brokerLeadershipMovementConcurrency.values().stream().mapToDouble(d -> d).average().orElse(-1);
+      default ->
         throw new IllegalArgumentException("Unsupported concurrency type " + concurrencyType + " is provided.");
-    }
+    };
   }
 
   /**
@@ -112,7 +101,7 @@ public class ExecutionConcurrencySummary {
     if (!_initialized || _clusterLeadershipMovementConcurrency == null) {
       return 0;
     }
-    return _clusterLeadershipMovementConcurrency.intValue();
+    return _clusterLeadershipMovementConcurrency;
   }
 
   private void sanityCheckValidity() {

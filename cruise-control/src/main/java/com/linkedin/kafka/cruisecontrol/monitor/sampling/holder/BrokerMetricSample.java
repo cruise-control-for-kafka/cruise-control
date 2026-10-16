@@ -198,15 +198,12 @@ public class BrokerMetricSample extends MetricSample<String, BrokerEntity> {
     ByteBuffer buffer = ByteBuffer.wrap(bytes);
     byte version = buffer.get();
 
-    switch (version) {
-      case 4:
-        return readV4(buffer);
-      case 5:
-        return readV5(buffer);
-      default:
-        throw new UnknownVersionException("Unsupported deserialization version: " + version + " (Latest: "
-                                          + LATEST_SUPPORTED_VERSION + ", Minimum: " + MIN_SUPPORTED_VERSION + ")");
-    }
+    return switch (version) {
+      case 4 -> readV4(buffer);
+      case 5 -> readV5(buffer);
+      default -> throw new UnknownVersionException("Unsupported deserialization version: " + version + " (Latest: "
+              + LATEST_SUPPORTED_VERSION + ", Minimum: " + MIN_SUPPORTED_VERSION + ")");
+    };
   }
 
   @Override
@@ -221,18 +218,12 @@ public class BrokerMetricSample extends MetricSample<String, BrokerEntity> {
    * @return The metric for the given resource.
    */
   public Double metricFor(Resource resource) {
-    switch (resource) {
-      case CPU:
-        return metricValue(CPU_USAGE);
-      case DISK:
-        return metricValue(DISK_USAGE);
-      case NW_IN:
-        return metricValue(LEADER_BYTES_IN) + metricValue(REPLICATION_BYTES_IN_RATE);
-      case NW_OUT:
-        return metricValue(LEADER_BYTES_OUT) + metricValue(REPLICATION_BYTES_OUT_RATE);
-      default:
-        throw new IllegalStateException("Should never happen");
-    }
+    return switch (resource) {
+      case CPU -> metricValue(CPU_USAGE);
+      case DISK -> metricValue(DISK_USAGE);
+      case NW_IN -> metricValue(LEADER_BYTES_IN) + metricValue(REPLICATION_BYTES_IN_RATE);
+      case NW_OUT -> metricValue(LEADER_BYTES_OUT) + metricValue(REPLICATION_BYTES_OUT_RATE);
+    };
   }
 
   public Double metricValue(KafkaMetricDef kafkaMetricDef) {

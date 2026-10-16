@@ -186,10 +186,10 @@ public class DiskFailureIntegrationTest extends CruiseControlIntegrationTestHarn
     KafkaCruiseControlIntegrationTestUtils.waitForConditionMeet(() -> {
       String responseMessage = KafkaCruiseControlIntegrationTestUtils
           .callCruiseControl(_app.serverUrl(), CRUISE_CONTROL_KAFKA_CLUSTER_STATE_ENDPOINT);
-      JSONArray partitionLeadersArray = JsonPath.<JSONArray>read(responseMessage,
+      JSONArray partitionLeadersArray = JsonPath.read(responseMessage,
           "$.KafkaPartitionState.other[?(@.topic == '" + TOPIC0 + "')].leader");
       List<Integer> partitionLeaders = JsonPath.parse(partitionLeadersArray, _gsonJsonConfig)
-          .read("$.*", new TypeRef<List<Integer>>() { });
+          .read("$.*", new TypeRef<>() { });
       return partitionLeaders.size() == PARTITION_COUNT;
     }, 80, new AssertionError("Topic partitions not found for " + TOPIC0));
   }

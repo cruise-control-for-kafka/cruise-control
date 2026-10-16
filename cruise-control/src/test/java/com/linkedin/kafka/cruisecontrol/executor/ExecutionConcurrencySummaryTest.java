@@ -21,9 +21,9 @@ public class ExecutionConcurrencySummaryTest {
     ExecutionConcurrencySummary summary = new ExecutionConcurrencySummary(
         true, _interBrokerConcurrencyMap, _intraBrokerConcurrencyMap, _leadershipBrokerConcurrencyMap, 257);
 
-    assertEquals(summary.getMaxExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA), 7);
-    assertEquals(summary.getMinExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA), 5);
-    assertEquals(summary.getAvgExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA), 6, 0.01);
+    assertEquals(7, summary.getMaxExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA));
+    assertEquals(5, summary.getMinExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA));
+    assertEquals(6, summary.getAvgExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA), 0.01);
   }
 
   @Test
@@ -31,9 +31,9 @@ public class ExecutionConcurrencySummaryTest {
     ExecutionConcurrencySummary summary = new ExecutionConcurrencySummary(
         true, _interBrokerConcurrencyMap, _intraBrokerConcurrencyMap, _leadershipBrokerConcurrencyMap, 257);
 
-    assertEquals(summary.getMaxExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA), 12);
-    assertEquals(summary.getMinExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA), 10);
-    assertEquals(summary.getAvgExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA), 11, 0.01);
+    assertEquals(12, summary.getMaxExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA));
+    assertEquals(10, summary.getMinExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA));
+    assertEquals(11, summary.getAvgExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA), 0.01);
   }
 
   @Test
@@ -41,10 +41,10 @@ public class ExecutionConcurrencySummaryTest {
     ExecutionConcurrencySummary summary = new ExecutionConcurrencySummary(
         true, _interBrokerConcurrencyMap, _intraBrokerConcurrencyMap, _leadershipBrokerConcurrencyMap, 257);
 
-    assertEquals(summary.getMaxExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER), 300);
-    assertEquals(summary.getMinExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER), 100);
-    assertEquals(summary.getAvgExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER), 200, 0.01);
-    assertEquals(summary.getClusterLeadershipMovementConcurrency(), 257);
+    assertEquals(300, summary.getMaxExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER));
+    assertEquals(100, summary.getMinExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER));
+    assertEquals(200, summary.getAvgExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER), 0.01);
+    assertEquals(257, summary.getClusterLeadershipMovementConcurrency());
   }
 
   @Test
@@ -52,7 +52,7 @@ public class ExecutionConcurrencySummaryTest {
     ExecutionConcurrencySummary summary = new ExecutionConcurrencySummary(
         true, _interBrokerConcurrencyMap, _intraBrokerConcurrencyMap, _leadershipBrokerConcurrencyMap, 257);
 
-    assertEquals(summary.getClusterLeadershipMovementConcurrency(), 257);
+    assertEquals(257, summary.getClusterLeadershipMovementConcurrency());
     assertThrows(IllegalArgumentException.class, () -> summary.getMaxExecutionConcurrency(ConcurrencyType.LEADERSHIP_CLUSTER));
     assertThrows(IllegalArgumentException.class, () -> summary.getMinExecutionConcurrency(ConcurrencyType.LEADERSHIP_CLUSTER));
     assertThrows(IllegalArgumentException.class, () -> summary.getAvgExecutionConcurrency(ConcurrencyType.LEADERSHIP_CLUSTER));
@@ -63,16 +63,16 @@ public class ExecutionConcurrencySummaryTest {
     ExecutionConcurrencySummary summary = new ExecutionConcurrencySummary(
         false, _interBrokerConcurrencyMap, _intraBrokerConcurrencyMap, _leadershipBrokerConcurrencyMap, 257);
 
-    assertEquals(summary.getMaxExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA), 0);
-    assertEquals(summary.getMinExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA), 0);
-    assertEquals(summary.getAvgExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA), 0, 0.01);
-    assertEquals(summary.getMaxExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA), 0);
-    assertEquals(summary.getMinExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA), 0);
-    assertEquals(summary.getAvgExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA), 0, 0.01);
-    assertEquals(summary.getMaxExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER), 0);
-    assertEquals(summary.getMinExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER), 0);
-    assertEquals(summary.getAvgExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER), 0, 0.01);
-    assertEquals(summary.getClusterLeadershipMovementConcurrency(), 0);
+    assertEquals(0, summary.getMaxExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA));
+    assertEquals(0, summary.getMinExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA));
+    assertEquals(0, summary.getAvgExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA), 0.01);
+    assertEquals(0, summary.getMaxExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA));
+    assertEquals(0, summary.getMinExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA));
+    assertEquals(0, summary.getAvgExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA), 0.01);
+    assertEquals(0, summary.getMaxExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER));
+    assertEquals(0, summary.getMinExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER));
+    assertEquals(0, summary.getAvgExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER), 0.01);
+    assertEquals(0, summary.getClusterLeadershipMovementConcurrency());
   }
 
   @Test
@@ -88,6 +88,6 @@ public class ExecutionConcurrencySummaryTest {
     assertThrows(IllegalArgumentException.class, () -> summary.getMaxExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER));
     assertThrows(IllegalArgumentException.class, () -> summary.getMinExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER));
     assertThrows(IllegalArgumentException.class, () -> summary.getAvgExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER));
-    assertEquals(summary.getClusterLeadershipMovementConcurrency(), 257);
+    assertEquals(257, summary.getClusterLeadershipMovementConcurrency());
   }
 }

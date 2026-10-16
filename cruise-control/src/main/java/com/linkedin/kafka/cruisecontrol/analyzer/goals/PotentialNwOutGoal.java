@@ -72,16 +72,15 @@ public class PotentialNwOutGoal extends AbstractGoal {
    */
   @Override
   public ActionAcceptance actionAcceptance(BalancingAction action, ClusterModel clusterModel) {
-    switch (action.balancingAction()) {
-      case LEADERSHIP_MOVEMENT:
+    return switch (action.balancingAction()) {
+      case LEADERSHIP_MOVEMENT ->
         // it is a leadership movement,
-        return ACCEPT;
-      case INTER_BROKER_REPLICA_SWAP:
-      case INTER_BROKER_REPLICA_MOVEMENT:
-        return isReplicaRelocationAcceptable(action, clusterModel);
-      default:
+        ACCEPT;
+      case INTER_BROKER_REPLICA_SWAP, INTER_BROKER_REPLICA_MOVEMENT ->
+        isReplicaRelocationAcceptable(action, clusterModel);
+      default ->
         throw new IllegalArgumentException("Unsupported balancing action " + action.balancingAction() + " is provided.");
-    }
+    };
   }
 
   /**

@@ -1154,26 +1154,26 @@ public class ClusterModel implements Serializable {
     for (Map.Entry<Integer, Load> entry : _potentialLeadershipLoadByBrokerId.entrySet()) {
       int brokerId = entry.getKey();
       Load load = entry.getValue();
-      if (load.numWindows() != expectedNumWindows && broker(brokerId).replicas().size() != 0) {
+      if (load.numWindows() != expectedNumWindows && !broker(brokerId).replicas().isEmpty()) {
         errorMsgAndNumWindows.put(String.format("Leadership(%d)", brokerId), load.numWindows());
       }
     }
 
     // Check rack loads.
     for (Rack rack : _racksById.values()) {
-      if (rack.load().numWindows() != expectedNumWindows && rack.replicas().size() != 0) {
+      if (rack.load().numWindows() != expectedNumWindows && !rack.replicas().isEmpty()) {
         errorMsgAndNumWindows.put(String.format("Rack(%s)", rack.id()), rack.load().numWindows());
       }
 
       // Check the host load.
       for (Host host : rack.hosts()) {
-        if (host.load().numWindows() != expectedNumWindows && host.replicas().size() != 0) {
+        if (host.load().numWindows() != expectedNumWindows && !host.replicas().isEmpty()) {
           errorMsgAndNumWindows.put(String.format("Host(%s)", host.name()), host.load().numWindows());
         }
 
         // Check broker loads.
         for (Broker broker : rack.brokers()) {
-          if (broker.load().numWindows() != expectedNumWindows && broker.replicas().size() != 0) {
+          if (broker.load().numWindows() != expectedNumWindows && !broker.replicas().isEmpty()) {
             errorMsgAndNumWindows.put(String.format("Broker(%d)", broker.id()), broker.load().numWindows());
           }
 
@@ -1192,7 +1192,7 @@ public class ClusterModel implements Serializable {
       exceptionMsg.append(String.format("[%s: %d]%n", entry.getKey(), entry.getValue()));
     }
 
-    if (exceptionMsg.length() > 0) {
+    if (!exceptionMsg.isEmpty()) {
       throw new IllegalArgumentException(String.format("Loads must have all have %d windows. Following loads violate this "
                                                        + "constraint with specified number of windows: %s",
                                                        expectedNumWindows, exceptionMsg));

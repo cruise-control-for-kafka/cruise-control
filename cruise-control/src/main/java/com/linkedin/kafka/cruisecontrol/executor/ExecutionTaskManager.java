@@ -18,8 +18,6 @@ import java.util.Set;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.Time;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTask.TaskType;
 import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTaskTracker.ExecutionTasksSummary;
@@ -35,7 +33,6 @@ import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTaskTracker.Exe
  * The execution task manager is thread-safe.
  */
 public class ExecutionTaskManager {
-  private static final Logger LOG = LoggerFactory.getLogger(ExecutionTaskManager.class);
   private final Map<Integer, Integer> _inProgressInterBrokerReplicaMovementsByBrokerId;
   private final Map<Integer, Integer> _inProgressIntraBrokerReplicaMovementsByBrokerId;
   private final Set<TopicPartition> _inProgressPartitionsForInterBrokerMovement;
@@ -317,7 +314,7 @@ public class ExecutionTaskManager {
   }
 
   /**
-   * @return Number of reamining intra broker partition movements.
+   * @return Number of remaining intra broker partition movements.
    */
   public synchronized int numRemainingIntraBrokerPartitionMovements() {
     return _executionTaskTracker.numRemainingIntraBrokerPartitionMovements();

@@ -85,7 +85,7 @@ public class JwtAuthenticator extends LoginAuthenticator {
 
   @Override
   public AuthenticationState validateRequest(Request request, Response response, Callback callback) {
-    JWT_LOGGER.trace("Authentication request received for " + request.toString());
+    JWT_LOGGER.trace("Authentication request received for {}", request.toString());
 
     String serializedJWT;
     serializedJWT = getJwtFromBearerAuthorization(request);
@@ -94,7 +94,7 @@ public class JwtAuthenticator extends LoginAuthenticator {
     }
     if (serializedJWT == null) {
       String loginURL = _authenticationProviderUrlGenerator.apply(request);
-      JWT_LOGGER.info("No JWT token found, sending redirect to " + loginURL);
+      JWT_LOGGER.info("No JWT token found, sending redirect to {}", loginURL);
       Response.sendRedirect(request, response, callback, loginURL);
       return AuthenticationState.CHALLENGE;
     } else {
@@ -125,7 +125,7 @@ public class JwtAuthenticator extends LoginAuthenticator {
     if (cookies != null) {
       for (HttpCookie cookie : cookies) {
         if (_cookieName != null && _cookieName.equals(cookie.getName())) {
-          JWT_LOGGER.trace(_cookieName + " cookie has been found and is being processed");
+          JWT_LOGGER.trace("{} cookie has been found and is being processed", _cookieName);
           serializedJWT = cookie.getValue();
           break;
         }

@@ -186,7 +186,7 @@ public final class CruiseControlParametersConfig {
    */
   public static final String PERMISSIONS_PARAMETERS_CLASS_CONFIG = "permissions.parameters.class";
   public static final String DEFAULT_PERMISSIONS_PARAMETERS_CLASS = UserPermissionsParameters.class.getName();
-  public static final String PERMISSIONS_PARAMETERS_CLASS_DOC = "The class for parameters of user permissons request.";
+  public static final String PERMISSIONS_PARAMETERS_CLASS_DOC = "The class for parameters of user permissions request.";
   
   /**
    * <code>remove.disks.parameters.class</code>

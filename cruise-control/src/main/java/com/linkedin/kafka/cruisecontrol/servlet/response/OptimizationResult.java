@@ -70,28 +70,28 @@ public class OptimizationResult extends AbstractCruiseControlResponse {
   }
 
   protected String getPlaintextPretext(CruiseControlParameters parameters) {
-    switch ((CruiseControlEndPoint) parameters.endPoint()) {
-      case ADD_BROKER:
-        return String.format("%n%nCluster load after adding broker %s:%n", ((AddedOrRemovedBrokerParameters) parameters).brokerIds());
-      case REMOVE_BROKER:
-        return String.format("%n%nCluster load after removing broker %s:%n", ((AddedOrRemovedBrokerParameters) parameters).brokerIds());
-      case FIX_OFFLINE_REPLICAS:
-        return String.format("%n%nCluster load after fixing offline replicas:%n");
-      case PROPOSALS:
-        return String.format("%n%nOptimized load:%n");
-      case REBALANCE:
-        return String.format("%n%nCluster load after rebalance:%n");
-      case DEMOTE_BROKER:
-        return String.format("%n%nCluster load after demoting broker %s:%n", ((DemoteBrokerParameters) parameters).brokerIds());
-      case TOPIC_CONFIGURATION:
-        return String.format("%n%nCluster load after updating replication factor of topics %s%n",
-                             _optimizerResult.topicsWithReplicationFactorChange());
-      case REMOVE_DISKS:
-        return String.format("%n%nCluster load after removing disks %s:%n", ((RemoveDisksParameters) parameters).brokerIdAndLogdirs());
-      default:
+    return switch ((CruiseControlEndPoint) parameters.endPoint()) {
+      case ADD_BROKER ->
+        String.format("%n%nCluster load after adding broker %s:%n", ((AddedOrRemovedBrokerParameters) parameters).brokerIds());
+      case REMOVE_BROKER ->
+        String.format("%n%nCluster load after removing broker %s:%n", ((AddedOrRemovedBrokerParameters) parameters).brokerIds());
+      case FIX_OFFLINE_REPLICAS ->
+        String.format("%n%nCluster load after fixing offline replicas:%n");
+      case PROPOSALS ->
+        String.format("%n%nOptimized load:%n");
+      case REBALANCE ->
+        String.format("%n%nCluster load after rebalance:%n");
+      case DEMOTE_BROKER ->
+        String.format("%n%nCluster load after demoting broker %s:%n", ((DemoteBrokerParameters) parameters).brokerIds());
+      case TOPIC_CONFIGURATION ->
+        String.format("%n%nCluster load after updating replication factor of topics %s%n", _optimizerResult.topicsWithReplicationFactorChange());
+      case REMOVE_DISKS ->
+        String.format("%n%nCluster load after removing disks %s:%n", ((RemoveDisksParameters) parameters).brokerIdAndLogdirs());
+      default -> {
         LOG.error("Unrecognized endpoint.");
-        return "Unrecognized endpoint.";
-    }
+        yield "Unrecognized endpoint.";
+      }
+    };
   }
 
   protected String getPlaintext(boolean isVerbose, String pretext) {

@@ -45,7 +45,7 @@ import static org.junit.Assert.fail;
  */
 public class ResponseTest {
 
-  private Map<String, Class> _schemaToClass;
+  private Map<String, Class<?>> _schemaToClass;
   private OpenAPI _openAPI;
 
   /**
@@ -138,7 +138,7 @@ public class ResponseTest {
 
     // Check version field.
     // If current schema is the schema for the outermost layer in the response, it must contain version field;
-    // otherwise it may contain version field because the it can be reused as the outermost layer in another response.
+    // otherwise it may contain version field because it can be reused as the outermost layer in another response.
     if (isOutermost) {
       assertEquals(properties.size(), fields.size() + 1);
       assertTrue(properties.get(VERSION) instanceof IntegerSchema);
@@ -172,7 +172,7 @@ public class ResponseTest {
             || schemaToCheck instanceof ComposedSchema || schemaToCheck instanceof BooleanSchema) {
           return;
         }
-        assertNotEquals(schemaToCheck.get$ref(), null);
+        assertNotEquals(null, schemaToCheck.get$ref());
         String refName = schemaToCheck.get$ref();
         String schemaName = refName.substring(refName.lastIndexOf('/') + 1);
         checkSchema(_openAPI.getComponents().getSchemas().get(schemaName), schemaName, false);
@@ -191,12 +191,12 @@ public class ResponseTest {
    * @param responseClass The Java response class.
    * @return A map of field key to its necessity (i.e. whether it is a required field in JSON response).
    */
-  private Map<String, Boolean> extractFieldKeys(Class responseClass) {
+  private Map<String, Boolean> extractFieldKeys(Class<?> responseClass) {
     Map<String, Boolean> fields = new HashMap<>();
-    Queue<Class> classToScan = new LinkedList<>();
+    Queue<Class<?>> classToScan = new LinkedList<>();
     classToScan.add(responseClass);
     while (!classToScan.isEmpty()) {
-      Class currentClass = classToScan.poll();
+      Class<?> currentClass = classToScan.poll();
       Arrays.stream(currentClass.getDeclaredFields())
             .filter(f -> Modifier.isStatic(f.getModifiers()) && f.isAnnotationPresent(JsonResponseField.class))
             .forEach(f -> {
@@ -208,13 +208,13 @@ public class ResponseTest {
               }
             });
       // Scan for super class.
-      Class superClass = currentClass.getSuperclass();
+      Class<?> superClass = currentClass.getSuperclass();
       if (superClass != null && superClass.isAnnotationPresent(JsonResponseClass.class)) {
         classToScan.offer(superClass);
       }
       // Scan for referenced class.
       if (currentClass.isAnnotationPresent(JsonResponseExternalFields.class)) {
-        classToScan.offer(((JsonResponseExternalFields) currentClass.getAnnotation(JsonResponseExternalFields.class)).value());
+        classToScan.offer(currentClass.getAnnotation(JsonResponseExternalFields.class).value());
       }
     }
     return fields;

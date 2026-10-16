@@ -484,7 +484,7 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     replicas.add("baz");
     String throttleConfig = "foo,bar,qux,qaz,baz";
     String result = ReplicationThrottleHelper.removeReplicasFromConfig(throttleConfig, replicas);
-    assertEquals(result, "qux,qaz");
+    assertEquals("qux,qaz", result);
   }
 
   @Test

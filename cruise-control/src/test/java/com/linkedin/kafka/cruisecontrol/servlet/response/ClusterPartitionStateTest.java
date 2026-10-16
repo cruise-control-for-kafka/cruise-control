@@ -4,10 +4,9 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -38,9 +37,7 @@ public class ClusterPartitionStateTest {
 
     PartitionInfo partitionInfo = new PartitionInfo(TOPIC, PARTITION, leader, replicas, inSyncReplicas, OFFLINE_REPLICAS);
 
-    Cluster kafkaCluster = new Cluster(
-      "clusterId", Arrays.asList(replicas), Arrays.asList(partitionInfo), Collections.emptySet(), Collections.emptySet()
-      );
+    Cluster kafkaCluster = new Cluster("clusterId", List.of(replicas), List.of(partitionInfo), Set.of(), Set.of());
 
     ClusterPartitionState clusterPartitionState = new ClusterPartitionState(VERBOSE, TOPIC_PATTERN, kafkaCluster, ALL_TOPIC_CONFIGS, CLUSTER_CONFIGS);
 
@@ -55,9 +52,7 @@ public class ClusterPartitionStateTest {
 
     PartitionInfo partitionInfo = new PartitionInfo(TOPIC, PARTITION, leader, replicas, inSyncReplicas, OFFLINE_REPLICAS);
 
-    Cluster kafkaCluster = new Cluster(
-      "clusterId", Arrays.asList(replicas), Arrays.asList(partitionInfo), Collections.emptySet(), Collections.emptySet()
-      );
+    Cluster kafkaCluster = new Cluster("clusterId", List.of(replicas), List.of(partitionInfo), Set.of(), Set.of());
 
     Comparator<PartitionInfo> comparator = Comparator.comparing(PartitionInfo::topic).thenComparingInt(PartitionInfo::partition);
     Set<PartitionInfo> offlinePartitions = new TreeSet<>(comparator);

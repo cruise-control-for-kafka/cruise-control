@@ -57,15 +57,10 @@ class RawMetricsHolder {
 
   private static ValueHolder getValueHolderFor(RawMetricType rawMetricType) {
     KafkaMetricDef kafkaMetricDef = KafkaMetricDef.forRawMetricType(rawMetricType);
-    switch (kafkaMetricDef.valueComputingStrategy()) {
-      case AVG:
-        return new ValueAndCount();
-      case MAX:
-        return new ValueMax();
-      case LATEST:
-        return new ValueAndTime();
-      default:
-        throw new IllegalStateException("Should never be here");
-    }
+    return switch (kafkaMetricDef.valueComputingStrategy()) {
+      case AVG -> new ValueAndCount();
+      case MAX -> new ValueMax();
+      case LATEST -> new ValueAndTime();
+    };
   }
 }

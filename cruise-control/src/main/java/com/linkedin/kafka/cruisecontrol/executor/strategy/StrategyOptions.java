@@ -15,8 +15,8 @@ import static com.linkedin.cruisecontrol.common.utils.Utils.validateNotNull;
  * A class to indicate options intended to be used during application of a {@link ReplicaMovementStrategy}.
  */
 public final class StrategyOptions {
-  protected final Cluster _cluster;
-  protected final Map<String, MinIsrWithTime> _minIsrWithTimeByTopic;
+  private final Cluster _cluster;
+  private final Map<String, MinIsrWithTime> _minIsrWithTimeByTopic;
 
   public static class Builder {
     // Required parameters

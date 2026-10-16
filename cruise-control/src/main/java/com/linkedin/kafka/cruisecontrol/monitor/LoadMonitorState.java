@@ -319,48 +319,40 @@ public final class LoadMonitorState {
                      ? "(TRAINED)"
                      : String.format("(%.3f%% trained)", ModelParameters.modelCoefficientTrainingCompleteness() * 100);
     float validWindowPercent = (float) _numValidWindows / _monitoredWindows.size();
-    switch (_loadMonitorTaskRunnerState) {
-      case NOT_STARTED:
-        return String.format("{state: %s}", _loadMonitorTaskRunnerState);
-
-      case RUNNING:
-      case PAUSED:
-        return String.format("{state: %s%s, NumValidWindows: (%d/%d) (%.3f%%), NumValidPartitions: %d/%d (%.3f%%), flawedPartitions: %d%s}",
-                             _loadMonitorTaskRunnerState, trained, _numValidWindows,
-                             _monitoredWindows.size(), validWindowPercent * 100,
-                             numValidPartitions(), _totalNumPartitions, _validPartitionsRatio * 100,
-                             _numFlawedPartitions, _reasonOfLatestPauseOrResume == null
-                                                   ? "" : String.format(", reasonOfPauseOrResume: %s", _reasonOfLatestPauseOrResume));
-      case SAMPLING:
-        return String.format("{state: %s%s, NumValidWindows: (%d/%d) (%.3f%%), NumValidPartitions: %d/%d (%.3f%%), flawedPartitions: %d}",
-                             _loadMonitorTaskRunnerState, trained, _numValidWindows,
-                             _monitoredWindows.size(), validWindowPercent * 100,
-                             numValidPartitions(), _totalNumPartitions, _validPartitionsRatio * 100,
-                             _numFlawedPartitions);
-      case BOOTSTRAPPING:
-        return String.format("{state: %s%s, BootstrapProgress: %.3f%%, NumValidWindows: (%d/%d) (%.3f%%), "
-                             + "NumValidPartitions: %d/%d (%.3f%%), flawedPartitions: %d}",
-                             _loadMonitorTaskRunnerState, trained, _bootstrapProgress * 100, _numValidWindows, _monitoredWindows
-                                 .size(), validWindowPercent * 100,
-                             numValidPartitions(), _totalNumPartitions, _validPartitionsRatio * 100,
-                             _numFlawedPartitions);
-
-      case TRAINING:
-        return String.format("{state: %s%s, NumValidWindows: (%d/%d) (%.3f%%) , NumValidPartitions: %d/%d (%.3f%%), FlawedPartitions: %d}",
-                             _loadMonitorTaskRunnerState, trained, _monitoredWindows.size(), _numValidWindows,
-                             validWindowPercent * 100, numValidPartitions(), _totalNumPartitions, _validPartitionsRatio * 100,
-                             _numFlawedPartitions);
-
-      case LOADING:
-        return String.format("{state: %s%s, LoadingProgress: %.3f%%, NumValidWindows: (%d/%d): (%.3f%%), "
-                             + "NumValidPartitions: %d/%d (%.3f%%), FlawedPartitions: %d}",
-                             _loadMonitorTaskRunnerState, trained, _loadingProgress * 100, _numValidWindows,
-                             _monitoredWindows.size(), validWindowPercent * 100,
-                             numValidPartitions(), _totalNumPartitions, _validPartitionsRatio * 100,
-                             _numFlawedPartitions);
-      default:
-        throw new IllegalStateException("Should never be here");
-    }
+    return switch (_loadMonitorTaskRunnerState) {
+      case NOT_STARTED -> String.format("{state: %s}", _loadMonitorTaskRunnerState);
+      case RUNNING, PAUSED ->
+              String.format("{state: %s%s, NumValidWindows: (%d/%d) (%.3f%%), NumValidPartitions: %d/%d (%.3f%%), flawedPartitions: %d%s}",
+                      _loadMonitorTaskRunnerState, trained, _numValidWindows,
+                      _monitoredWindows.size(), validWindowPercent * 100,
+                      numValidPartitions(), _totalNumPartitions, _validPartitionsRatio * 100,
+                      _numFlawedPartitions, _reasonOfLatestPauseOrResume == null
+                              ? "" : String.format(", reasonOfPauseOrResume: %s", _reasonOfLatestPauseOrResume));
+      case SAMPLING ->
+              String.format("{state: %s%s, NumValidWindows: (%d/%d) (%.3f%%), NumValidPartitions: %d/%d (%.3f%%), flawedPartitions: %d}",
+                      _loadMonitorTaskRunnerState, trained, _numValidWindows,
+                      _monitoredWindows.size(), validWindowPercent * 100,
+                      numValidPartitions(), _totalNumPartitions, _validPartitionsRatio * 100,
+                      _numFlawedPartitions);
+      case BOOTSTRAPPING ->
+              String.format("{state: %s%s, BootstrapProgress: %.3f%%, NumValidWindows: (%d/%d) (%.3f%%), "
+                              + "NumValidPartitions: %d/%d (%.3f%%), flawedPartitions: %d}",
+                      _loadMonitorTaskRunnerState, trained, _bootstrapProgress * 100, _numValidWindows, _monitoredWindows
+                              .size(), validWindowPercent * 100,
+                      numValidPartitions(), _totalNumPartitions, _validPartitionsRatio * 100,
+                      _numFlawedPartitions);
+      case TRAINING ->
+              String.format("{state: %s%s, NumValidWindows: (%d/%d) (%.3f%%) , NumValidPartitions: %d/%d (%.3f%%), FlawedPartitions: %d}",
+                      _loadMonitorTaskRunnerState, trained, _monitoredWindows.size(), _numValidWindows,
+                      validWindowPercent * 100, numValidPartitions(), _totalNumPartitions, _validPartitionsRatio * 100,
+                      _numFlawedPartitions);
+      case LOADING -> String.format("{state: %s%s, LoadingProgress: %.3f%%, NumValidWindows: (%d/%d): (%.3f%%), "
+                      + "NumValidPartitions: %d/%d (%.3f%%), FlawedPartitions: %d}",
+              _loadMonitorTaskRunnerState, trained, _loadingProgress * 100, _numValidWindows,
+              _monitoredWindows.size(), validWindowPercent * 100,
+              numValidPartitions(), _totalNumPartitions, _validPartitionsRatio * 100,
+              _numFlawedPartitions);
+    };
   }
 
   public LoadMonitorTaskRunnerState state() {

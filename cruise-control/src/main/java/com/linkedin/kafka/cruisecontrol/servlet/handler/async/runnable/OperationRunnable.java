@@ -47,7 +47,7 @@ abstract class OperationRunnable implements Runnable {
         _future.setFinishTimeNs(System.nanoTime());
       }
     } catch (Exception e) {
-      LOG.warn("Received exception when trying to execute runnable for \"" + _future.operation() + "\"", e);
+      LOG.warn("Received exception when trying to execute runnable for \"{}\"", _future.operation(), e);
       _future.completeExceptionally(e);
     } finally {
       _future.setExecutionThread(null);

@@ -35,11 +35,10 @@ public class ModelGeneration implements Serializable {
 
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof ModelGeneration)) {
+    if (!(o instanceof ModelGeneration other)) {
       return false;
     }
 
-    ModelGeneration other = (ModelGeneration) o;
     return _clusterGeneration == other.clusterGeneration() && _loadGeneration == other.loadGeneration();
   }
 

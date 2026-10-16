@@ -171,17 +171,11 @@ public final class ParameterUtils {
    * @return The endpoint specified in the given request.
    */
   public static CruiseControlEndPoint endPoint(CruiseControlRequestContext requestContext) {
-    List<CruiseControlEndPoint> supportedEndpoints;
-    switch (requestContext.getMethod()) {
-      case GET_METHOD:
-        supportedEndpoints = CruiseControlEndPoint.getEndpoints();
-        break;
-      case POST_METHOD:
-        supportedEndpoints = CruiseControlEndPoint.postEndpoints();
-        break;
-      default:
-        throw new UserRequestException("Unsupported request method: " + requestContext.getMethod() + ".");
-    }
+    List<CruiseControlEndPoint> supportedEndpoints = switch (requestContext.getMethod()) {
+      case GET_METHOD -> CruiseControlEndPoint.getEndpoints();
+      case POST_METHOD -> CruiseControlEndPoint.postEndpoints();
+      default -> throw new UserRequestException("Unsupported request method: " + requestContext.getMethod() + ".");
+    };
     String pathInfo = requestContext.getPathInfo();
     if (pathInfo == null || !pathInfo.startsWith("/")) {
       // URL does not have any extra path information
@@ -281,7 +275,7 @@ public final class ParameterUtils {
    * @param parameter Parameter to parse from the request.
    * @return The specified value for the parameter, or empty List if the parameter is missing.
    */
-  public static List<String> getListParam(CruiseControlRequestContext requestContext, String parameter) throws UnsupportedEncodingException {
+  public static List<String> getListParam(CruiseControlRequestContext requestContext, String parameter) {
     String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), parameter);
     List<String> retList = parameterString == null ? new ArrayList<>()
             : Arrays.asList(urlDecode(requestContext.getParameter(parameterString)).split(","));
@@ -580,7 +574,7 @@ public final class ParameterUtils {
    * @param param The name of parameter.
    * @return Parsed parameter as a Set of String.
    */
-  public static Set<String> parseParamToStringSet(CruiseControlRequestContext requestContext, String param) throws UnsupportedEncodingException {
+  public static Set<String> parseParamToStringSet(CruiseControlRequestContext requestContext, String param) {
     String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), param);
     Set<String> paramsString = parameterString == null
                                ? new HashSet<>(0)
@@ -596,7 +590,7 @@ public final class ParameterUtils {
    * @param param The name of parameter.
    * @return Parsed parameter as a Set of Integer.
    */
-  public static Set<Integer> parseParamToIntegerSet(CruiseControlRequestContext requestContext, String param) throws UnsupportedEncodingException {
+  public static Set<Integer> parseParamToIntegerSet(CruiseControlRequestContext requestContext, String param) {
     String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), param);
 
     return parameterString == null ? new HashSet<>(0)
@@ -609,7 +603,7 @@ public final class ParameterUtils {
    * @param requestContext Http request.
    * @return The value of {@link #SUBSTATES_PARAM} parameter.
    */
-  static Set<CruiseControlState.SubState> substates(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  static Set<CruiseControlState.SubState> substates(CruiseControlRequestContext requestContext) {
     Set<String> substatesString = parseParamToStringSet(requestContext, SUBSTATES_PARAM);
 
     Set<CruiseControlState.SubState> substates = new HashSet<>();
@@ -625,7 +619,7 @@ public final class ParameterUtils {
     return Collections.unmodifiableSet(substates);
   }
 
-  private static Set<AnomalyType> anomalyTypes(CruiseControlRequestContext requestContext, boolean isEnable) throws UnsupportedEncodingException {
+  private static Set<AnomalyType> anomalyTypes(CruiseControlRequestContext requestContext, boolean isEnable) {
     Set<String> selfHealingForString = parseParamToStringSet(requestContext, isEnable ? ENABLE_SELF_HEALING_FOR_PARAM
                                                                                : DISABLE_SELF_HEALING_FOR_PARAM);
 
@@ -643,7 +637,7 @@ public final class ParameterUtils {
   }
 
   private static Set<ConcurrencyType> concurrencyTypes(CruiseControlRequestContext requestContext,
-                                                       boolean isEnable) throws UnsupportedEncodingException {
+                                                       boolean isEnable) {
     Set<String> concurrencyForStringSet = parseParamToStringSet(requestContext, isEnable ? ENABLE_CONCURRENCY_ADJUSTER_FOR_PARAM
                                                                                   : DISABLE_CONCURRENCY_ADJUSTER_FOR_PARAM);
 
@@ -667,7 +661,7 @@ public final class ParameterUtils {
    * @param requestContext Http servlet request.
    * @return The self healing types for {@link #ENABLE_SELF_HEALING_FOR_PARAM} and {@link #DISABLE_SELF_HEALING_FOR_PARAM}.
    */
-  static Map<Boolean, Set<AnomalyType>> selfHealingFor(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  static Map<Boolean, Set<AnomalyType>> selfHealingFor(CruiseControlRequestContext requestContext) {
     Set<AnomalyType> enableSelfHealingFor = anomalyTypes(requestContext, true);
     Set<AnomalyType> disableSelfHealingFor = anomalyTypes(requestContext, false);
 
@@ -675,8 +669,7 @@ public final class ParameterUtils {
     ensureDisjoint(enableSelfHealingFor, disableSelfHealingFor,
                    "The same anomaly cannot be specified in both disable and enable parameters");
 
-    Map<Boolean, Set<AnomalyType>> selfHealingFor = Map.of(true, enableSelfHealingFor, false, disableSelfHealingFor);
-    return selfHealingFor;
+    return Map.of(true, enableSelfHealingFor, false, disableSelfHealingFor);
   }
 
   /**
@@ -686,7 +679,7 @@ public final class ParameterUtils {
    * @param requestContext Http request.
    * @return The concurrency adjuster types for {@link #ENABLE_CONCURRENCY_ADJUSTER_FOR_PARAM} and {@link #DISABLE_CONCURRENCY_ADJUSTER_FOR_PARAM}.
    */
-  static Map<Boolean, Set<ConcurrencyType>> concurrencyAdjusterFor(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  static Map<Boolean, Set<ConcurrencyType>> concurrencyAdjusterFor(CruiseControlRequestContext requestContext) {
     Set<ConcurrencyType> enableConcurrencyAdjusterFor = concurrencyTypes(requestContext, true);
     Set<ConcurrencyType> disableConcurrencyAdjusterFor = concurrencyTypes(requestContext, false);
 
@@ -694,9 +687,7 @@ public final class ParameterUtils {
     ensureDisjoint(enableConcurrencyAdjusterFor, disableConcurrencyAdjusterFor,
                    "The same concurrency type cannot be specified in both disable and enable parameters");
 
-    Map<Boolean, Set<ConcurrencyType>> concurrencyAdjusterFor = Map.of(true, enableConcurrencyAdjusterFor,
-                                                                       false, disableConcurrencyAdjusterFor);
-    return concurrencyAdjusterFor;
+    return Map.of(true, enableConcurrencyAdjusterFor, false, disableConcurrencyAdjusterFor);
   }
 
   /**
@@ -727,12 +718,11 @@ public final class ParameterUtils {
     }
   }
 
-  static String urlDecode(String s) throws UnsupportedEncodingException {
-    return s == null ? null : URLDecoder.decode(s, StandardCharsets.UTF_8.name());
+  static String urlDecode(String s) {
+    return s == null ? null : URLDecoder.decode(s, StandardCharsets.UTF_8);
   }
 
-  static ReplicaMovementStrategy getReplicaMovementStrategy(CruiseControlRequestContext requestContext, KafkaCruiseControlConfig config)
-      throws UnsupportedEncodingException {
+  static ReplicaMovementStrategy getReplicaMovementStrategy(CruiseControlRequestContext requestContext, KafkaCruiseControlConfig config) {
     if (getDryRun(requestContext)) {
       return null;
     }
@@ -757,7 +747,7 @@ public final class ParameterUtils {
     return strategy.chainBaseReplicaMovementStrategyIfAbsent();
   }
 
-  static List<String> getGoals(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  static List<String> getGoals(CruiseControlRequestContext requestContext) {
     boolean isKafkaAssignerMode = isKafkaAssignerMode(requestContext);
     boolean isRebalanceDiskMode = isRebalanceDiskMode(requestContext);
     // Sanity check isKafkaAssignerMode and isRebalanceDiskMode are not both true at the same time.
@@ -771,15 +761,13 @@ public final class ParameterUtils {
       if (!goals.isEmpty()) {
         throw new UserRequestException("Kafka assigner mode does not support explicitly specifying goals in request.");
       }
-      return Collections.unmodifiableList(Arrays.asList(KafkaAssignerEvenRackAwareGoal.class.getSimpleName(),
-              KafkaAssignerDiskUsageDistributionGoal.class.getSimpleName()));
+      return List.of(KafkaAssignerEvenRackAwareGoal.class.getSimpleName(), KafkaAssignerDiskUsageDistributionGoal.class.getSimpleName());
     }
     if (isRebalanceDiskMode) {
       if (!goals.isEmpty()) {
         throw new UserRequestException("Rebalance disk mode does not support explicitly specifying goals in request.");
       }
-      return Collections.unmodifiableList(Arrays.asList(IntraBrokerDiskCapacityGoal.class.getSimpleName(),
-              IntraBrokerDiskUsageDistributionGoal.class.getSimpleName()));
+      return List.of(IntraBrokerDiskCapacityGoal.class.getSimpleName(), IntraBrokerDiskUsageDistributionGoal.class.getSimpleName());
     }
     return goals;
   }
@@ -805,7 +793,7 @@ public final class ParameterUtils {
    * @return A set of negative integer values contained in the given set.
    */
   private static Set<Integer> getNegatives(Set<Integer> values) {
-    return values.stream().filter(v -> v < 0).collect(Collectors.toCollection(() -> new HashSet<>()));
+    return values.stream().filter(v -> v < 0).collect(Collectors.toCollection(HashSet::new));
   }
 
   /**
@@ -813,7 +801,7 @@ public final class ParameterUtils {
    * @param requestContext the request context.
    * @return Review Ids.
    */
-  public static Set<Integer> reviewIds(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  public static Set<Integer> reviewIds(CruiseControlRequestContext requestContext) {
     Set<Integer> reviewIds = parseParamToIntegerSet(requestContext, REVIEW_IDS_PARAM);
     Set<Integer> negativeReviewIds = getNegatives(reviewIds);
     if (!negativeReviewIds.isEmpty()) {
@@ -872,25 +860,13 @@ public final class ParameterUtils {
    * @param concurrencyType Concurrency type.
    * @return The execution concurrency requirement dynamically set from the Http request.
    */
-  static Integer concurrentMovements(CruiseControlRequestContext requestContext,
-                                     ConcurrencyType concurrencyType) {
-    String parameter = "";
-    switch (concurrencyType) {
-      case INTER_BROKER_REPLICA:
-        parameter = CONCURRENT_PARTITION_MOVEMENTS_PER_BROKER_PARAM;
-        break;
-      case INTRA_BROKER_REPLICA:
-        parameter = CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_PARAM;
-        break;
-      case LEADERSHIP_BROKER:
-        parameter = BROKER_CONCURRENT_LEADER_MOVEMENTS_PARAM;
-        break;
-      case LEADERSHIP_CLUSTER:
-        parameter = CONCURRENT_LEADER_MOVEMENTS_PARAM;
-        break;
-      default:
-        throw new IllegalArgumentException("Unsupported concurrency type " + concurrencyType + " is provided.");
-    }
+  static Integer concurrentMovements(CruiseControlRequestContext requestContext, ConcurrencyType concurrencyType) {
+    String parameter = switch (concurrencyType) {
+      case INTER_BROKER_REPLICA -> CONCURRENT_PARTITION_MOVEMENTS_PER_BROKER_PARAM;
+      case INTRA_BROKER_REPLICA -> CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_PARAM;
+      case LEADERSHIP_BROKER -> BROKER_CONCURRENT_LEADER_MOVEMENTS_PARAM;
+      case LEADERSHIP_CLUSTER -> CONCURRENT_LEADER_MOVEMENTS_PARAM;
+    };
 
     String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), parameter);
     if (parameterString == null) {
@@ -990,7 +966,7 @@ public final class ParameterUtils {
     return targetPartitionCount;
   }
 
-  static Set<Integer> brokerIds(CruiseControlRequestContext requestContext, boolean isOptional) throws UnsupportedEncodingException {
+  static Set<Integer> brokerIds(CruiseControlRequestContext requestContext, boolean isOptional) {
     Set<Integer> brokerIds = parseParamToIntegerSet(requestContext, BROKER_ID_PARAM);
     if (!isOptional && brokerIds.isEmpty()) {
       EndPoint endpoint = endPoint(requestContext);
@@ -1006,11 +982,11 @@ public final class ParameterUtils {
     return Collections.unmodifiableSet(brokerIds);
   }
 
-  static Set<Integer> dropRecentlyRemovedBrokers(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  static Set<Integer> dropRecentlyRemovedBrokers(CruiseControlRequestContext requestContext) {
     return Collections.unmodifiableSet(parseParamToIntegerSet(requestContext, DROP_RECENTLY_REMOVED_BROKERS_PARAM));
   }
 
-  static Set<Integer> dropRecentlyDemotedBrokers(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  static Set<Integer> dropRecentlyDemotedBrokers(CruiseControlRequestContext requestContext) {
     return Collections.unmodifiableSet(parseParamToIntegerSet(requestContext, DROP_RECENTLY_DEMOTED_BROKERS_PARAM));
   }
 
@@ -1019,7 +995,7 @@ public final class ParameterUtils {
    * @param requestContext the request handler.
    * @return The value of {@link #DESTINATION_BROKER_IDS_PARAM} parameter.
    */
-  static Set<Integer> destinationBrokerIds(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  static Set<Integer> destinationBrokerIds(CruiseControlRequestContext requestContext) {
     Set<Integer> brokerIds = Collections.unmodifiableSet(parseParamToIntegerSet(requestContext, DESTINATION_BROKER_IDS_PARAM));
     if (!brokerIds.isEmpty()) {
       if (isKafkaAssignerMode(requestContext)) {
@@ -1040,7 +1016,7 @@ public final class ParameterUtils {
    * @param isApprove {@code true} for {@link #APPROVE_PARAM}, {@code false} for {@link #DISCARD_PARAM}
    * @return The value of {@link #APPROVE_PARAM} parameter for approve or {@link #DISCARD_PARAM} parameter for discard.
    */
-  private static Set<Integer> review(CruiseControlRequestContext requestContext, boolean isApprove) throws UnsupportedEncodingException {
+  private static Set<Integer> review(CruiseControlRequestContext requestContext, boolean isApprove) {
     Set<Integer> parsedReview = parseParamToIntegerSet(requestContext, isApprove ? APPROVE_PARAM : DISCARD_PARAM);
     return Collections.unmodifiableSet(parsedReview);
   }
@@ -1053,7 +1029,7 @@ public final class ParameterUtils {
    * @param requestContext the request context.
    * @return {@link ReviewStatus#APPROVED} and {@link ReviewStatus#DISCARDED} requests via {@link #APPROVE_PARAM} and {@link #DISCARD_PARAM}.
    */
-  static Map<ReviewStatus, Set<Integer>> reviewRequests(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  static Map<ReviewStatus, Set<Integer>> reviewRequests(CruiseControlRequestContext requestContext) {
     Set<Integer> approve = review(requestContext, true);
     Set<Integer> discard = review(requestContext, false);
 
@@ -1065,8 +1041,7 @@ public final class ParameterUtils {
                                                    REVIEW, APPROVE_PARAM, DISCARD_PARAM));
     }
 
-    Map<ReviewStatus, Set<Integer>> reviewRequest = Map.of(APPROVED, approve, DISCARDED, discard);
-    return reviewRequest;
+    return Map.of(APPROVED, approve, DISCARDED, discard);
   }
 
   /**
@@ -1074,7 +1049,7 @@ public final class ParameterUtils {
    * @param requestContext the request context.
    * @return The value for {@link #BROKER_ID_AND_LOGDIRS_PARAM} parameter.
    */
-  static Map<Integer, Set<String>> brokerIdAndLogdirs(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  static Map<Integer, Set<String>> brokerIdAndLogdirs(CruiseControlRequestContext requestContext) {
     final Map<Integer, Set<String>> brokerIdAndLogdirs = new HashMap<>();
     String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), BROKER_ID_AND_LOGDIRS_PARAM);
     if (parameterString != null) {
@@ -1093,7 +1068,7 @@ public final class ParameterUtils {
    * @param requestContext Http request.
    * @return User task ids.
    */
-  public static Set<UUID> userTaskIds(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  public static Set<UUID> userTaskIds(CruiseControlRequestContext requestContext) {
     String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), USER_TASK_IDS_PARAM);
     return parameterString == null
            ? Collections.emptySet()
@@ -1105,7 +1080,7 @@ public final class ParameterUtils {
    * @param requestContext Http request.
    * @return Client ids.
    */
-  public static Set<String> clientIds(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  public static Set<String> clientIds(CruiseControlRequestContext requestContext) {
     Set<String> parsedClientIds = parseParamToStringSet(requestContext, CLIENT_IDS_PARAM);
     // May need to validate clientIds
     return Collections.unmodifiableSet(parsedClientIds);
@@ -1116,7 +1091,7 @@ public final class ParameterUtils {
    * @param requestContext Http request.
    * @return Endpoints.
    */
-  public static Set<CruiseControlEndPoint> endPoints(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  public static Set<CruiseControlEndPoint> endPoints(CruiseControlRequestContext requestContext) {
     Set<String> parsedEndPoints = parseParamToStringSet(requestContext, ENDPOINTS_PARAM).stream()
                                                                                  .map(String::toUpperCase)
                                                                                  .collect(Collectors.toSet());

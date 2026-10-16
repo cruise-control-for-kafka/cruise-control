@@ -35,7 +35,7 @@ import com.google.common.hash.Hashing;
  * consistent hashing</a> for more information.
  */
 public class TopicNameHashBrokerSetMappingPolicy implements ReplicaToBrokerSetMappingPolicy {
-  private Map<String, String> _brokerSetIdByTopicCache = new HashMap<>();
+  private final Map<String, String> _brokerSetIdByTopicCache = new HashMap<>();
   private Set<String> _brokerSetIdCache = new HashSet<>();
   private List<String> _sortedBrokerSetIdsCache = new ArrayList<>();
 

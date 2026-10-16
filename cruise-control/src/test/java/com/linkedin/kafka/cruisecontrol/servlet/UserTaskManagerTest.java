@@ -34,7 +34,7 @@ public class UserTaskManagerTest {
   }
 
   @Test
-  public void testCreateUserTask() throws Exception {
+  public void testCreateUserTask() {
     UUID testUserTaskId = UUID.randomUUID();
 
     UserTaskManager.UuidGenerator mockUuidGenerator = EasyMock.mock(UserTaskManager.UuidGenerator.class);
@@ -60,7 +60,7 @@ public class UserTaskManagerTest {
     OperationFuture future1 =
             userTaskManager.getOrCreateUserTask(requestContext, uuid -> future, 0, true, null).get(0);
 
-    Assert.assertEquals(userTaskHeader.getValue(), UserTaskManager.USER_TASK_HEADER_NAME);
+    Assert.assertEquals(UserTaskManager.USER_TASK_HEADER_NAME, userTaskHeader.getValue());
     Assert.assertEquals(userTaskHeaderValue.getValue(), testUserTaskId.toString());
     Assert.assertEquals(future, future1);
     EasyMock.verify(mockUuidGenerator, mockHttpServletResponse, mockHttpSession);
@@ -69,7 +69,7 @@ public class UserTaskManagerTest {
     OperationFuture future2 =
             userTaskManager.getOrCreateUserTask(requestContext, uuid -> future, 0, true, null).get(0);
 
-    Assert.assertEquals(userTaskHeader.getValue(), UserTaskManager.USER_TASK_HEADER_NAME);
+    Assert.assertEquals(UserTaskManager.USER_TASK_HEADER_NAME, userTaskHeader.getValue());
     Assert.assertEquals(userTaskHeaderValue.getValue(), testUserTaskId.toString());
     Assert.assertEquals(future, future2);
 
@@ -80,7 +80,7 @@ public class UserTaskManagerTest {
     OperationFuture future3 =
             userTaskManager.getOrCreateUserTask(requestContext1, uuid -> future, 0, true, null).get(0);
 
-    Assert.assertEquals(userTaskHeader.getValue(), UserTaskManager.USER_TASK_HEADER_NAME);
+    Assert.assertEquals(UserTaskManager.USER_TASK_HEADER_NAME, userTaskHeader.getValue());
     Assert.assertEquals(userTaskHeaderValue.getValue(), testUserTaskId.toString());
     Assert.assertEquals(future, future3);
 
@@ -103,14 +103,14 @@ public class UserTaskManagerTest {
     OperationFuture future5 =
             userTaskManager.getOrCreateUserTask(requestContext2, uuid -> future, 0, true, null).get(0);
     savedUUID = userTaskManager.getUserTaskId(requestContext2);
-    Assert.assertNotEquals(savedUUID, null);
+    Assert.assertNotEquals(null, savedUUID);
     Assert.assertEquals(future5, future);
 
     userTaskManager.close();
   }
 
   @Test
-  public void testSessionsShareUserTask() throws Exception {
+  public void testSessionsShareUserTask() {
     UUID testUserTaskId = UUID.randomUUID();
 
     UserTaskManager.UuidGenerator mockUuidGenerator = EasyMock.mock(UserTaskManager.UuidGenerator.class);
@@ -157,7 +157,7 @@ public class UserTaskManagerTest {
   }
 
   @Test
-  public void testAddStepsFutures() throws Exception {
+  public void testAddStepsFutures() {
     UUID testUserTaskId = UUID.randomUUID();
 
     UserTaskManager.UuidGenerator mockUuidGenerator = EasyMock.mock(UserTaskManager.UuidGenerator.class);
@@ -190,7 +190,7 @@ public class UserTaskManagerTest {
             true, null).get(1);
     Assert.assertEquals(testFuture2, insertedFuture2);
 
-    Assert.assertEquals(userTaskManager.getUserTaskByUserTaskId(testUserTaskId, requestContext).futures().size(), 2);
+    Assert.assertEquals(2, userTaskManager.getUserTaskByUserTaskId(testUserTaskId, requestContext).futures().size());
     userTaskManager.close();
   }
 
@@ -264,7 +264,7 @@ public class UserTaskManagerTest {
   }
 
   @Test
-  public void testMaximumActiveTasks() throws Exception {
+  public void testMaximumActiveTasks() {
     HttpSession mockHttpSession1 = getMockHttpSession(100L);
 
     HttpServletRequest mockHttpServletRequest1 = prepareServletRequest(mockHttpSession1, null);

@@ -116,17 +116,10 @@ public class Load implements Serializable {
     if (wantMaxLoad && wantAvgLoad) {
       throw new IllegalArgumentException("Attempt to request expected utilization with both max and avg load.");
     }
-    MetricInfo info;
-    switch (metric.defScope()) {
-      case COMMON:
-        info = KafkaMetricDef.commonMetricDef().metricInfo(metric.name());
-        break;
-      case BROKER_ONLY:
-        info = KafkaMetricDef.brokerMetricDef().metricInfo(metric.name());
-        break;
-      default:
-        throw new IllegalArgumentException("Metric scope " + metric.defScope() + " for metric " + metric.name() + " is invalid.");
-    }
+    MetricInfo info = switch (metric.defScope()) {
+      case COMMON -> KafkaMetricDef.commonMetricDef().metricInfo(metric.name());
+      case BROKER_ONLY -> KafkaMetricDef.brokerMetricDef().metricInfo(metric.name());
+    };
     if (_metricValues.isEmpty()) {
       return 0.0;
     }
@@ -136,13 +129,11 @@ public class Load implements Serializable {
     } else if (wantAvgLoad) {
       return max(valuesForId.avg(), 0.0);
     }
-    switch (metric.valueComputingStrategy()) {
-      case MAX: return max(valuesForId.max(), 0.0);
-      case AVG: return max(valuesForId.avg(), 0.0);
-      case LATEST: return max(valuesForId.latest(), 0.0);
-      default: throw new IllegalArgumentException("Metric value computing strategy " + metric.valueComputingStrategy()
-                                                  + " for metric " + metric.name() + " is invalid.");
-    }
+    return switch (metric.valueComputingStrategy()) {
+      case MAX -> max(valuesForId.max(), 0.0);
+      case AVG -> max(valuesForId.avg(), 0.0);
+      case LATEST -> max(valuesForId.latest(), 0.0);
+    };
   }
 
   /**

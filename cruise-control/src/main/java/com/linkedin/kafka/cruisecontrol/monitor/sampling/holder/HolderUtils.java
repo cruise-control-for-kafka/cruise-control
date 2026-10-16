@@ -61,8 +61,8 @@ final class HolderUtils {
    * @return {@code true} if the missing is allowed, {@code false} otherwise.
    */
   static boolean allowMissingBrokerMetric(Cluster cluster, int brokerId, RawMetricType rawMetricType) {
-    switch (rawMetricType) {
-      case BROKER_FOLLOWER_FETCH_REQUEST_RATE:
+    return switch (rawMetricType) {
+      case BROKER_FOLLOWER_FETCH_REQUEST_RATE -> {
         for (PartitionInfo partitionInfo : cluster.partitionsForNode(brokerId)) {
           // If there is at least one leader partition on the broker that meets the following condition:
           // 1. replication factor is greater than 1,
@@ -71,40 +71,25 @@ final class HolderUtils {
           if (partitionInfo.replicas().length > 1
               && partitionInfo.leader() != null
               && partitionInfo.leader().id() == brokerId) {
-            return false;
+            yield false;
           }
         }
-        return true;
-      case BROKER_LOG_FLUSH_RATE:
-      case BROKER_LOG_FLUSH_TIME_MS_MEAN:
-      case BROKER_LOG_FLUSH_TIME_MS_MAX:
-      case BROKER_LOG_FLUSH_TIME_MS_50TH:
-      case BROKER_LOG_FLUSH_TIME_MS_999TH:
-      case BROKER_PRODUCE_REQUEST_RATE:
-      case BROKER_CONSUMER_FETCH_REQUEST_RATE:
-        return true;
-      default:
-        return false;
-    }
+        yield true;
+      }
+      case BROKER_LOG_FLUSH_RATE, BROKER_LOG_FLUSH_TIME_MS_MEAN, BROKER_LOG_FLUSH_TIME_MS_MAX,
+           BROKER_LOG_FLUSH_TIME_MS_50TH, BROKER_LOG_FLUSH_TIME_MS_999TH, BROKER_PRODUCE_REQUEST_RATE,
+           BROKER_CONSUMER_FETCH_REQUEST_RATE -> true;
+      default -> false;
+    };
   }
 
   static double convertUnit(double value, RawMetricType rawMetricType) {
-    switch (rawMetricType) {
-      case ALL_TOPIC_BYTES_IN:
-      case ALL_TOPIC_BYTES_OUT:
-      case ALL_TOPIC_REPLICATION_BYTES_IN:
-      case ALL_TOPIC_REPLICATION_BYTES_OUT:
-      case TOPIC_BYTES_IN:
-      case TOPIC_BYTES_OUT:
-      case TOPIC_REPLICATION_BYTES_IN:
-      case TOPIC_REPLICATION_BYTES_OUT:
-        return value / BYTES_IN_KB;
-
-      case PARTITION_SIZE:
-        return value / BYTES_IN_MB;
-
-      default:
-        return value;
-    }
+    return switch (rawMetricType) {
+      case ALL_TOPIC_BYTES_IN, ALL_TOPIC_BYTES_OUT, ALL_TOPIC_REPLICATION_BYTES_IN, ALL_TOPIC_REPLICATION_BYTES_OUT,
+           TOPIC_BYTES_IN, TOPIC_BYTES_OUT, TOPIC_REPLICATION_BYTES_IN, TOPIC_REPLICATION_BYTES_OUT ->
+              value / BYTES_IN_KB;
+      case PARTITION_SIZE -> value / BYTES_IN_MB;
+      default -> value;
+    };
   }
 }

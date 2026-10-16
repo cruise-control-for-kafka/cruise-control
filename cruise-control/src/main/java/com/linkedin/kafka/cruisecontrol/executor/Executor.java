@@ -530,16 +530,14 @@ public class Executor {
       if (!_concurrencyAdjusterEnabled.get(concurrencyType) || _loadMonitor == null || _stopSignal.get() != NO_STOP_EXECUTION) {
         return false;
       }
-      switch (concurrencyType) {
-        case LEADERSHIP_CLUSTER:
-        case LEADERSHIP_BROKER:
-          return _executorState.state() == LEADER_MOVEMENT_TASK_IN_PROGRESS;
-        case INTER_BROKER_REPLICA:
-          return _executorState.state() == ExecutorState.State.INTER_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS
-                 && !_skipInterBrokerReplicaConcurrencyAdjustment;
-        default:
-          throw new IllegalArgumentException("Unsupported concurrency type " + concurrencyType + " is provided.");
-      }
+      return switch (concurrencyType) {
+        case LEADERSHIP_CLUSTER, LEADERSHIP_BROKER -> _executorState.state() == LEADER_MOVEMENT_TASK_IN_PROGRESS;
+        case INTER_BROKER_REPLICA ->
+                _executorState.state() == ExecutorState.State.INTER_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS
+                        && !_skipInterBrokerReplicaConcurrencyAdjustment;
+        default ->
+                throw new IllegalArgumentException("Unsupported concurrency type " + concurrencyType + " is provided.");
+      };
     }
 
     private synchronized void refreshConcurrency(boolean canRunMetricsBasedCheck, ConcurrencyType concurrencyType) {
@@ -1062,7 +1060,7 @@ public class Executor {
     Map<TopicPartition, PartitionReassignment> ongoingPartitionReassignments;
     try {
        ongoingPartitionReassignments = ExecutionUtils.ongoingPartitionReassignments(_adminClient);
-       hasOngoingPartitionReassignments = !ongoingPartitionReassignments.keySet().isEmpty();
+       hasOngoingPartitionReassignments = !ongoingPartitionReassignments.isEmpty();
     } catch (TimeoutException | InterruptedException | ExecutionException e) {
       // This may indicate transient (e.g. network) issues.
       throw new IllegalStateException("Failed to retrieve if there are already ongoing partition reassignments.", e);

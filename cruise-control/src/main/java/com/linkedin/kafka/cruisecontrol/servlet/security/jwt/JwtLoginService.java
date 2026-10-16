@@ -97,18 +97,17 @@ public class JwtLoginService extends AbstractLifeCycle implements LoginService {
 
   @Override
   public UserIdentity login(String username, Object credentials, Request request, Function<Boolean, Session> getOrCreateSession) {
-    if (!(credentials instanceof SignedJWT)) {
+    if (!(credentials instanceof SignedJWT jwtToken)) {
       return null;
     }
 
-    SignedJWT jwtToken = (SignedJWT) credentials;
     JWTClaimsSet claimsSet;
     boolean valid;
     try {
       claimsSet = jwtToken.getJWTClaimsSet();
       valid = validateToken(jwtToken, claimsSet, username);
     } catch (ParseException e) {
-      JWT_LOGGER.warn(String.format("%s: Couldn't parse a JWT token", username), e);
+      JWT_LOGGER.warn("{}: Couldn't parse a JWT token", username, e);
       return null;
     }
     if (valid) {
@@ -153,15 +152,15 @@ public class JwtLoginService extends AbstractLifeCycle implements LoginService {
   private boolean validateToken(SignedJWT jwtToken, JWTClaimsSet claimsSet, String username) {
     boolean sigValid = validateSignature(jwtToken);
     if (!sigValid) {
-      JWT_LOGGER.warn(String.format("%s: Signature could not be verified", username));
+      JWT_LOGGER.warn("{}: Signature could not be verified", username);
     }
     boolean audValid = validateAudiences(claimsSet);
     if (!audValid) {
-      JWT_LOGGER.warn(String.format("%s: Audience validation failed", username));
+      JWT_LOGGER.warn("{}: Audience validation failed", username);
     }
     boolean expValid = validateExpiration(claimsSet);
     if (!expValid) {
-      JWT_LOGGER.warn(String.format("%s: Expiration validation failed", username));
+      JWT_LOGGER.warn("{}: Expiration validation failed", username);
     }
 
     return sigValid && audValid && expValid;

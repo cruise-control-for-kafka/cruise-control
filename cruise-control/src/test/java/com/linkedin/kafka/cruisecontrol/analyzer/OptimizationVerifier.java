@@ -231,7 +231,7 @@ final class OptimizationVerifier {
 
   private static boolean verifyBrokenBrokers(ClusterModel clusterModel) {
     for (Broker deadBroker : clusterModel.deadBrokers()) {
-      if (deadBroker.replicas().size() > 0) {
+      if (!deadBroker.replicas().isEmpty()) {
         LOG.error("Failed to move {} replicas on dead broker {} to other brokers.", deadBroker.replicas().size(),
                   deadBroker.id());
         return false;
@@ -327,7 +327,7 @@ final class OptimizationVerifier {
       Goal.ClusterModelStatsComparator comparator = clusterModelStatsComparatorByGoalName.get(entry.getKey());
       boolean success = comparator.compare(entry.getValue(), preStats) >= 0;
       if (!success) {
-        LOG.error("Failed goal comparison " + entry.getKey() + ". " + comparator.explainLastComparison());
+        LOG.error("Failed goal comparison {}. {}", entry.getKey(), comparator.explainLastComparison());
         return false;
       }
       preStats = entry.getValue();

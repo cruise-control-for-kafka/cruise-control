@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit;
 public class KafkaCruiseControlVertxApp extends KafkaCruiseControlApp {
 
     protected MainVerticle _verticle;
-    private Vertx _vertx;
+    private final Vertx _vertx;
 
     public KafkaCruiseControlVertxApp(KafkaCruiseControlConfig config, Integer port, String hostname) {
         super(config, port, hostname);
@@ -64,7 +64,7 @@ public class KafkaCruiseControlVertxApp extends KafkaCruiseControlApp {
         _vertx.close(event -> {
             super.stop();
             if (event.failed()) {
-                throw new RuntimeException("Sutdown failed", event.cause());
+                throw new RuntimeException("Shutdown failed", event.cause());
             }
             shutdownLatch.countDown();
         });

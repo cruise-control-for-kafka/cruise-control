@@ -11,6 +11,7 @@ import com.linkedin.kafka.cruisecontrol.exception.ReplicaToBrokerSetMappingExcep
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import com.linkedin.kafka.cruisecontrol.model.Partition;
 import com.linkedin.kafka.cruisecontrol.model.Replica;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -72,8 +73,8 @@ public class TopicNameHashBrokerSetMappingPolicyTest {
     for (Map.Entry<String, List<Partition>> partitionsByTopic : clusterModel.getPartitionsByTopic().entrySet()) {
       Set<Replica> replicasForTopic = partitionsByTopic.getValue()
                                                        .stream()
-                                                       .map(partition -> partition.replicas())
-                                                       .flatMap(replicas -> replicas.stream())
+                                                       .map(Partition::replicas)
+                                                       .flatMap(Collection::stream)
                                                        .collect(Collectors.toSet());
       Set<String> brokerSetIdForTopic = replicasForTopic.stream().map(replica -> {
         try {
@@ -90,10 +91,10 @@ public class TopicNameHashBrokerSetMappingPolicyTest {
       brokerSetsMappingForTopics.put(partitionsByTopic.getKey(), brokerSetIdForTopic.stream().findFirst().get());
     }
 
-    assertEquals(brokerSetsMappingForTopics.get("A"), "BS2");
-    assertEquals(brokerSetsMappingForTopics.get("B"), "BS1");
-    assertEquals(brokerSetsMappingForTopics.get("C"), "BS1");
-    assertEquals(brokerSetsMappingForTopics.get("D"), "BS1");
+    assertEquals("BS2", brokerSetsMappingForTopics.get("A"));
+    assertEquals("BS1", brokerSetsMappingForTopics.get("B"));
+    assertEquals("BS1", brokerSetsMappingForTopics.get("C"));
+    assertEquals("BS1", brokerSetsMappingForTopics.get("D"));
   }
 
   /**
@@ -117,8 +118,8 @@ public class TopicNameHashBrokerSetMappingPolicyTest {
     for (Map.Entry<String, List<Partition>> partitionsByTopic : clusterModel.getPartitionsByTopic().entrySet()) {
       Set<Replica> replicasForTopic = partitionsByTopic.getValue()
                                                        .stream()
-                                                       .map(partition -> partition.replicas())
-                                                       .flatMap(replicas -> replicas.stream())
+                                                       .map(Partition::replicas)
+                                                       .flatMap(Collection::stream)
                                                        .collect(Collectors.toSet());
       Set<String> brokerSetIdForTopic = replicasForTopic.stream().map(replica -> {
         try {
@@ -135,10 +136,10 @@ public class TopicNameHashBrokerSetMappingPolicyTest {
       brokerSetsMappingForTopics.put(partitionsByTopic.getKey(), brokerSetIdForTopic.stream().findFirst().get());
     }
 
-    assertEquals(brokerSetsMappingForTopics.get("A"), "BS2");
-    assertEquals(brokerSetsMappingForTopics.get("B"), "BS1");
-    assertEquals(brokerSetsMappingForTopics.get("C"), "BS3");
-    assertEquals(brokerSetsMappingForTopics.get("D"), "BS3");
+    assertEquals("BS2", brokerSetsMappingForTopics.get("A"));
+    assertEquals("BS1", brokerSetsMappingForTopics.get("B"));
+    assertEquals("BS3", brokerSetsMappingForTopics.get("C"));
+    assertEquals("BS3", brokerSetsMappingForTopics.get("D"));
   }
 }
 

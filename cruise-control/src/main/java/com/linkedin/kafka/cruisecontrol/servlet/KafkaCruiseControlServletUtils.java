@@ -11,7 +11,6 @@ import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.RequestParameterWrapper;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
@@ -180,15 +179,15 @@ public final class KafkaCruiseControlServletUtils {
   public static String getClientIpAddress(CruiseControlRequestContext requestContext) {
     for (String header : HEADERS_TO_TRY) {
       String ip = requestContext.getHeader(header);
-      if (ip != null && ip.length() != 0 && !"unknown".equalsIgnoreCase(ip)) {
+      if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
         return ip;
       }
     }
     return requestContext.getRemoteAddr();
   }
 
-  static String urlEncode(String s) throws UnsupportedEncodingException {
-    return s == null ? null : URLEncoder.encode(s, StandardCharsets.UTF_8.name());
+  static String urlEncode(String s) {
+    return s == null ? null : URLEncoder.encode(s, StandardCharsets.UTF_8);
   }
 
   /**

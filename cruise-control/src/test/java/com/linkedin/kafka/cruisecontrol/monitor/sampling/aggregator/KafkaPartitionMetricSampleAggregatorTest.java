@@ -234,12 +234,12 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     result = metricSampleAggregator.aggregate(metadata.fetch(), NUM_WINDOWS * WINDOW_MS, new OperationProgress());
     int numWindows = result.valuesAndExtrapolations().get(PE).metricValues().length();
     assertEquals(NUM_WINDOWS, numWindows);
-    int numExtrapolationss = 0;
+    int numExtrapolations = 0;
     for (Map.Entry<Integer, Extrapolation> entry : result.valuesAndExtrapolations().get(PE).extrapolations().entrySet()) {
       assertEquals(Extrapolation.AVG_AVAILABLE, entry.getValue());
-      numExtrapolationss++;
+      numExtrapolations++;
     }
-    assertEquals(2, numExtrapolationss);
+    assertEquals(2, numExtrapolations);
   }
 
   @Test

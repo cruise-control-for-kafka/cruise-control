@@ -44,11 +44,10 @@ public class PrincipalValidator implements Validator {
             return;
         }
 
-        if (!(value instanceof String)) {
+        if (!(value instanceof String strVal)) {
             throw new ConfigException(name, value, "Value must be string");
         }
 
-        String strVal = (String) value;
         PrincipalName principalName = parsePrincipal(name, strVal);
         if (_instanceRequired && principalName.getInstance() == null) {
             throw new ConfigException(name, strVal, "Principal must contain the instance section");

@@ -203,7 +203,7 @@ public class MaintenanceEventTopicReader implements MaintenanceEventReader {
         }
       } while (!consumptionDone(_consumer, endOffsets) && _kafkaCruiseControl.timeMs() < timeoutEndMs);
 
-      if (maintenanceEvents.size() > 0) {
+      if (!maintenanceEvents.isEmpty()) {
         LOG.info("Retrieved {} maintenance plans from partitions {} (range [{},{}]).", maintenanceEvents.size(),
                  _currentPartitionAssignment, _lastEventReadPeriodEndTimeMs, eventReadPeriodEndMs);
       }

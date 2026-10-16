@@ -150,9 +150,9 @@ public class ExecutionTaskPlanner {
    * is generated.
    */
   private void sanityCheckExecutionTasks() {
-    if (_remainingIntraBrokerReplicaMovements.size() > 0) {
+    if (!_remainingIntraBrokerReplicaMovements.isEmpty()) {
       for (ExecutionTask task : _remainingInterBrokerReplicaMovements) {
-        if (task.proposal().replicasToAdd().size() > 0) {
+        if (!task.proposal().replicasToAdd().isEmpty()) {
           throw new IllegalStateException("Intra-broker partition movement should not mingle with inter-broker partition movement.");
         }
       }
@@ -166,7 +166,7 @@ public class ExecutionTaskPlanner {
    * has some dead disks and the generated swap operation involves offline replica).
    */
   private void maybeDropReplicaSwapTasks() {
-    if (_remainingIntraBrokerReplicaMovements.size() > 0) {
+    if (!_remainingIntraBrokerReplicaMovements.isEmpty()) {
       _interPartMoveTasksByBrokerId.clear();
       _remainingInterBrokerReplicaMovements.clear();
     }
@@ -351,7 +351,7 @@ public class ExecutionTaskPlanner {
     LOG.trace("Getting inter-broker replica movement tasks for brokers with concurrency {}", readyBrokers);
     List<ExecutionTask> executableReplicaMovements = new ArrayList<>();
     SortedSet<Integer> interPartMoveBrokerIds = new TreeSet<>(_interPartMoveBrokerComparator);
-    List<Integer> interPartMoveBrokerIdsList = new ArrayList<>(_interPartMoveTasksByBrokerId.keySet().size());
+    List<Integer> interPartMoveBrokerIdsList = new ArrayList<>(_interPartMoveTasksByBrokerId.size());
 
     /*
      * The algorithm avoids unfair situation where the available movement slots of a broker is completely taken

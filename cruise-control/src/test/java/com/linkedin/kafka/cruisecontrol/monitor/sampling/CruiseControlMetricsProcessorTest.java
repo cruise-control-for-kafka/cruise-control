@@ -176,7 +176,7 @@ public class CruiseControlMetricsProcessorTest {
       processor.addMetric(metric);
     }
     processor.process(cluster, TEST_PARTITIONS, MetricSampler.SamplingMode.ALL);
-    assertEquals(MOCK_NUM_CPU_CORES, (double) processor.cachedNumCoresByBroker().get(BROKER_ID_0), DELTA);
+    assertEquals(MOCK_NUM_CPU_CORES, processor.cachedNumCoresByBroker().get(BROKER_ID_0), DELTA);
     assertNull(processor.cachedNumCoresByBroker().get(BROKER_ID_1));
     EasyMock.verify(brokerCapacityConfigResolverTimeout, brokerCapacityConfigResolverSomeEstimated, brokerCapacityConfigResolverAllEstimated);
   }
@@ -190,7 +190,7 @@ public class CruiseControlMetricsProcessorTest {
 
     MetricSampler.Samples samples = processor.process(cluster, TEST_PARTITIONS, MetricSampler.SamplingMode.ALL);
     for (Node node : cluster.nodes()) {
-      assertEquals(MOCK_NUM_CPU_CORES, (double) processor.cachedNumCoresByBroker().get(node.id()), DELTA);
+      assertEquals(MOCK_NUM_CPU_CORES, processor.cachedNumCoresByBroker().get(node.id()), DELTA);
     }
 
     assertEquals(4, samples.partitionMetricSamples().size());

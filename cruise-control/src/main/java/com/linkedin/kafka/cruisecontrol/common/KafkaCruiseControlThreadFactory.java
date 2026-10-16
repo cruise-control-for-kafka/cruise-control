@@ -31,7 +31,7 @@ public class KafkaCruiseControlThreadFactory implements ThreadFactory {
   public Thread newThread(Runnable r) {
     Thread t = new Thread(r, _name + "-" + _id.getAndIncrement());
     t.setDaemon(_daemon);
-    t.setUncaughtExceptionHandler((t1, e) -> _logger.error("Uncaught exception in " + t1.getName() + ": ", e));
+    t.setUncaughtExceptionHandler((t1, e) -> _logger.error("Uncaught exception in {}: ", t1.getName(), e));
     return t;
   }
 }

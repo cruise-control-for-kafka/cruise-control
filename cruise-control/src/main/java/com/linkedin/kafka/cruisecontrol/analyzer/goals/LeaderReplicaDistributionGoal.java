@@ -143,7 +143,7 @@ public class LeaderReplicaDistributionGoal extends ReplicaDistributionAbstractGo
     boolean isExcludedForReplicaMove = isExcludedForReplicaMove(broker);
     boolean requireLessLeaderReplicas = broker.isAlive() && numLeaderReplicas > (isExcludedForReplicaMove ? 0 : _balanceUpperLimit);
     boolean requireMoreLeaderReplicas = !isExcludedForReplicaMove && broker.isAlive() && numLeaderReplicas < _balanceLowerLimit;
-    boolean requireLessReplicas = _fixOfflineReplicasOnly && broker.currentOfflineReplicas().size() > 0;
+    boolean requireLessReplicas = _fixOfflineReplicasOnly && !broker.currentOfflineReplicas().isEmpty();
     // Update broker ids over the balance limit for logging purposes.
     if (((requireLessLeaderReplicas
         && rebalanceByMovingLeadershipOut(broker, clusterModel, optimizedGoals, optimizationOptions))

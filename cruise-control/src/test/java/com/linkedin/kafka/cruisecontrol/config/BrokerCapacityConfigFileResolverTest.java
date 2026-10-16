@@ -48,7 +48,7 @@ public class BrokerCapacityConfigFileResolverTest {
     }
 
     assertTrue(configResolver.capacityForBroker("", "", 2, BROKER_CAPACITY_FETCH_TIMEOUT_MS, true).isEstimated());
-    assertTrue(configResolver.capacityForBroker("", "", 2, BROKER_CAPACITY_FETCH_TIMEOUT_MS, true).estimationInfo().length() > 0);
+    assertFalse(configResolver.capacityForBroker("", "", 2, BROKER_CAPACITY_FETCH_TIMEOUT_MS, true).estimationInfo().isEmpty());
 
     // If resolver is unable to get broker capacity and not allowed to estimate, a BrokerCapacityResolutionException will be thrown.
     configResolver.capacityForBroker("", "", 2, BROKER_CAPACITY_FETCH_TIMEOUT_MS, false);
@@ -67,7 +67,7 @@ public class BrokerCapacityConfigFileResolverTest {
 
     assertFalse(configResolver.capacityForBroker("", "", 2, BROKER_CAPACITY_FETCH_TIMEOUT_MS, false).isEstimated());
     assertTrue(configResolver.capacityForBroker("", "", 3, BROKER_CAPACITY_FETCH_TIMEOUT_MS, true).isEstimated());
-    assertTrue(configResolver.capacityForBroker("", "", 3, BROKER_CAPACITY_FETCH_TIMEOUT_MS, true).estimationInfo().length() > 0);
+    assertFalse(configResolver.capacityForBroker("", "", 3, BROKER_CAPACITY_FETCH_TIMEOUT_MS, true).estimationInfo().isEmpty());
   }
 
   @Test
@@ -86,6 +86,6 @@ public class BrokerCapacityConfigFileResolverTest {
 
     assertFalse(configResolver.capacityForBroker("", "", 1, BROKER_CAPACITY_FETCH_TIMEOUT_MS, false).isEstimated());
     assertTrue(configResolver.capacityForBroker("", "", 3, BROKER_CAPACITY_FETCH_TIMEOUT_MS, true).isEstimated());
-    assertTrue(configResolver.capacityForBroker("", "", 3, BROKER_CAPACITY_FETCH_TIMEOUT_MS, true).estimationInfo().length() > 0);
+    assertFalse(configResolver.capacityForBroker("", "", 3, BROKER_CAPACITY_FETCH_TIMEOUT_MS, true).estimationInfo().isEmpty());
   }
 }

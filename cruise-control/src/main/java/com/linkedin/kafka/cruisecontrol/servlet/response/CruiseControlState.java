@@ -203,7 +203,7 @@ public class CruiseControlState extends AbstractCruiseControlResponse {
   public enum SubState {
     ANALYZER, MONITOR, EXECUTOR, ANOMALY_DETECTOR;
 
-    protected static final List<SubState> CACHED_VALUES = List.of(values());
+    private static final List<SubState> CACHED_VALUES = List.of(values());
 
     /**
      * Use this instead of values() because values() creates a new array each time.

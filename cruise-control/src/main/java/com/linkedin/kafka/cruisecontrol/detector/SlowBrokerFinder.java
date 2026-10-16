@@ -408,7 +408,7 @@ public class SlowBrokerFinder implements MetricAnomalyFinder<BrokerEntity> {
     // If too many brokers in the cluster are detected as slow brokers, report anomaly as not fixable.
     // Otherwise report anomaly with brokers to be removed/demoted.
     if (numBrokersToDemoteOrRemove > clusterSize * _selfHealingUnfixableRatio) {
-      brokersToRemove.forEach(brokersToDemote::put);
+      brokersToDemote.putAll(brokersToRemove);
       detectedSlowBrokers.add(createSlowBrokersAnomaly(brokersToDemote, false, false));
     } else {
       if (!brokersToDemote.isEmpty()) {

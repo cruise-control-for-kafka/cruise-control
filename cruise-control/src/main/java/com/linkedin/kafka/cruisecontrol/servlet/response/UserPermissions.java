@@ -33,8 +33,8 @@ public class UserPermissions extends AbstractCruiseControlResponse {
     public static final String ROLES = "roles";
     protected Set<String> _roles = new HashSet<>();
 
-    private boolean _securityEnabled;
-    private UserPermissionsManager _userPermissionsManager;
+    private final boolean _securityEnabled;
+    private final UserPermissionsManager _userPermissionsManager;
 
     public UserPermissions(KafkaCruiseControlConfig config, UserPermissionsManager userPermissionsManager) {
         super(config);

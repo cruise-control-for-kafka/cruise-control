@@ -134,7 +134,7 @@ public class KafkaCruiseControlServletEndpointTest {
   }
 
   // Create 5 User Tasks. Note the 5th and 6th one have same user task id, thus count as 1.
-  private void populateUserTaskManager(CruiseControlRequestContext mockHttpFrameworkResponse, UserTaskManager userTaskManager) throws Exception {
+  private void populateUserTaskManager(CruiseControlRequestContext mockHttpFrameworkResponse, UserTaskManager userTaskManager) {
     List<Object[]> allParams = new ArrayList<>();
     for (Object[] initInfo : INITIALIZE_SERVLET_REQUESTS_OUTPUT) {
       allParams.add(inputCreateTaskParams((CruiseControlRequestContext) initInfo[0], 0, 0));

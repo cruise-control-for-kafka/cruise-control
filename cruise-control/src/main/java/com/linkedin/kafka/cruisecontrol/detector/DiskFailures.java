@@ -63,9 +63,9 @@ public class DiskFailures extends KafkaAnomaly {
   @Override
   public String toString() {
     StringBuilder sb = new StringBuilder().append("{\n");
-    _failedDisksByBroker.forEach((brokerId, failures) -> failures.forEach((logdir, eventTime) -> {
-      sb.append(String.format("\tDisk %s on broker %d failed at %s%n ", logdir, brokerId, utcDateFor(eventTime)));
-    }));
+    _failedDisksByBroker.forEach((brokerId, failures) -> failures.forEach((logdir, eventTime) ->
+      sb.append(String.format("\tDisk %s on broker %d failed at %s%n ", logdir, brokerId, utcDateFor(eventTime)))
+    ));
     sb.append("}");
     return sb.toString();
   }

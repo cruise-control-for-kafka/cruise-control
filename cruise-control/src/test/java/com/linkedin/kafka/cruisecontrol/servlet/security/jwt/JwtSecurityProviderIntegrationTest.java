@@ -86,7 +86,7 @@ public class JwtSecurityProviderIntegrationTest extends CruiseControlIntegration
 
       String cruiseControlUrl = params.getValue(ORIGIN);
 
-      System.out.println(String.format("Handling login: %s %s %s", username, password, cruiseControlUrl));
+      System.out.printf("Handling login: %s %s %s%n", username, password, cruiseControlUrl);
       UserIdentity identity = _loginService.login(username, password, request, null);
       if (identity != null) {
         Response.addCookie(response, HttpCookie.from(JWT_TOKEN_COOKIE_NAME, _tokenAndKeys.token()));

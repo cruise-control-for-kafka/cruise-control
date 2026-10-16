@@ -278,7 +278,7 @@ public class ExecutionProposal {
 
   @Override
   public boolean equals(Object other) {
-    if (!(other instanceof ExecutionProposal)) {
+    if (!(other instanceof ExecutionProposal otherProposal)) {
       return false;
     }
 
@@ -286,12 +286,10 @@ public class ExecutionProposal {
       return true;
     }
 
-    ExecutionProposal otherProposal = (ExecutionProposal) other;
-
     return _tp.equals(otherProposal._tp)
-        && _oldLeader == otherProposal._oldLeader
-        && _oldReplicas.equals(otherProposal._oldReplicas)
-        && _newReplicas.equals(otherProposal._newReplicas);
+      && _oldLeader == otherProposal._oldLeader
+      && _oldReplicas.equals(otherProposal._oldReplicas)
+      && _newReplicas.equals(otherProposal._newReplicas);
   }
 
   @Override

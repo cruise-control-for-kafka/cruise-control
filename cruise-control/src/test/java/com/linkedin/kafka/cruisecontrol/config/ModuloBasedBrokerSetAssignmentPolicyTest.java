@@ -4,9 +4,9 @@
 
 package com.linkedin.kafka.cruisecontrol.config;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.Test;
@@ -29,8 +29,8 @@ public class ModuloBasedBrokerSetAssignmentPolicyTest {
     // The cluster model has 6 brokers - 0,1,2,3,4,5
     Map<Integer, String> brokers = Map.of(0, "", 1, "", 2, "", 3, "", 4, "", 5, "");
     Map<String, Set<Integer>> mappedBrokers = new HashMap<>();
-    mappedBrokers.put("bs1", new HashSet<>(Arrays.asList(0)));
-    mappedBrokers.put("bs2", new HashSet<>(Arrays.asList(1)));
+    mappedBrokers.put("bs1", new HashSet<>(List.of(0)));
+    mappedBrokers.put("bs2", new HashSet<>(List.of(1)));
 
     Map<String, Set<Integer>> mappedBrokersAfterAssignment =
         MODULO_BASED_BROKER_SET_ASSIGNMENT_POLICY.assignBrokerSetsForUnresolvedBrokers(brokers, mappedBrokers);

@@ -13,7 +13,6 @@ import com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils;
 import io.vertx.core.MultiMap;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.RoutingContext;
-import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -101,7 +100,7 @@ public class VertxRequestContext implements CruiseControlRequestContext {
 
     @Override
     public void writeResponseToOutputStream(int responseCode, boolean json, boolean wantJsonSchema,
-                                            String responseMessage) throws IOException {
+                                            String responseMessage) {
         ResponseUtils.setResponseCode(_context, responseCode, _config);
         _context.response().putHeader("Cruise-Control-Version", KafkaCruiseControl.cruiseControlVersion());
         _context.response().putHeader("Cruise-Control-Commit_Id", KafkaCruiseControl.cruiseControlCommitId());
@@ -166,7 +165,7 @@ public class VertxRequestContext implements CruiseControlRequestContext {
     private String getVertxClientIpAddress(RoutingContext context) {
         for (String header : HEADERS_TO_TRY) {
             String ip = context.request().getHeader(header);
-            if (ip != null && ip.length() != 0 && !"unknown".equalsIgnoreCase(ip)) {
+            if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
                 return "[" + ip + "]";
             }
         }

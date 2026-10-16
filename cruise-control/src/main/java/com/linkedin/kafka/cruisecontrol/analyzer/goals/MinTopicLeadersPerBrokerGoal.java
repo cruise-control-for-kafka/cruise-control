@@ -131,7 +131,7 @@ public class MinTopicLeadersPerBrokerGoal extends AbstractGoal {
   }
 
   /**
-   * Check whether this goal is violated after removing the given leader replica. It is violated if there is not be enough
+   * Check whether this goal is violated after removing the given leader replica. It is violated if there is not enough
    * leader replicas on that broker for that topic
    *
    * @param replicaToBeRemoved replica to be removed
@@ -177,7 +177,7 @@ public class MinTopicLeadersPerBrokerGoal extends AbstractGoal {
       int topicNumLeaders = numLeadersByTopicNames.get(topicName);
       _mustHaveTopicMinLeadersPerBroker.put(topicName,
               _balancingConstraint.minTopicLeadersPerBroker() == 0
-                      ? eligibleBrokersForLeadership.size() == 0 ? 0 : topicNumLeaders / eligibleBrokersForLeadership.size()
+                      ? eligibleBrokersForLeadership.isEmpty() ? 0 : topicNumLeaders / eligibleBrokersForLeadership.size()
                       : _balancingConstraint.minTopicLeadersPerBroker());
     }
     // Sanity checks
@@ -348,8 +348,7 @@ public class MinTopicLeadersPerBrokerGoal extends AbstractGoal {
     List<Replica> followerReplicas = broker.trackedSortedReplicas(_replicaSortName)
                                            .sortedReplicas(false).stream().filter(
             replica -> !replica.isLeader()
-                       && replica.topicPartition().topic().equals(topicMustHaveLeaderPerBroker))
-                                           .collect(Collectors.toList());
+                       && replica.topicPartition().topic().equals(topicMustHaveLeaderPerBroker)).toList();
 
     for (Replica followerReplica : followerReplicas) {
       Replica leader = clusterModel.partition(followerReplica.topicPartition()).leader();
@@ -378,7 +377,7 @@ public class MinTopicLeadersPerBrokerGoal extends AbstractGoal {
                                                                                 && replica.topicPartition()
                                                                                           .topic()
                                                                                           .equals(topicMustHaveLeaderPerBroker))
-                                                                    .collect(Collectors.toList());
+                                                                    .toList();
       boolean leaderMoved = false;
       int topicLeaderCountOnGiverBroker = leadersOfTopic.size();
       for (Replica leaderOfTopic : leadersOfTopic) {

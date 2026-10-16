@@ -35,23 +35,23 @@ public final class ProvisionRecommendation {
   public static final int DEFAULT_OPTIONAL_INT = -1;
   public static final double DEFAULT_OPTIONAL_DOUBLE = -1.0;
   // Provisions status to identify whether resources will be added or removed.
-  protected final ProvisionStatus _status;
+  private final ProvisionStatus _status;
   // Number of resources recommended to be added or removed. For number of partitions, the value indicates the target number of partitions.
-  protected final int _numBrokers;
-  protected final int _numRacks;
-  protected final int _numDisks;
-  protected final int _numPartitions;
+  private final int _numBrokers;
+  private final int _numRacks;
+  private final int _numDisks;
+  private final int _numPartitions;
   // If the resource is partition, the regex name of the topic must be specified.
-  protected final Pattern _topicPattern;
+  private final Pattern _topicPattern;
   // A typical broker id and its capacity (one cannot be specified without the other)
-  protected final int _typicalBrokerId;
-  protected final double _typicalBrokerCapacity;
+  private final int _typicalBrokerId;
+  private final double _typicalBrokerCapacity;
   // Specific resource, such as {@link Resource#DISK}
-  protected final Resource _resource;
+  private final Resource _resource;
   // Excluded racks -- i.e. racks for which brokers should not be added to or removed from
-  protected final Set<String> _excludedRackIds;
+  private final Set<String> _excludedRackIds;
   // Total resource capacity required to add or remove
-  protected final double _totalCapacity;
+  private final double _totalCapacity;
 
   public static class Builder {
     // Required parameters

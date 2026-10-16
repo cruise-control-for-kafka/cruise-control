@@ -69,16 +69,15 @@ public class ReplicaCapacityGoal extends AbstractGoal {
    */
   @Override
   public ActionAcceptance actionAcceptance(BalancingAction action, ClusterModel clusterModel) {
-    switch (action.balancingAction()) {
-      case INTER_BROKER_REPLICA_MOVEMENT:
+    return switch (action.balancingAction()) {
+      case INTER_BROKER_REPLICA_MOVEMENT -> {
         Broker destinationBroker = clusterModel.broker(action.destinationBrokerId());
-        return destinationBroker.replicas().size() < _balancingConstraint.maxReplicasPerBroker() ? ACCEPT : REPLICA_REJECT;
-      case INTER_BROKER_REPLICA_SWAP:
-      case LEADERSHIP_MOVEMENT:
-        return ACCEPT;
-      default:
+        yield destinationBroker.replicas().size() < _balancingConstraint.maxReplicasPerBroker() ? ACCEPT : REPLICA_REJECT;
+      }
+      case INTER_BROKER_REPLICA_SWAP, LEADERSHIP_MOVEMENT -> ACCEPT;
+      default ->
         throw new IllegalArgumentException("Unsupported balancing action " + action.balancingAction() + " is provided.");
-    }
+    };
   }
 
   @Override

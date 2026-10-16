@@ -30,10 +30,9 @@ public class ReplicaPlacementInfo {
 
   @Override
   public boolean equals(Object o) {
-    if (!(o instanceof ReplicaPlacementInfo)) {
+    if (!(o instanceof ReplicaPlacementInfo info)) {
       return false;
     }
-    ReplicaPlacementInfo info = (ReplicaPlacementInfo) o;
     return _brokerId == info._brokerId && Objects.equals(_logdir, info._logdir);
   }
 

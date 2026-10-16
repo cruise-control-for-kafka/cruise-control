@@ -96,15 +96,12 @@ public class PartitionMetricSample extends MetricSample<String, PartitionEntity>
     ByteBuffer buffer = ByteBuffer.wrap(bytes);
     // Not used at this point.
     byte version = buffer.get();
-    switch (version) {
-      case 0:
-        return readV0(buffer);
-      case 1:
-        return readV1(buffer);
-      default:
-        throw new UnknownVersionException("Unsupported deserialization version: " + version + " (Latest: "
-                                          + LATEST_SUPPORTED_VERSION + ", Minimum: " + MIN_SUPPORTED_VERSION + ")");
-    }
+    return switch (version) {
+      case 0 -> readV0(buffer);
+      case 1 -> readV1(buffer);
+      default -> throw new UnknownVersionException("Unsupported deserialization version: " + version + " (Latest: "
+              + LATEST_SUPPORTED_VERSION + ", Minimum: " + MIN_SUPPORTED_VERSION + ")");
+    };
   }
 
   @Override

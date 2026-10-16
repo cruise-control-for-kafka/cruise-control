@@ -29,9 +29,7 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
-import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -181,16 +179,13 @@ public class KafkaSampleStore extends AbstractKafkaSampleStore {
     final AtomicInteger brokerMetricSampleCount = new AtomicInteger(0);
     for (BrokerMetricSample sample : samples.brokerMetricSamples()) {
       _producer.send(new ProducerRecord<>(_brokerMetricSampleStoreTopic, sample.toBytes()),
-                     new Callback() {
-                       @Override
-                       public void onCompletion(RecordMetadata recordMetadata, Exception e) {
-                         if (e == null) {
-                           brokerMetricSampleCount.incrementAndGet();
-                         } else {
-                           LOG.error("Failed to produce model training sample due to exception", e);
-                         }
-                       }
-                     });
+              (recordMetadata, e) -> {
+                if (e == null) {
+                  brokerMetricSampleCount.incrementAndGet();
+                } else {
+                  LOG.error("Failed to produce model training sample due to exception", e);
+                }
+              });
     }
     _producer.flush();
     if (LOG.isDebugEnabled()) {
@@ -402,7 +397,7 @@ public class KafkaSampleStore extends AbstractKafkaSampleStore {
           _consumer.seek(entry.getKey(), entry.getValue().offset());
         }
       }
-      if (partitionWithNoRecentMessage.size() > 0) {
+      if (!partitionWithNoRecentMessage.isEmpty()) {
         _consumer.seekToBeginning(partitionWithNoRecentMessage);
       }
     }

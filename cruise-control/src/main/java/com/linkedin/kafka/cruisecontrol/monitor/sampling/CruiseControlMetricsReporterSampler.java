@@ -158,10 +158,7 @@ public class CruiseControlMetricsReporterSampler extends AbstractMetricSampler {
 
   private boolean isMetricsTopicExists() {
     Map<String, List<PartitionInfo>> topics = _metricConsumer.listTopics();
-    if (!topics.containsKey(_metricReporterTopic)) {
-      return false;
-    }
-    return true;
+    return topics.containsKey(_metricReporterTopic);
   }
 
   @Override
