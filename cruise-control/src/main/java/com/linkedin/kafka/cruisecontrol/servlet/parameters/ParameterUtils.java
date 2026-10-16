@@ -8,12 +8,11 @@ import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.cruisecontrol.servlet.EndPoint;
 import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
 import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionRecommendation;
-import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskCapacityGoal;
-import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.analyzer.kafkaassigner.KafkaAssignerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.analyzer.kafkaassigner.KafkaAssignerEvenRackAwareGoal;
 import com.linkedin.cruisecontrol.http.CruiseControlRequestContext;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
 import com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyType;
 import com.linkedin.kafka.cruisecontrol.executor.ConcurrencyType;
@@ -757,7 +756,21 @@ public final class ParameterUtils {
     return strategy.chainBaseReplicaMovementStrategyIfAbsent();
   }
 
-  static List<String> getGoals(CruiseControlRequestContext requestContext) throws UnsupportedEncodingException {
+  /**
+   * Get the goals requested by the given request context.
+   * <ul>
+   *   <li>In Kafka assigner mode, the goals are the Kafka assigner goals.</li>
+   *   <li>In rebalance disk mode, the goals are the intra-broker goals configured via
+   *   {@link AnalyzerConfig#INTRA_BROKER_GOALS_CONFIG}.</li>
+   *   <li>Otherwise, the goals are the ones explicitly specified in the request (if any).</li>
+   * </ul>
+   *
+   * @param requestContext HTTP request received by Cruise Control.
+   * @param config Kafka Cruise Control config.
+   * @return The requested goals, or an empty list to indicate that the default goals should be used.
+   */
+  static List<String> getGoals(CruiseControlRequestContext requestContext, KafkaCruiseControlConfig config)
+      throws UnsupportedEncodingException {
     boolean isKafkaAssignerMode = isKafkaAssignerMode(requestContext);
     boolean isRebalanceDiskMode = isRebalanceDiskMode(requestContext);
     // Sanity check isKafkaAssignerMode and isRebalanceDiskMode are not both true at the same time.
@@ -778,8 +791,10 @@ public final class ParameterUtils {
       if (!goals.isEmpty()) {
         throw new UserRequestException("Rebalance disk mode does not support explicitly specifying goals in request.");
       }
-      return Collections.unmodifiableList(Arrays.asList(IntraBrokerDiskCapacityGoal.class.getSimpleName(),
-              IntraBrokerDiskUsageDistributionGoal.class.getSimpleName()));
+      // Use the simple class names of the configured intra-broker goals in the order of priority.
+      return config.getList(AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG).stream()
+                   .map(goalName -> goalName.replaceAll(".*\\.", ""))
+                   .collect(Collectors.toUnmodifiableList());
     }
     return goals;
   }

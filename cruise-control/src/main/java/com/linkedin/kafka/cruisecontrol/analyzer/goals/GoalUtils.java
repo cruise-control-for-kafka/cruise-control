@@ -400,6 +400,36 @@ public final class GoalUtils {
   }
 
   /**
+   * Get the estimated disk I/O rate of the given replica. The inbound network rate approximates disk writes, which apply
+   * to both leader and follower replicas. The outbound network rate approximates disk reads, which apply to leader
+   * replicas only (i.e. follower replicas have no outbound network load in the cluster model).
+   *
+   * @param replica Replica to query.
+   * @param readWeight Weight of the outbound network rate (i.e. reads) in the estimation.
+   * @return Estimated disk I/O rate of the replica, i.e. inbound network rate + readWeight * outbound network rate.
+   */
+  public static double replicaDiskIORate(Replica replica, double readWeight) {
+    return replica.load().expectedUtilizationFor(Resource.NW_IN)
+           + readWeight * replica.load().expectedUtilizationFor(Resource.NW_OUT);
+  }
+
+  /**
+   * Get the estimated disk I/O rate of the given disk, i.e. the sum of estimated disk I/O rates of its replicas.
+   *
+   * @param disk Disk to query.
+   * @param readWeight Weight of the outbound network rate (i.e. reads) in the estimation.
+   * @return Estimated disk I/O rate of the disk.
+   * @see #replicaDiskIORate(Replica, double)
+   */
+  public static double diskIORate(Disk disk, double readWeight) {
+    double diskIORate = 0;
+    for (Replica replica : disk.replicas()) {
+      diskIORate += replicaDiskIORate(replica, readWeight);
+    }
+    return diskIORate;
+  }
+
+  /**
    * Sort replicas in ascending order of resource quantity present in the broker that they reside in terms of the
    * requested resource.
    *
