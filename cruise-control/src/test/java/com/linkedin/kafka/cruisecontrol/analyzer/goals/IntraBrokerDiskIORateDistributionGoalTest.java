@@ -10,6 +10,7 @@ import com.linkedin.kafka.cruisecontrol.analyzer.BalancingAction;
 import com.linkedin.kafka.cruisecontrol.analyzer.BalancingConstraint;
 import com.linkedin.kafka.cruisecontrol.analyzer.OptimizationOptions;
 import com.linkedin.kafka.cruisecontrol.common.DeterministicCluster;
+import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.common.TestConstants;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
@@ -23,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.TreeMap;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.Test;
 
@@ -33,12 +35,17 @@ import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.diskIORa
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.LOGDIR0;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.LOGDIR1;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 /**
  * Unit test for {@link IntraBrokerDiskIORateDistributionGoal}.
  */
 public class IntraBrokerDiskIORateDistributionGoalTest {
+  private static final String TOPIC = "T";
+  private static final String LOGDIR2 = "/mnt/i02";
+  private static final double LOGDIR_CAPACITY = TestConstants.LARGE_BROKER_CAPACITY / 2;
+  private static final double DELTA = 1E-6;
   private static final String HOT_TOPIC = "hot";
   private static final String COLD_TOPIC = "cold";
   private static final String WARM_TOPIC = "warm";
@@ -68,7 +75,7 @@ public class IntraBrokerDiskIORateDistributionGoalTest {
       long numHotReplicas = disk.replicas().stream().filter(r -> r.topicPartition().topic().equals(HOT_TOPIC)).count();
       assertEquals("Disk " + disk.logDir() + " is expected to host exactly one hot leader.", 1, numHotReplicas);
     }
-    assertEquals(diskIORate(broker.disk(LOGDIR0), 1.0), diskIORate(broker.disk(LOGDIR1), 1.0), 1E-6);
+    assertEquals(diskIORate(broker.disk(LOGDIR0), 1.0), diskIORate(broker.disk(LOGDIR1), 1.0), DELTA);
   }
 
   /**
@@ -134,6 +141,79 @@ public class IntraBrokerDiskIORateDistributionGoalTest {
         clusterModel));
   }
 
+  /**
+   * A single broker with three disks (average disk I/O rate 400, balanced range [364, 436]):
+   * <ul>
+   *   <li>{@link TestConstants#LOGDIR0}: 460 (replicas of 360 and 100) -- above the upper limit.</li>
+   *   <li>{@link TestConstants#LOGDIR1}: 365 (a single replica) -- the disk with the lowest I/O rate, hence the first candidate
+   *   disk to swap with, but no swap with it is feasible.</li>
+   *   <li>{@link #LOGDIR2}: 375 (replicas of 300 and 75) -- swapping its replica of 75 with the replica of 100 on
+   *   {@link TestConstants#LOGDIR0} balances the broker.</li>
+   * </ul>
+   * No replica can be moved out of the overloaded disk without violating the limits, so the goal must rely on swaps. The goal
+   * is expected to give up on the first candidate disk after a single pass and balance the broker via the second candidate disk.
+   */
+  @Test
+  public void testSwapProceedsToNextCandidateDiskWhenNoSwapIsFeasibleWithFirstCandidate() throws OptimizationFailureException {
+    Map<String, List<Double>> diskIORatesByLogdir = new TreeMap<>();
+    diskIORatesByLogdir.put(LOGDIR0, List.of(360.0, 100.0));
+    diskIORatesByLogdir.put(LOGDIR1, List.of(365.0));
+    diskIORatesByLogdir.put(LOGDIR2, List.of(300.0, 75.0));
+    ClusterModel clusterModel = createClusterModel(1, diskIORatesByLogdir);
+    AttemptCountingGoal goal = new AttemptCountingGoal(balancingConstraint(1.0));
+
+    assertTrue("Goal failed to balance the disks.", goal.optimize(clusterModel, Collections.emptySet(), OPTIMIZATION_OPTIONS));
+
+    Broker broker = clusterModel.broker(0);
+    assertEquals(435.0, diskIORate(broker.disk(LOGDIR0), 1.0), DELTA);
+    assertEquals(365.0, diskIORate(broker.disk(LOGDIR1), 1.0), DELTA);
+    assertEquals(400.0, diskIORate(broker.disk(LOGDIR2), 1.0), DELTA);
+    assertNumAttemptsIsBounded(goal, clusterModel);
+  }
+
+  /**
+   * Brokers with two disks (average disk I/O rate 350, balanced range [318.5, 381.5]), where {@link TestConstants#LOGDIR0} hosts
+   * a single replica with a disk I/O rate of 600 and {@link TestConstants#LOGDIR1} hosts a single replica with a disk I/O rate of
+   * 100. Neither a move nor a swap can bring the disks within the balanced range, so the goal is expected to give up on each disk
+   * as soon as every candidate disk has been tried once -- rather than retrying the same candidate disk until the per disk swap
+   * timeout expires.
+   */
+  @Test
+  public void testNoBusyLoopWhenDiskCannotBeBalanced() throws OptimizationFailureException {
+    Map<String, List<Double>> diskIORatesByLogdir = new TreeMap<>();
+    diskIORatesByLogdir.put(LOGDIR0, List.of(600.0));
+    diskIORatesByLogdir.put(LOGDIR1, List.of(100.0));
+    ClusterModel clusterModel = createClusterModel(4, diskIORatesByLogdir);
+    AttemptCountingGoal goal = new AttemptCountingGoal(balancingConstraint(1.0));
+
+    assertFalse("Goal is not expected to balance the disks.", goal.optimize(clusterModel, Collections.emptySet(), OPTIMIZATION_OPTIONS));
+
+    for (Broker broker : clusterModel.brokers()) {
+      assertEquals(600.0, diskIORate(broker.disk(LOGDIR0), 1.0), DELTA);
+      assertEquals(100.0, diskIORate(broker.disk(LOGDIR1), 1.0), DELTA);
+    }
+    assertNumAttemptsIsBounded(goal, clusterModel);
+  }
+
+  /**
+   * Verify that the goal has not evaluated the same proposals over and over again. Each disk that is out of the balanced range
+   * is expected to (1) try to move each of its replicas to each candidate disk, and (2) try to swap each pair of replicas with each
+   * candidate disk at most once before giving up -- i.e. O(numDisks^2 * numReplicas^2) attempts per broker.
+   *
+   * @param goal The goal that counted its attempts.
+   * @param clusterModel The optimized cluster model.
+   */
+  private static void assertNumAttemptsIsBounded(AttemptCountingGoal goal, ClusterModel clusterModel) {
+    int maxExpectedAttempts = 0;
+    for (Broker broker : clusterModel.brokers()) {
+      int numDisks = broker.disks().size();
+      int numReplicas = broker.replicas().size();
+      maxExpectedAttempts += 2 * numDisks * (numDisks - 1) * numReplicas * numReplicas;
+    }
+    assertTrue(String.format("Expected at most %d attempts, but the goal evaluated %d proposals.", maxExpectedAttempts, goal.numAttempts()),
+               goal.numAttempts() <= maxExpectedAttempts);
+  }
+
   private static BalancingConstraint balancingConstraint(double readWeight) {
     Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
     props.setProperty(AnalyzerConfig.INTRA_BROKER_DISK_IO_READ_WEIGHT_CONFIG, Double.toString(readWeight));
@@ -196,10 +276,62 @@ public class IntraBrokerDiskIORateDistributionGoalTest {
     return clusterModel;
   }
 
+  /**
+   * Create a cluster model with the given number of brokers in a single rack, where each broker has the same disk layout. Each
+   * disk I/O rate entry corresponds to a single leader replica of a distinct partition on the given logdir. The replica has no
+   * outbound network rate, hence its estimated disk I/O rate is its inbound network rate regardless of the read weight.
+   *
+   * @param numBrokers Number of brokers.
+   * @param diskIORatesByLogdir Estimated disk I/O rates of the replicas to place on each logdir.
+   * @return The cluster model.
+   */
+  private static ClusterModel createClusterModel(int numBrokers, Map<String, List<Double>> diskIORatesByLogdir) {
+    Map<Integer, Integer> rackByBroker = new HashMap<>();
+    for (int brokerId = 0; brokerId < numBrokers; brokerId++) {
+      rackByBroker.put(brokerId, 0);
+    }
+    Map<String, Double> diskCapacityByLogdir = new HashMap<>();
+    diskIORatesByLogdir.keySet().forEach(logdir -> diskCapacityByLogdir.put(logdir, LOGDIR_CAPACITY));
+    Map<Resource, Double> brokerCapacity = new HashMap<>(TestConstants.BROKER_CAPACITY);
+    brokerCapacity.put(Resource.DISK, LOGDIR_CAPACITY * diskCapacityByLogdir.size());
+    ClusterModel clusterModel = DeterministicCluster.getHomogeneousCluster(rackByBroker, brokerCapacity, diskCapacityByLogdir);
+
+    int partition = 0;
+    for (int brokerId = 0; brokerId < numBrokers; brokerId++) {
+      for (Map.Entry<String, List<Double>> entry : diskIORatesByLogdir.entrySet()) {
+        for (double diskIORate : entry.getValue()) {
+          createReplica(clusterModel, brokerId, new TopicPartition(TOPIC, partition++), 0, entry.getKey(), diskIORate, 0.0);
+        }
+      }
+    }
+    return clusterModel;
+  }
+
   private static void createReplica(ClusterModel clusterModel, int brokerId, TopicPartition tp, int index, String logdir,
                                     double nwIn, double nwOut) {
     String rack = clusterModel.broker(brokerId).rack().id();
     clusterModel.createReplica(rack, brokerId, tp, index, index == 0, false, logdir, false);
     clusterModel.setReplicaLoad(rack, brokerId, tp, getAggregatedMetricValues(CPU_USAGE, nwIn, nwOut, DISK_USAGE), WINDOWS);
+  }
+
+  /**
+   * A goal that counts the number of proposals (i.e. intra-broker replica moves and swaps) it evaluates against itself.
+   */
+  private static final class AttemptCountingGoal extends IntraBrokerDiskIORateDistributionGoal {
+    private int _numAttempts;
+
+    AttemptCountingGoal(BalancingConstraint constraint) {
+      super(constraint);
+    }
+
+    @Override
+    protected boolean selfSatisfied(ClusterModel clusterModel, BalancingAction action) {
+      _numAttempts++;
+      return super.selfSatisfied(clusterModel, action);
+    }
+
+    int numAttempts() {
+      return _numAttempts;
+    }
   }
 }
