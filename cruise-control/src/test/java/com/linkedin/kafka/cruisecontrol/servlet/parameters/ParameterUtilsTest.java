@@ -5,11 +5,21 @@
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
 import com.linkedin.cruisecontrol.http.CruiseControlRequestContext;
+import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskCapacityGoal;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskIORateDistributionGoal;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
+import com.linkedin.kafka.cruisecontrol.servlet.UserRequestException;
+import java.io.UnsupportedEncodingException;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import org.easymock.EasyMock;
 import org.junit.Assert;
@@ -51,6 +61,49 @@ public class ParameterUtilsTest {
     Assert.assertEquals(Long.valueOf(START_TIME_STRING), startMs);
     Assert.assertEquals(Long.valueOf(END_TIME_STRING), endMs);
     EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testGetGoalsInRebalanceDiskModeUsesConfiguredIntraBrokerGoals() throws UnsupportedEncodingException {
+    CruiseControlRequestContext mockRequest = mockRequestWithParameters(
+        Collections.singletonMap(ParameterUtils.REBALANCE_DISK_MODE_PARAM, Boolean.TRUE.toString()));
+
+    // Default intra-broker goals.
+    Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
+    List<String> goals = ParameterUtils.getGoals(mockRequest, new KafkaCruiseControlConfig(props));
+    Assert.assertEquals(Arrays.asList(IntraBrokerDiskCapacityGoal.class.getSimpleName(),
+                                      IntraBrokerDiskUsageDistributionGoal.class.getSimpleName()), goals);
+
+    // Custom intra-broker goals are used in the configured order of priority.
+    props.setProperty(AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG,
+                      String.join(",", IntraBrokerDiskCapacityGoal.class.getName(),
+                                  IntraBrokerDiskIORateDistributionGoal.class.getName(),
+                                  IntraBrokerDiskUsageDistributionGoal.class.getName()));
+    goals = ParameterUtils.getGoals(mockRequest, new KafkaCruiseControlConfig(props));
+    Assert.assertEquals(Arrays.asList(IntraBrokerDiskCapacityGoal.class.getSimpleName(),
+                                      IntraBrokerDiskIORateDistributionGoal.class.getSimpleName(),
+                                      IntraBrokerDiskUsageDistributionGoal.class.getSimpleName()), goals);
+  }
+
+  @Test
+  public void testGetGoalsInRebalanceDiskModeRejectsExplicitGoals() {
+    Map<String, String> parameters = new HashMap<>();
+    parameters.put(ParameterUtils.REBALANCE_DISK_MODE_PARAM, Boolean.TRUE.toString());
+    parameters.put(ParameterUtils.GOALS_PARAM, IntraBrokerDiskIORateDistributionGoal.class.getSimpleName());
+    CruiseControlRequestContext mockRequest = mockRequestWithParameters(parameters);
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
+
+    Assert.assertThrows(UserRequestException.class, () -> ParameterUtils.getGoals(mockRequest, config));
+  }
+
+  private static CruiseControlRequestContext mockRequestWithParameters(Map<String, String> parameters) {
+    Map<String, String[]> parameterMap = new HashMap<>();
+    parameters.forEach((name, value) -> parameterMap.put(name, new String[]{value}));
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    EasyMock.expect(mockRequest.getParameterMap()).andReturn(parameterMap).anyTimes();
+    parameters.forEach((name, value) -> EasyMock.expect(mockRequest.getParameter(name)).andReturn(value).anyTimes());
+    EasyMock.replay(mockRequest);
+    return mockRequest;
   }
 
   @Test

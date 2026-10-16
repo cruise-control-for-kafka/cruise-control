@@ -164,7 +164,7 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
    * following:
    * (1) If source and destination disks were within the limit before the action, the corresponding limits cannot be
    * violated after the action.
-   * (2) The action cannot increase the utilization difference between disks.
+   * (2) Otherwise, the action cannot increase the utilization difference between disks.
    *
    * @param action Action to be checked for acceptance.
    * @param clusterModel The state of the cluster.
@@ -184,13 +184,31 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
     if (isChangeViolatingLimit(sourceUtilizationDelta, sourceDisk, destinationDisk)) {
       return REPLICA_REJECT;
     }
+    if (areBothDisksWithinLimit(sourceUtilizationDelta, sourceDisk, destinationDisk)) {
+      // Both disks remain within the limit after the action.
+      return ACCEPT;
+    }
     return isGettingMoreBalanced(sourceDisk, destinationDisk, sourceUtilizationDelta) ? ACCEPT : REPLICA_REJECT;
   }
 
+  /**
+   * An action is self-satisfied if it changes the load of disks without violating the limits and makes the disks more balanced.
+   *
+   * @param clusterModel The state of the cluster.
+   * @param action Action containing information about potential modification to the given cluster model.
+   * @return {@code true} if the action is self-satisfied, {@code false} otherwise.
+   */
   @Override
   protected boolean selfSatisfied(ClusterModel clusterModel, BalancingAction action) {
     double sourceUtilizationDelta = sourceUtilizationDelta(action, clusterModel);
-    return sourceUtilizationDelta != 0 && actionAcceptance(action, clusterModel) == ACCEPT;
+    if (sourceUtilizationDelta == 0) {
+      return false;
+    }
+    Broker broker = clusterModel.broker(action.sourceBrokerId());
+    Disk sourceDisk = broker.disk(action.sourceBrokerLogdir());
+    Disk destinationDisk = broker.disk(action.destinationBrokerLogdir());
+    return !isChangeViolatingLimit(sourceUtilizationDelta, sourceDisk, destinationDisk)
+           && isGettingMoreBalanced(sourceDisk, destinationDisk, sourceUtilizationDelta);
   }
 
   private double sourceUtilizationDelta(BalancingAction action, ClusterModel clusterModel) {
@@ -214,19 +232,42 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
     };
   }
 
-  private boolean isChangeViolatingLimit(double sourceUtilizationDelta, Disk sourceDisk, Disk destinationDisk) {
+  /**
+   * @param sourceUtilizationDelta The change of utilization on the source disk.
+   * @param sourceDisk Source disk.
+   * @return The utilization that can be added to (if the delta is positive) or removed from (otherwise) the source
+   * disk without violating the corresponding limit, or a negative value if the source disk already violates that limit.
+   */
+  private double sourceDiskAllowance(double sourceUtilizationDelta, Disk sourceDisk) {
     double balanceUpperThreshold = _balanceUpperThresholdByBroker.get(sourceDisk.broker());
     double balanceLowerThreshold = _balanceLowerThresholdByBroker.get(sourceDisk.broker());
-    double sourceDiskAllowance = sourceUtilizationDelta > 0 ? sourceDisk.capacity() * balanceUpperThreshold - sourceDisk.utilization()
-                                                            : sourceDisk.utilization() - sourceDisk.capacity() * balanceLowerThreshold;
-    double destinationDiskAllowance =
-        sourceUtilizationDelta > 0 ? destinationDisk.utilization() - destinationDisk.capacity() * balanceLowerThreshold
-                                   : destinationDisk.capacity() * balanceUpperThreshold - destinationDisk.utilization();
-    if ((sourceDiskAllowance >= 0 && sourceDiskAllowance < abs(sourceUtilizationDelta))
-        || (destinationDiskAllowance >= 0 && destinationDiskAllowance < abs(sourceUtilizationDelta))) {
-      return true;
-    }
-    return false;
+    return sourceUtilizationDelta > 0 ? sourceDisk.capacity() * balanceUpperThreshold - sourceDisk.utilization()
+                                      : sourceDisk.utilization() - sourceDisk.capacity() * balanceLowerThreshold;
+  }
+
+  /**
+   * @param sourceUtilizationDelta The change of utilization on the source disk.
+   * @param destinationDisk Destination disk.
+   * @return The utilization that can be removed from (if the delta is positive) or added to (otherwise) the destination
+   * disk without violating the corresponding limit, or a negative value if the destination disk already violates that limit.
+   */
+  private double destinationDiskAllowance(double sourceUtilizationDelta, Disk destinationDisk) {
+    double balanceUpperThreshold = _balanceUpperThresholdByBroker.get(destinationDisk.broker());
+    double balanceLowerThreshold = _balanceLowerThresholdByBroker.get(destinationDisk.broker());
+    return sourceUtilizationDelta > 0 ? destinationDisk.utilization() - destinationDisk.capacity() * balanceLowerThreshold
+                                      : destinationDisk.capacity() * balanceUpperThreshold - destinationDisk.utilization();
+  }
+
+  private boolean isChangeViolatingLimit(double sourceUtilizationDelta, Disk sourceDisk, Disk destinationDisk) {
+    double sourceDiskAllowance = sourceDiskAllowance(sourceUtilizationDelta, sourceDisk);
+    double destinationDiskAllowance = destinationDiskAllowance(sourceUtilizationDelta, destinationDisk);
+    return (sourceDiskAllowance >= 0 && sourceDiskAllowance < abs(sourceUtilizationDelta))
+           || (destinationDiskAllowance >= 0 && destinationDiskAllowance < abs(sourceUtilizationDelta));
+  }
+
+  private boolean areBothDisksWithinLimit(double sourceUtilizationDelta, Disk sourceDisk, Disk destinationDisk) {
+    return sourceDiskAllowance(sourceUtilizationDelta, sourceDisk) >= 0
+           && destinationDiskAllowance(sourceUtilizationDelta, destinationDisk) >= 0;
   }
 
   private boolean isGettingMoreBalanced(Disk sourceDisk, Disk destinationDisk, double sourceUtilizationDelta) {
