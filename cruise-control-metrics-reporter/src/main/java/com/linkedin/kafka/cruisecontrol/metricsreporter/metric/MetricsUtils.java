@@ -6,7 +6,6 @@ package com.linkedin.kafka.cruisecontrol.metricsreporter.metric;
 
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -67,7 +66,7 @@ public final class MetricsUtils {
              TOTAL_PRODUCE_REQUEST_PER_SEC, MESSAGES_IN_PER_SEC);
     private static final Set<String> INTERESTED_LOG_METRIC_NAMES = Set.of(SIZE, LOG_FLUSH_RATE_AND_TIME_MS);
 
-  private static final Set<String> INTERESTED_SERVER_METRIC_NAMES = Collections.singleton(REQUEST_HANDLER_AVG_IDLE_PERCENT);
+  private static final Set<String> INTERESTED_SERVER_METRIC_NAMES = Set.of(REQUEST_HANDLER_AVG_IDLE_PERCENT);
 
   // Request type set
   private static final Set<String> INTERESTED_REQUEST_TYPE =
@@ -177,221 +176,174 @@ public final class MetricsUtils {
                                                            double value,
                                                            String attribute) {
     String topic = tags.get(TOPIC_KEY);
-    switch (name) {
-      case BYTES_IN_PER_SEC:
-        if (topic != null) {
-          return new TopicMetric(RawMetricType.TOPIC_BYTES_IN, nowMs, brokerId, topic, value);
-        } else {
-          return new BrokerMetric(RawMetricType.ALL_TOPIC_BYTES_IN, nowMs, brokerId, value);
-        }
-      case BYTES_OUT_PER_SEC:
-        if (topic != null) {
-          return new TopicMetric(RawMetricType.TOPIC_BYTES_OUT, nowMs, brokerId, topic, value);
-        } else {
-          return new BrokerMetric(RawMetricType.ALL_TOPIC_BYTES_OUT, nowMs, brokerId, value);
-        }
-      case REPLICATION_BYTES_IN_PER_SEC:
-        if (topic != null) {
-          return new TopicMetric(RawMetricType.TOPIC_REPLICATION_BYTES_IN, nowMs, brokerId, topic, value);
-        } else {
-          return new BrokerMetric(RawMetricType.ALL_TOPIC_REPLICATION_BYTES_IN, nowMs, brokerId, value);
-        }
-      case REPLICATION_BYTES_OUT_PER_SEC:
-        if (topic != null) {
-          return new TopicMetric(RawMetricType.TOPIC_REPLICATION_BYTES_OUT, nowMs, brokerId, topic, value);
-        } else {
-          return new BrokerMetric(RawMetricType.ALL_TOPIC_REPLICATION_BYTES_OUT, nowMs, brokerId, value);
-        }
-      case TOTAL_FETCH_REQUEST_PER_SEC:
-        if (topic != null) {
-          return new TopicMetric(RawMetricType.TOPIC_FETCH_REQUEST_RATE, nowMs, brokerId, topic, value);
-        } else {
-          return new BrokerMetric(RawMetricType.ALL_TOPIC_FETCH_REQUEST_RATE, nowMs, brokerId, value);
-        }
-      case TOTAL_PRODUCE_REQUEST_PER_SEC:
-        if (topic != null) {
-          return new TopicMetric(RawMetricType.TOPIC_PRODUCE_REQUEST_RATE, nowMs, brokerId, topic, value);
-        } else {
-          return new BrokerMetric(RawMetricType.ALL_TOPIC_PRODUCE_REQUEST_RATE, nowMs, brokerId, value);
-        }
-      case MESSAGES_IN_PER_SEC:
-        if (topic != null) {
-          return new TopicMetric(RawMetricType.TOPIC_MESSAGES_IN_PER_SEC, nowMs, brokerId, topic, value);
-        } else {
-          return new BrokerMetric(RawMetricType.ALL_TOPIC_MESSAGES_IN_PER_SEC, nowMs, brokerId, value);
-        }
-      case REQUESTS_PER_SEC:
-        switch (tags.get(REQUEST_TYPE_KEY)) {
-          case PRODUCE_REQUEST_TYPE:
-            return new BrokerMetric(RawMetricType.BROKER_PRODUCE_REQUEST_RATE, nowMs, brokerId, value);
-          case CONSUMER_FETCH_REQUEST_TYPE:
-            return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_REQUEST_RATE, nowMs, brokerId, value);
-          case FOLLOWER_FETCH_REQUEST_TYPE:
-            return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_REQUEST_RATE, nowMs, brokerId, value);
-          default:
-            return null;
-        }
-      case REQUEST_QUEUE_SIZE:
-        return new BrokerMetric(RawMetricType.BROKER_REQUEST_QUEUE_SIZE, nowMs, brokerId, value);
-      case RESPONSE_QUEUE_SIZE:
-        return new BrokerMetric(RawMetricType.BROKER_RESPONSE_QUEUE_SIZE, nowMs, brokerId, value);
-      case REQUEST_QUEUE_TIME_MS:
-        switch (tags.get(REQUEST_TYPE_KEY)) {
-          case PRODUCE_REQUEST_TYPE:
-            switch (attribute) {
-              case ATTRIBUTE_MAX:
-                return new BrokerMetric(RawMetricType.BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_MAX, nowMs, brokerId, value);
-              case ATTRIBUTE_MEAN:
-                return new BrokerMetric(RawMetricType.BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_MEAN, nowMs, brokerId, value);
-              case ATTRIBUTE_50TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_50TH, nowMs, brokerId, value);
-              case ATTRIBUTE_999TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_999TH, nowMs, brokerId, value);
-              default:
-                return null;
-            }
-          case CONSUMER_FETCH_REQUEST_TYPE:
-            switch (attribute) {
-              case ATTRIBUTE_MAX:
-                return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_MAX, nowMs, brokerId, value);
-              case ATTRIBUTE_MEAN:
-                return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_MEAN, nowMs, brokerId, value);
-              case ATTRIBUTE_50TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_50TH, nowMs, brokerId, value);
-              case ATTRIBUTE_999TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_999TH, nowMs, brokerId, value);
-              default:
-                return null;
-            }
-          case FOLLOWER_FETCH_REQUEST_TYPE:
-            switch (attribute) {
-              case ATTRIBUTE_MAX:
-                return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_MAX, nowMs, brokerId, value);
-              case ATTRIBUTE_MEAN:
-                return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_MEAN, nowMs, brokerId, value);
-              case ATTRIBUTE_50TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_50TH, nowMs, brokerId, value);
-              case ATTRIBUTE_999TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_999TH, nowMs, brokerId, value);
-              default:
-                return null;
-            }
-          default:
-            return null;
-        }
-      case LOCAL_TIME_MS:
-        switch (tags.get(REQUEST_TYPE_KEY)) {
-          case PRODUCE_REQUEST_TYPE:
-            switch (attribute) {
-              case ATTRIBUTE_MAX:
-                return new BrokerMetric(RawMetricType.BROKER_PRODUCE_LOCAL_TIME_MS_MAX, nowMs, brokerId, value);
-              case ATTRIBUTE_MEAN:
-                return new BrokerMetric(RawMetricType.BROKER_PRODUCE_LOCAL_TIME_MS_MEAN, nowMs, brokerId, value);
-              case ATTRIBUTE_50TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_PRODUCE_LOCAL_TIME_MS_50TH, nowMs, brokerId, value);
-              case ATTRIBUTE_999TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_PRODUCE_LOCAL_TIME_MS_999TH, nowMs, brokerId, value);
-              default:
-                return null;
-            }
-          case CONSUMER_FETCH_REQUEST_TYPE:
-            switch (attribute) {
-              case ATTRIBUTE_MAX:
-                return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_MAX, nowMs, brokerId, value);
-              case ATTRIBUTE_MEAN:
-                return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_MEAN, nowMs, brokerId, value);
-              case ATTRIBUTE_50TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_50TH, nowMs, brokerId, value);
-              case ATTRIBUTE_999TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_999TH, nowMs, brokerId, value);
-              default:
-                return null;
-            }
-          case FOLLOWER_FETCH_REQUEST_TYPE:
-            switch (attribute) {
-              case ATTRIBUTE_MAX:
-                return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_MAX, nowMs, brokerId, value);
-              case ATTRIBUTE_MEAN:
-                return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_MEAN, nowMs, brokerId, value);
-              case ATTRIBUTE_50TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_50TH, nowMs, brokerId, value);
-              case ATTRIBUTE_999TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_999TH, nowMs, brokerId, value);
-              default:
-                return null;
-            }
-          default:
-            return null;
-        }
-      case TOTAL_TIME_MS:
-        switch (tags.get(REQUEST_TYPE_KEY)) {
-          case PRODUCE_REQUEST_TYPE:
-            switch (attribute) {
-              case ATTRIBUTE_MAX:
-                return new BrokerMetric(RawMetricType.BROKER_PRODUCE_TOTAL_TIME_MS_MAX, nowMs, brokerId, value);
-              case ATTRIBUTE_MEAN:
-                return new BrokerMetric(RawMetricType.BROKER_PRODUCE_TOTAL_TIME_MS_MEAN, nowMs, brokerId, value);
-              case ATTRIBUTE_50TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_PRODUCE_TOTAL_TIME_MS_50TH, nowMs, brokerId, value);
-              case ATTRIBUTE_999TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_PRODUCE_TOTAL_TIME_MS_999TH, nowMs, brokerId, value);
-              default:
-                return null;
-            }
-          case CONSUMER_FETCH_REQUEST_TYPE:
-            switch (attribute) {
-              case ATTRIBUTE_MAX:
-                return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_MAX, nowMs, brokerId, value);
-              case ATTRIBUTE_MEAN:
-                return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_MEAN, nowMs, brokerId, value);
-              case ATTRIBUTE_50TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_50TH, nowMs, brokerId, value);
-              case ATTRIBUTE_999TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_999TH, nowMs, brokerId, value);
-              default:
-                return null;
-            }
-          case FOLLOWER_FETCH_REQUEST_TYPE:
-            switch (attribute) {
-              case ATTRIBUTE_MAX:
-                return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_MAX, nowMs, brokerId, value);
-              case ATTRIBUTE_MEAN:
-                return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_MEAN, nowMs, brokerId, value);
-              case ATTRIBUTE_50TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_50TH, nowMs, brokerId, value);
-              case ATTRIBUTE_999TH_PERCENTILE:
-                return new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_999TH, nowMs, brokerId, value);
-              default:
-                return null;
-            }
-          default:
-            return null;
-        }
-      case SIZE:
+    return switch (name) {
+      case BYTES_IN_PER_SEC -> topic != null
+          ? new TopicMetric(RawMetricType.TOPIC_BYTES_IN, nowMs, brokerId, topic, value)
+          : new BrokerMetric(RawMetricType.ALL_TOPIC_BYTES_IN, nowMs, brokerId, value);
+      case BYTES_OUT_PER_SEC -> topic != null
+          ? new TopicMetric(RawMetricType.TOPIC_BYTES_OUT, nowMs, brokerId, topic, value)
+          : new BrokerMetric(RawMetricType.ALL_TOPIC_BYTES_OUT, nowMs, brokerId, value);
+      case REPLICATION_BYTES_IN_PER_SEC -> topic != null
+          ? new TopicMetric(RawMetricType.TOPIC_REPLICATION_BYTES_IN, nowMs, brokerId, topic, value)
+          : new BrokerMetric(RawMetricType.ALL_TOPIC_REPLICATION_BYTES_IN, nowMs, brokerId, value);
+      case REPLICATION_BYTES_OUT_PER_SEC -> topic != null
+          ? new TopicMetric(RawMetricType.TOPIC_REPLICATION_BYTES_OUT, nowMs, brokerId, topic, value)
+          : new BrokerMetric(RawMetricType.ALL_TOPIC_REPLICATION_BYTES_OUT, nowMs, brokerId, value);
+      case TOTAL_FETCH_REQUEST_PER_SEC -> topic != null
+          ? new TopicMetric(RawMetricType.TOPIC_FETCH_REQUEST_RATE, nowMs, brokerId, topic, value)
+          : new BrokerMetric(RawMetricType.ALL_TOPIC_FETCH_REQUEST_RATE, nowMs, brokerId, value);
+      case TOTAL_PRODUCE_REQUEST_PER_SEC -> topic != null
+          ? new TopicMetric(RawMetricType.TOPIC_PRODUCE_REQUEST_RATE, nowMs, brokerId, topic, value)
+          : new BrokerMetric(RawMetricType.ALL_TOPIC_PRODUCE_REQUEST_RATE, nowMs, brokerId, value);
+      case MESSAGES_IN_PER_SEC -> topic != null
+          ? new TopicMetric(RawMetricType.TOPIC_MESSAGES_IN_PER_SEC, nowMs, brokerId, topic, value)
+          : new BrokerMetric(RawMetricType.ALL_TOPIC_MESSAGES_IN_PER_SEC, nowMs, brokerId, value);
+      case REQUESTS_PER_SEC -> switch (tags.get(REQUEST_TYPE_KEY)) {
+        case PRODUCE_REQUEST_TYPE ->
+                new BrokerMetric(RawMetricType.BROKER_PRODUCE_REQUEST_RATE, nowMs, brokerId, value);
+        case CONSUMER_FETCH_REQUEST_TYPE ->
+                new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_REQUEST_RATE, nowMs, brokerId, value);
+        case FOLLOWER_FETCH_REQUEST_TYPE ->
+                new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_REQUEST_RATE, nowMs, brokerId, value);
+        default -> null;
+      };
+      case REQUEST_QUEUE_SIZE ->
+          new BrokerMetric(RawMetricType.BROKER_REQUEST_QUEUE_SIZE, nowMs, brokerId, value);
+      case RESPONSE_QUEUE_SIZE ->
+          new BrokerMetric(RawMetricType.BROKER_RESPONSE_QUEUE_SIZE, nowMs, brokerId, value);
+      case REQUEST_QUEUE_TIME_MS -> switch (tags.get(REQUEST_TYPE_KEY)) {
+        case PRODUCE_REQUEST_TYPE -> switch (attribute) {
+          case ATTRIBUTE_MAX ->
+                  new BrokerMetric(RawMetricType.BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_MAX, nowMs, brokerId, value);
+          case ATTRIBUTE_MEAN ->
+                  new BrokerMetric(RawMetricType.BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_MEAN, nowMs, brokerId, value);
+          case ATTRIBUTE_50TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_50TH, nowMs, brokerId, value);
+          case ATTRIBUTE_999TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_999TH, nowMs, brokerId, value);
+          default -> null;
+        };
+        case CONSUMER_FETCH_REQUEST_TYPE -> switch (attribute) {
+          case ATTRIBUTE_MAX ->
+                  new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_MAX, nowMs, brokerId, value);
+          case ATTRIBUTE_MEAN ->
+                  new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_MEAN, nowMs, brokerId, value);
+          case ATTRIBUTE_50TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_50TH, nowMs, brokerId, value);
+          case ATTRIBUTE_999TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_999TH, nowMs, brokerId, value);
+          default -> null;
+        };
+        case FOLLOWER_FETCH_REQUEST_TYPE -> switch (attribute) {
+          case ATTRIBUTE_MAX ->
+                  new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_MAX, nowMs, brokerId, value);
+          case ATTRIBUTE_MEAN ->
+                  new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_MEAN, nowMs, brokerId, value);
+          case ATTRIBUTE_50TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_50TH, nowMs, brokerId, value);
+          case ATTRIBUTE_999TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_999TH, nowMs, brokerId, value);
+          default -> null;
+        };
+        default -> null;
+      };
+      case LOCAL_TIME_MS -> switch (tags.get(REQUEST_TYPE_KEY)) {
+        case PRODUCE_REQUEST_TYPE -> switch (attribute) {
+          case ATTRIBUTE_MAX ->
+                  new BrokerMetric(RawMetricType.BROKER_PRODUCE_LOCAL_TIME_MS_MAX, nowMs, brokerId, value);
+          case ATTRIBUTE_MEAN ->
+                  new BrokerMetric(RawMetricType.BROKER_PRODUCE_LOCAL_TIME_MS_MEAN, nowMs, brokerId, value);
+          case ATTRIBUTE_50TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_PRODUCE_LOCAL_TIME_MS_50TH, nowMs, brokerId, value);
+          case ATTRIBUTE_999TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_PRODUCE_LOCAL_TIME_MS_999TH, nowMs, brokerId, value);
+          default -> null;
+        };
+        case CONSUMER_FETCH_REQUEST_TYPE -> switch (attribute) {
+          case ATTRIBUTE_MAX ->
+                  new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_MAX, nowMs, brokerId, value);
+          case ATTRIBUTE_MEAN ->
+                  new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_MEAN, nowMs, brokerId, value);
+          case ATTRIBUTE_50TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_50TH, nowMs, brokerId, value);
+          case ATTRIBUTE_999TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_999TH, nowMs, brokerId, value);
+          default -> null;
+        };
+        case FOLLOWER_FETCH_REQUEST_TYPE -> switch (attribute) {
+          case ATTRIBUTE_MAX ->
+                  new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_MAX, nowMs, brokerId, value);
+          case ATTRIBUTE_MEAN ->
+                  new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_MEAN, nowMs, brokerId, value);
+          case ATTRIBUTE_50TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_50TH, nowMs, brokerId, value);
+          case ATTRIBUTE_999TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_999TH, nowMs, brokerId, value);
+          default -> null;
+        };
+        default -> null;
+      };
+      case TOTAL_TIME_MS -> switch (tags.get(REQUEST_TYPE_KEY)) {
+        case PRODUCE_REQUEST_TYPE -> switch (attribute) {
+          case ATTRIBUTE_MAX ->
+                  new BrokerMetric(RawMetricType.BROKER_PRODUCE_TOTAL_TIME_MS_MAX, nowMs, brokerId, value);
+          case ATTRIBUTE_MEAN ->
+                  new BrokerMetric(RawMetricType.BROKER_PRODUCE_TOTAL_TIME_MS_MEAN, nowMs, brokerId, value);
+          case ATTRIBUTE_50TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_PRODUCE_TOTAL_TIME_MS_50TH, nowMs, brokerId, value);
+          case ATTRIBUTE_999TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_PRODUCE_TOTAL_TIME_MS_999TH, nowMs, brokerId, value);
+          default -> null;
+        };
+        case CONSUMER_FETCH_REQUEST_TYPE -> switch (attribute) {
+          case ATTRIBUTE_MAX ->
+                  new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_MAX, nowMs, brokerId, value);
+          case ATTRIBUTE_MEAN ->
+                  new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_MEAN, nowMs, brokerId, value);
+          case ATTRIBUTE_50TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_50TH, nowMs, brokerId, value);
+          case ATTRIBUTE_999TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_999TH, nowMs, brokerId, value);
+          default -> null;
+        };
+        case FOLLOWER_FETCH_REQUEST_TYPE -> switch (attribute) {
+          case ATTRIBUTE_MAX ->
+                  new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_MAX, nowMs, brokerId, value);
+          case ATTRIBUTE_MEAN ->
+                  new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_MEAN, nowMs, brokerId, value);
+          case ATTRIBUTE_50TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_50TH, nowMs, brokerId, value);
+          case ATTRIBUTE_999TH_PERCENTILE ->
+                  new BrokerMetric(RawMetricType.BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_999TH, nowMs, brokerId, value);
+          default -> null;
+        };
+        default -> null;
+      };
+      case SIZE -> {
         int partition = Integer.parseInt(tags.get(PARTITION_KEY));
-        return new PartitionMetric(RawMetricType.PARTITION_SIZE, nowMs, brokerId, topic, partition, value);
-      case LOG_FLUSH_RATE_AND_TIME_MS:
+        yield new PartitionMetric(RawMetricType.PARTITION_SIZE, nowMs, brokerId, topic, partition, value);
+      }
+      case LOG_FLUSH_RATE_AND_TIME_MS -> {
         if (attribute == null) {
-          return new BrokerMetric(RawMetricType.BROKER_LOG_FLUSH_RATE, nowMs, brokerId, value);
+          yield new BrokerMetric(RawMetricType.BROKER_LOG_FLUSH_RATE, nowMs, brokerId, value);
         } else {
-          switch (attribute) {
-            case ATTRIBUTE_MAX:
-              return new BrokerMetric(RawMetricType.BROKER_LOG_FLUSH_TIME_MS_MAX, nowMs, brokerId, value);
-            case ATTRIBUTE_MEAN:
-              return new BrokerMetric(RawMetricType.BROKER_LOG_FLUSH_TIME_MS_MEAN, nowMs, brokerId, value);
-            case ATTRIBUTE_50TH_PERCENTILE:
-              return new BrokerMetric(RawMetricType.BROKER_LOG_FLUSH_TIME_MS_50TH, nowMs, brokerId, value);
-            case ATTRIBUTE_999TH_PERCENTILE:
-              return new BrokerMetric(RawMetricType.BROKER_LOG_FLUSH_TIME_MS_999TH, nowMs, brokerId, value);
-            default:
-              return null;
-          }
+          yield switch (attribute) {
+            case ATTRIBUTE_MAX ->
+                    new BrokerMetric(RawMetricType.BROKER_LOG_FLUSH_TIME_MS_MAX, nowMs, brokerId, value);
+            case ATTRIBUTE_MEAN ->
+                    new BrokerMetric(RawMetricType.BROKER_LOG_FLUSH_TIME_MS_MEAN, nowMs, brokerId, value);
+            case ATTRIBUTE_50TH_PERCENTILE ->
+                    new BrokerMetric(RawMetricType.BROKER_LOG_FLUSH_TIME_MS_50TH, nowMs, brokerId, value);
+            case ATTRIBUTE_999TH_PERCENTILE ->
+                    new BrokerMetric(RawMetricType.BROKER_LOG_FLUSH_TIME_MS_999TH, nowMs, brokerId, value);
+            default -> null;
+          };
         }
-      case REQUEST_HANDLER_AVG_IDLE_PERCENT:
-        return new BrokerMetric(RawMetricType.BROKER_REQUEST_HANDLER_AVG_IDLE_PERCENT, nowMs, brokerId, value);
-      default:
-        return null;
-    }
+      }
+      case REQUEST_HANDLER_AVG_IDLE_PERCENT ->
+          new BrokerMetric(RawMetricType.BROKER_REQUEST_HANDLER_AVG_IDLE_PERCENT, nowMs, brokerId, value);
+      default -> null;
+    };
   }
 
   /**
@@ -478,7 +430,7 @@ public final class MetricsUtils {
       }
       return tags;
     } else {
-      return Collections.emptyMap();
+      return Map.of();
     }
   }
 }

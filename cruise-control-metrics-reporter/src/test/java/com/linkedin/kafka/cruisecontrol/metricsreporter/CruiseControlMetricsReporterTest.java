@@ -23,9 +23,6 @@ import com.linkedin.kafka.cruisecontrol.metricsreporter.metric.MetricSerde;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCContainerizedKraftCluster;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCKafkaClientsIntegrationTestHarness;
 import java.time.Duration;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -40,11 +37,9 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.After;
 import org.junit.Before;
@@ -87,12 +82,9 @@ public class CruiseControlMetricsReporterTest extends CCKafkaClientsIntegrationT
     AtomicInteger failed = new AtomicInteger(0);
     try (Producer<String, String> producer = createProducer(props)) {
       for (int i = 0; i < 10; i++) {
-        producer.send(new ProducerRecord<>("TestTopic", Integer.toString(i)), new Callback() {
-          @Override
-          public void onCompletion(RecordMetadata recordMetadata, Exception e) {
-            if (e != null) {
-              failed.incrementAndGet();
-            }
+        producer.send(new ProducerRecord<>("TestTopic", Integer.toString(i)), (recordMetadata, e) -> {
+          if (e != null) {
+            failed.incrementAndGet();
           }
         });
       }
@@ -144,69 +136,69 @@ public class CruiseControlMetricsReporterTest extends CCKafkaClientsIntegrationT
     setSecurityConfigs(props, "consumer");
     Consumer<String, CruiseControlMetric> consumer = new KafkaConsumer<>(props);
 
-    consumer.subscribe(Collections.singleton(TOPIC));
+    consumer.subscribe(Set.of(TOPIC));
     long startMs = System.currentTimeMillis();
-    HashSet<Integer> expectedMetricTypes = new HashSet<>(Arrays.asList((int) ALL_TOPIC_BYTES_IN.id(),
-                                                                       (int) ALL_TOPIC_BYTES_OUT.id(),
-                                                                       (int) TOPIC_BYTES_IN.id(),
-                                                                       (int) TOPIC_BYTES_OUT.id(),
-                                                                       (int) PARTITION_SIZE.id(),
-                                                                       (int) BROKER_CPU_UTIL.id(),
-                                                                       (int) ALL_TOPIC_REPLICATION_BYTES_IN.id(),
-                                                                       (int) ALL_TOPIC_REPLICATION_BYTES_OUT.id(),
-                                                                       (int) ALL_TOPIC_PRODUCE_REQUEST_RATE.id(),
-                                                                       (int) ALL_TOPIC_FETCH_REQUEST_RATE.id(),
-                                                                       (int) ALL_TOPIC_MESSAGES_IN_PER_SEC.id(),
-                                                                       (int) TOPIC_PRODUCE_REQUEST_RATE.id(),
-                                                                       (int) TOPIC_FETCH_REQUEST_RATE.id(),
-                                                                       (int) TOPIC_MESSAGES_IN_PER_SEC.id(),
-                                                                       (int) BROKER_PRODUCE_REQUEST_RATE.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_REQUEST_RATE.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_REQUEST_RATE.id(),
-                                                                       (int) BROKER_REQUEST_HANDLER_AVG_IDLE_PERCENT.id(),
-                                                                       (int) BROKER_REQUEST_QUEUE_SIZE.id(),
-                                                                       (int) BROKER_RESPONSE_QUEUE_SIZE.id(),
-                                                                       (int) BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_MAX.id(),
-                                                                       (int) BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_MEAN.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_MAX.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_MEAN.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_MAX.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_MEAN.id(),
-                                                                       (int) BROKER_PRODUCE_TOTAL_TIME_MS_MAX.id(),
-                                                                       (int) BROKER_PRODUCE_TOTAL_TIME_MS_MEAN.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_MAX.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_MEAN.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_MAX.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_MEAN.id(),
-                                                                       (int) BROKER_PRODUCE_LOCAL_TIME_MS_MAX.id(),
-                                                                       (int) BROKER_PRODUCE_LOCAL_TIME_MS_MEAN.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_MAX.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_MEAN.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_MAX.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_MEAN.id(),
-                                                                       (int) BROKER_LOG_FLUSH_RATE.id(),
-                                                                       (int) BROKER_LOG_FLUSH_TIME_MS_MAX.id(),
-                                                                       (int) BROKER_LOG_FLUSH_TIME_MS_MEAN.id(),
-                                                                       (int) BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_50TH.id(),
-                                                                       (int) BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_999TH.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_50TH.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_999TH.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_50TH.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_999TH.id(),
-                                                                       (int) BROKER_PRODUCE_TOTAL_TIME_MS_50TH.id(),
-                                                                       (int) BROKER_PRODUCE_TOTAL_TIME_MS_999TH.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_50TH.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_999TH.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_50TH.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_999TH.id(),
-                                                                       (int) BROKER_PRODUCE_LOCAL_TIME_MS_50TH.id(),
-                                                                       (int) BROKER_PRODUCE_LOCAL_TIME_MS_999TH.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_50TH.id(),
-                                                                       (int) BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_999TH.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_50TH.id(),
-                                                                       (int) BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_999TH.id(),
-                                                                       (int) BROKER_LOG_FLUSH_TIME_MS_50TH.id(),
-                                                                       (int) BROKER_LOG_FLUSH_TIME_MS_999TH.id()));
+    Set<Integer> expectedMetricTypes = Set.of((int) ALL_TOPIC_BYTES_IN.id(),
+                                              (int) ALL_TOPIC_BYTES_OUT.id(),
+                                              (int) TOPIC_BYTES_IN.id(),
+                                              (int) TOPIC_BYTES_OUT.id(),
+                                              (int) PARTITION_SIZE.id(),
+                                              (int) BROKER_CPU_UTIL.id(),
+                                              (int) ALL_TOPIC_REPLICATION_BYTES_IN.id(),
+                                              (int) ALL_TOPIC_REPLICATION_BYTES_OUT.id(),
+                                              (int) ALL_TOPIC_PRODUCE_REQUEST_RATE.id(),
+                                              (int) ALL_TOPIC_FETCH_REQUEST_RATE.id(),
+                                              (int) ALL_TOPIC_MESSAGES_IN_PER_SEC.id(),
+                                              (int) TOPIC_PRODUCE_REQUEST_RATE.id(),
+                                              (int) TOPIC_FETCH_REQUEST_RATE.id(),
+                                              (int) TOPIC_MESSAGES_IN_PER_SEC.id(),
+                                              (int) BROKER_PRODUCE_REQUEST_RATE.id(),
+                                              (int) BROKER_CONSUMER_FETCH_REQUEST_RATE.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_REQUEST_RATE.id(),
+                                              (int) BROKER_REQUEST_HANDLER_AVG_IDLE_PERCENT.id(),
+                                              (int) BROKER_REQUEST_QUEUE_SIZE.id(),
+                                              (int) BROKER_RESPONSE_QUEUE_SIZE.id(),
+                                              (int) BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_MAX.id(),
+                                              (int) BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_MEAN.id(),
+                                              (int) BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_MAX.id(),
+                                              (int) BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_MEAN.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_MAX.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_MEAN.id(),
+                                              (int) BROKER_PRODUCE_TOTAL_TIME_MS_MAX.id(),
+                                              (int) BROKER_PRODUCE_TOTAL_TIME_MS_MEAN.id(),
+                                              (int) BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_MAX.id(),
+                                              (int) BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_MEAN.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_MAX.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_MEAN.id(),
+                                              (int) BROKER_PRODUCE_LOCAL_TIME_MS_MAX.id(),
+                                              (int) BROKER_PRODUCE_LOCAL_TIME_MS_MEAN.id(),
+                                              (int) BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_MAX.id(),
+                                              (int) BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_MEAN.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_MAX.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_MEAN.id(),
+                                              (int) BROKER_LOG_FLUSH_RATE.id(),
+                                              (int) BROKER_LOG_FLUSH_TIME_MS_MAX.id(),
+                                              (int) BROKER_LOG_FLUSH_TIME_MS_MEAN.id(),
+                                              (int) BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_50TH.id(),
+                                              (int) BROKER_PRODUCE_REQUEST_QUEUE_TIME_MS_999TH.id(),
+                                              (int) BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_50TH.id(),
+                                              (int) BROKER_CONSUMER_FETCH_REQUEST_QUEUE_TIME_MS_999TH.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_50TH.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_REQUEST_QUEUE_TIME_MS_999TH.id(),
+                                              (int) BROKER_PRODUCE_TOTAL_TIME_MS_50TH.id(),
+                                              (int) BROKER_PRODUCE_TOTAL_TIME_MS_999TH.id(),
+                                              (int) BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_50TH.id(),
+                                              (int) BROKER_CONSUMER_FETCH_TOTAL_TIME_MS_999TH.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_50TH.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_TOTAL_TIME_MS_999TH.id(),
+                                              (int) BROKER_PRODUCE_LOCAL_TIME_MS_50TH.id(),
+                                              (int) BROKER_PRODUCE_LOCAL_TIME_MS_999TH.id(),
+                                              (int) BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_50TH.id(),
+                                              (int) BROKER_CONSUMER_FETCH_LOCAL_TIME_MS_999TH.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_50TH.id(),
+                                              (int) BROKER_FOLLOWER_FETCH_LOCAL_TIME_MS_999TH.id(),
+                                              (int) BROKER_LOG_FLUSH_TIME_MS_50TH.id(),
+                                              (int) BROKER_LOG_FLUSH_TIME_MS_999TH.id());
     Set<Integer> metricTypes = new HashSet<>();
     ConsumerRecords<String, CruiseControlMetric> records;
     while (metricTypes.size() < expectedMetricTypes.size() && System.currentTimeMillis() < startMs + 15000) {
@@ -253,7 +245,7 @@ public class CruiseControlMetricsReporterTest extends CCKafkaClientsIntegrationT
   public void testGetKafkaBootstrapServersConfigure() {
     // Test with a "listeners" config with a host
     Map<Object, Object> brokerConfig = buildBrokerConfigs().get(0);
-    Map<String, Object> listenersMap = Collections.singletonMap("listeners", brokerConfig.get("listeners"));
+    Map<String, Object> listenersMap = Map.of("listeners", brokerConfig.get("listeners"));
     String bootstrapServers = CruiseControlMetricsReporter.getBootstrapServers(listenersMap);
     String urlParse = "\\[?([0-9a-zA-Z\\-%._:]*)]?:(-?[0-9]+)";
     Pattern urlParsePattern = Pattern.compile(urlParse);
@@ -262,23 +254,23 @@ public class CruiseControlMetricsReporterTest extends CCKafkaClientsIntegrationT
 
     // Test with a "listeners" config without a host in the first listener.
     String listeners = "SSL://:1234,PLAINTEXT://myhost:4321";
-    listenersMap = Collections.singletonMap("listeners", listeners);
+    listenersMap = Map.of("listeners", listeners);
     bootstrapServers = CruiseControlMetricsReporter.getBootstrapServers(listenersMap);
     assertTrue(urlParsePattern.matcher(bootstrapServers).matches());
     assertEquals(DEFAULT_BOOTSTRAP_SERVERS_HOST, bootstrapServers.split(":")[0]);
     assertEquals("1234", bootstrapServers.split(":")[1]);
 
     // Test with "listeners" and "port" config together.
-    listenersMap = new HashMap<>();
-    listenersMap.put("listeners", listeners);
-    listenersMap.put("port", "43");
+    listenersMap = Map.of(
+      "listeners", listeners,
+      "port", "43");
     bootstrapServers = CruiseControlMetricsReporter.getBootstrapServers(listenersMap);
     assertTrue(urlParsePattern.matcher(bootstrapServers).matches());
     assertEquals(DEFAULT_BOOTSTRAP_SERVERS_HOST, bootstrapServers.split(":")[0]);
     assertEquals("43", bootstrapServers.split(":")[1]);
 
     // Test with null "listeners" and "port" config.
-    bootstrapServers = CruiseControlMetricsReporter.getBootstrapServers(Collections.emptyMap());
+    bootstrapServers = CruiseControlMetricsReporter.getBootstrapServers(Map.of());
     assertTrue(urlParsePattern.matcher(bootstrapServers).matches());
     assertEquals(DEFAULT_BOOTSTRAP_SERVERS_HOST, bootstrapServers.split(":")[0]);
     assertEquals(DEFAULT_BOOTSTRAP_SERVERS_PORT, bootstrapServers.split(":")[1]);

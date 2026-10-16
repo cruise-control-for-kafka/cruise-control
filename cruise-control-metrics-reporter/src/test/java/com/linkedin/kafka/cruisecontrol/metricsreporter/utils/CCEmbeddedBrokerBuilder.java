@@ -118,14 +118,9 @@ public class CCEmbeddedBrokerBuilder {
    */
   public CCEmbeddedBrokerBuilder enable(SecurityProtocol protocol) {
     switch (protocol) {
-      case PLAINTEXT:
-        enablePlaintext();
-        break;
-      case SSL:
-        enableSsl();
-        break;
-      default:
-        throw new IllegalStateException("unhandled: " + protocol);
+      case PLAINTEXT -> enablePlaintext();
+      case SSL -> enableSsl();
+      default -> throw new IllegalStateException("unhandled: " + protocol);
     }
     return this;
   }
@@ -160,7 +155,7 @@ public class CCEmbeddedBrokerBuilder {
   }
 
   /**
-   * Enable SSL by settin ssl port to 0.
+   * Enable SSL by setting ssl port to 0.
    * @return This.
    */
   public CCEmbeddedBrokerBuilder enableSsl() {

@@ -192,7 +192,7 @@ public class CCContainerizedKraftCluster implements Startable {
 
           return kafkaContainer;
         })
-        .collect(Collectors.toList());
+        .toList();
   }
 
   private String getControllerQuorumVoters(int numOfBrokers) {
@@ -205,13 +205,13 @@ public class CCContainerizedKraftCluster implements Startable {
   private List<Integer> getContainerHostPorts(int numOfBrokers) {
     return IntStream.range(0, numOfBrokers)
       .mapToObj(i -> CCKafkaTestUtils.findLocalPort())
-      .collect(Collectors.toList());
+      .toList();
   }
 
   private List<String> generateServerAddressList(int numOfBrokers, List<Integer> containerHostPorts) {
     return IntStream.range(0, numOfBrokers)
       .mapToObj(i -> String.format("%s:%s", CONTAINER_HOST, containerHostPorts.get(i)))
-      .collect(Collectors.toList());
+      .toList();
   }
 
   private void copyCertToContainer(KafkaContainer container, Map<Object, Object> config, String key) {
@@ -272,16 +272,16 @@ public class CCContainerizedKraftCluster implements Startable {
       Object rawValue = entry.getValue();
       String value;
 
-      if (rawValue instanceof Collection) {
-        value = String.join(",", ((Collection<?>) rawValue).stream()
+      if (rawValue instanceof Collection<?> col) {
+        value = String.join(",", col.stream()
           .map(Object::toString)
           .toArray(String[]::new));
-      } else if (rawValue instanceof String[]) {
-        value = String.join(",", (String[]) rawValue);
-      } else if (rawValue instanceof Password) {
-        value = ((Password) rawValue).value();
-      } else if (rawValue instanceof String) {
-        value = (String) rawValue;
+      } else if (rawValue instanceof String[] arr) {
+        value = String.join(",", arr);
+      } else if (rawValue instanceof Password pass) {
+        value = pass.value();
+      } else if (rawValue instanceof String str) {
+        value = str;
       } else {
         value = String.valueOf(rawValue);
       }

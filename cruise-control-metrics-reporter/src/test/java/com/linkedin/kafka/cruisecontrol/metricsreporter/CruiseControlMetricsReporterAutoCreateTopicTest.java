@@ -20,8 +20,8 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import java.util.Collections;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporter.getTopicDescription;
@@ -47,16 +47,16 @@ public class CruiseControlMetricsReporterAutoCreateTopicTest extends CCKafkaClie
         // creating the "TestTopic" explicitly because the topic auto-creation is disabled on the broker
         Properties adminProps = new Properties();
         adminProps.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
-        AdminClient adminClient = AdminClient.create(adminProps);
-        NewTopic testTopic = new NewTopic(TEST_TOPIC, 1, (short) 1);
-        CreateTopicsResult createTopicsResult = adminClient.createTopics(Collections.singleton(testTopic));
-
         AtomicInteger adminFailed = new AtomicInteger(0);
-        createTopicsResult.all().whenComplete((v, e) -> {
-            if (e != null) {
-                adminFailed.incrementAndGet();
-            }
-        });
+        try (AdminClient adminClient = AdminClient.create(adminProps)) {
+            NewTopic testTopic = new NewTopic(TEST_TOPIC, 1, (short) 1);
+            CreateTopicsResult createTopicsResult = adminClient.createTopics(Set.of(testTopic));
+            createTopicsResult.all().whenComplete((v, e) -> {
+                if (e != null) {
+                    adminFailed.incrementAndGet();
+                }
+            });
+        }
         assertEquals(0, adminFailed.get());
 
         // starting producer to verify that Kafka cluster is working fine

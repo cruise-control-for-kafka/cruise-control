@@ -18,14 +18,11 @@ import org.apache.kafka.common.utils.Time;
 import org.apache.kafka.network.SocketServerConfigs;
 import org.apache.kafka.raft.KRaftConfigs;
 import org.apache.kafka.server.config.ServerLogConfigs;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCKafkaRaftServer.CLUSTER_ID_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.metricsreporter.utils.KafkaServerConfigs.METADATA_LOG_DIR_CONFIG;
 
 public class CCEmbeddedBroker implements AutoCloseable {
-  private static final Logger LOG = LoggerFactory.getLogger(CCEmbeddedBroker.class);
   private final Map<SecurityProtocol, Integer> _ports;
   private final Map<SecurityProtocol, String> _hosts;
   private final CCKafkaRaftServer _kafkaServer;

@@ -33,12 +33,10 @@ public class EnvConfigProviderTest {
       Objects.requireNonNull(getClass().getClassLoader().getResource(ENV_CONFIG_PROVIDER_TEST_PROPERTIES)).getPath());
 
     String actualClientId = configs.getString(PREFIX + CLIENT_ID_CONFIG);
-    String expectedClientId = CLIENT_ID;
-    assertEquals(expectedClientId, actualClientId);
+    assertEquals(CLIENT_ID, actualClientId);
 
     String actualTopic = configs.getString(CRUISE_CONTROL_METRICS_TOPIC_CONFIG);
-    String expectedTopic = NOT_SUBSTITUTED_CONFIG;
-    assertEquals(expectedTopic, actualTopic);
+    assertEquals(NOT_SUBSTITUTED_CONFIG, actualTopic);
   }
 
   @Test
