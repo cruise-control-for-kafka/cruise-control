@@ -202,9 +202,20 @@ public final class ExecutorConfig {
   public static final String PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_CONFIG = "partition.movement.progress.tracking.enabled";
   public static final boolean DEFAULT_PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED = true;
   public static final String PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_DOC = "Enable tracking the amount of data (in MB) that has "
-      + "already been moved by in-progress inter-broker and intra-broker partition movements. If enabled, at each execution progress "
-      + "check the executor sends a describeLogDirs request to the brokers involved in the in-progress partition movements, compares "
-      + "the size of the replicas being created with the size of their source replicas, and reports the result in the executor state.";
+      + "already been moved by in-progress inter-broker and intra-broker partition movements. If enabled, the executor periodically "
+      + "(see partition.movement.progress.check.interval.ms) sends a describeLogDirs request to the brokers involved in "
+      + "the in-progress partition movements, compares the size of the replicas being created with the size of their source "
+      + "replicas, and reports the result in the executor state.";
+
+  /**
+   * <code>partition.movement.progress.check.interval.ms</code>
+   */
+  public static final String PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS_CONFIG = "partition.movement.progress.check.interval.ms";
+  public static final long DEFAULT_PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
+  public static final String PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS_DOC = "The minimum interval in milliseconds between two "
+      + "checks of the amount of data moved by in-progress partition movements. Each check sends one describeLogDirs request to each "
+      + "broker involved in the in-progress partition movements. The check happens at the first execution progress check after this "
+      + "interval elapses; hence, 0 means checking at every execution progress check.";
 
   /**
    * <code>demotion.history.retention.time.ms</code>
@@ -620,6 +631,12 @@ public final class ExecutorConfig {
                             DEFAULT_PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED,
                             ConfigDef.Importance.LOW,
                             PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_DOC)
+                    .define(PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS_CONFIG,
+                            ConfigDef.Type.LONG,
+                            DEFAULT_PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS,
+                            atLeast(0),
+                            ConfigDef.Importance.LOW,
+                            PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS_DOC)
                     .define(DEMOTION_HISTORY_RETENTION_TIME_MS_CONFIG,
                             ConfigDef.Type.LONG,
                             DEFAULT_DEMOTION_HISTORY_RETENTION_TIME_MS,

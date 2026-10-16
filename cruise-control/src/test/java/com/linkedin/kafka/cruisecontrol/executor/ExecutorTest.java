@@ -370,6 +370,27 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
   }
 
   @Test
+  public void testPartitionMovementProgressCheckInterval() {
+    Properties props = getExecutorProperties();
+    props.setProperty(ExecutorConfig.PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS_CONFIG, "60000");
+    Executor executor = new Executor(new KafkaCruiseControlConfig(props), null, new MetricRegistry(), null,
+                                     EasyMock.mock(MetadataAdminClient.class), null, EasyMock.mock(AnomalyDetectorManager.class));
+    // The first check is due right away.
+    assertTrue(executor.isPartitionMovementProgressCheckDue(MOCK_CURRENT_TIME));
+    executor.setLastPartitionMovementProgressCheckMs(MOCK_CURRENT_TIME);
+    // Subsequent checks are due once per interval.
+    assertFalse(executor.isPartitionMovementProgressCheckDue(MOCK_CURRENT_TIME + 59999L));
+    assertTrue(executor.isPartitionMovementProgressCheckDue(MOCK_CURRENT_TIME + 60000L));
+
+    // Checks are never due if partition movement progress tracking is disabled.
+    props.setProperty(ExecutorConfig.PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_CONFIG, "false");
+    Executor executorWithoutTracking = new Executor(new KafkaCruiseControlConfig(props), null, new MetricRegistry(), null,
+                                                    EasyMock.mock(MetadataAdminClient.class), null,
+                                                    EasyMock.mock(AnomalyDetectorManager.class));
+    assertFalse(executorWithoutTracking.isPartitionMovementProgressCheckDue(MOCK_CURRENT_TIME));
+  }
+
+  @Test
   public void testSetExecutionProgressCheckIntervalMsWithRequestedValue() {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getExecutorProperties());
     Executor executor = new Executor(config, null, new MetricRegistry(), null, EasyMock.mock(MetadataAdminClient.class),

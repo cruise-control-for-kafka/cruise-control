@@ -167,7 +167,7 @@ public class ExecutorAdminUtilsTest {
     EasyMock.replay(describeLogDirsResult, adminClient);
 
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
-    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config);
+    assertTrue(ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config));
     EasyMock.verify(describeLogDirsResult, adminClient);
     assertEquals(140L * BYTES_IN_MB, task.movedDataInBytes());
     assertEquals(600L * BYTES_IN_MB, task.totalDataToMoveInBytes());
@@ -182,7 +182,7 @@ public class ExecutorAdminUtilsTest {
     EasyMock.expect(adminClient.describeLogDirs(EasyMock.anyObject())).andReturn(describeLogDirsResult);
     EasyMock.replay(describeLogDirsResult, adminClient);
 
-    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config);
+    assertTrue(ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(task), cluster(NODES.get(0)), adminClient, config));
     EasyMock.verify(describeLogDirsResult, adminClient);
     assertEquals(140L * BYTES_IN_MB, task.movedDataInBytes());
     assertEquals(600L * BYTES_IN_MB, task.totalDataToMoveInBytes());
@@ -193,7 +193,8 @@ public class ExecutorAdminUtilsTest {
     Admin adminClient = EasyMock.mock(Admin.class);
     EasyMock.replay(adminClient);
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
-    ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(interBrokerReplicaTask()), cluster(NODES.get(0)), adminClient, config);
+    assertFalse(ExecutorAdminUtils.updateDataMovementProgress(Collections.singleton(interBrokerReplicaTask()), cluster(NODES.get(0)),
+                                                              adminClient, config));
     // No describeLogDirs request is sent, since the only task is pending.
     EasyMock.verify(adminClient);
   }

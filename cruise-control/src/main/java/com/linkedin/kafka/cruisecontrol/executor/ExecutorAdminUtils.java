@@ -88,19 +88,23 @@ public final class ExecutorAdminUtils {
 
   /**
    * Update the data movement progress of the in-progress replica movement tasks among the given tasks, using the replica
-   * sizes reported by the brokers involved in these tasks via a describeLogDirs request. Tasks whose progress cannot be
-   * determined (e.g. a broker fails to respond in time) keep their last known progress.
+   * sizes reported by the brokers involved in these tasks. A single describeLogDirs request is sent to each such broker
+   * (i.e. the destination brokers and the current leader for inter-broker replica movements, and the broker whose replica
+   * is moving across disks for intra-broker replica movements), and the requests to different brokers are sent in parallel.
+   * Tasks whose progress cannot be determined (e.g. a broker fails to respond in time) keep their last known progress.
    *
    * @param tasks The tasks whose data movement progress will be updated -- tasks other than in-progress inter-broker or
    *              intra-broker replica movement tasks are ignored.
    * @param cluster The current cluster metadata.
    * @param adminClient The adminClient to send describeLogDirs request.
    * @param config The config object that holds all the Cruise Control related configs
+   * @return {@code true} if describeLogDirs requests have been sent, {@code false} if there is no in-progress replica
+   * movement task to check.
    */
-  static void updateDataMovementProgress(Collection<ExecutionTask> tasks,
-                                         Cluster cluster,
-                                         Admin adminClient,
-                                         KafkaCruiseControlConfig config) {
+  static boolean updateDataMovementProgress(Collection<ExecutionTask> tasks,
+                                            Cluster cluster,
+                                            Admin adminClient,
+                                            KafkaCruiseControlConfig config) {
     List<ExecutionTask> tasksToUpdate = tasks.stream().filter(ExecutorAdminUtils::shouldTrackDataMovementProgress).collect(Collectors.toList());
     Set<Integer> brokersToDescribe = new HashSet<>();
     for (ExecutionTask task : tasksToUpdate) {
@@ -115,7 +119,7 @@ public final class ExecutorAdminUtils {
       }
     }
     if (brokersToDescribe.isEmpty()) {
-      return;
+      return false;
     }
 
     Map<Integer, Map<String, LogDirDescription>> logDirsByBrokerId = new HashMap<>();
@@ -133,9 +137,10 @@ public final class ExecutorAdminUtils {
       }
     } catch (RuntimeException e) {
       LOG.warn("Failed to describe logdirs of brokers {} to track the progress of partition movements.", brokersToDescribe, e);
-      return;
+      return true;
     }
     updateDataMovementProgress(tasksToUpdate, cluster, logDirsByBrokerId);
+    return true;
   }
 
   /**

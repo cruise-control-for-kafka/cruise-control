@@ -143,6 +143,9 @@ public class Executor {
   private final long _minExecutionProgressCheckIntervalMs;
   private final long _slowTaskAlertingBackoffTimeMs;
   private final boolean _partitionMovementProgressTrackingEnabled;
+  private final long _partitionMovementProgressCheckIntervalMs;
+  // The last time the data movement progress of in-progress partition movements was checked, or -1 if never.
+  private long _lastPartitionMovementProgressCheckMs;
   private final KafkaCruiseControlConfig _config;
   private final AtomicDouble _partitionMovementCountPerSec;
   private final AtomicDouble _partitionMovementMbPerSec;
@@ -232,6 +235,8 @@ public class Executor {
     _minExecutionProgressCheckIntervalMs = config.getLong(ExecutorConfig.MIN_EXECUTION_PROGRESS_CHECK_INTERVAL_MS_CONFIG);
     _slowTaskAlertingBackoffTimeMs = config.getLong(ExecutorConfig.SLOW_TASK_ALERTING_BACKOFF_TIME_MS_CONFIG);
     _partitionMovementProgressTrackingEnabled = config.getBoolean(ExecutorConfig.PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_CONFIG);
+    _partitionMovementProgressCheckIntervalMs = config.getLong(ExecutorConfig.PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS_CONFIG);
+    _lastPartitionMovementProgressCheckMs = -1L;
     _concurrencyAdjusterEnabled = new ConcurrentHashMap<>(ConcurrencyType.cachedValues().size());
     _concurrencyAdjusterEnabled.put(ConcurrencyType.INTER_BROKER_REPLICA,
                                     config.getBoolean(ExecutorConfig.CONCURRENCY_ADJUSTER_INTER_BROKER_REPLICA_ENABLED_CONFIG));
@@ -276,6 +281,28 @@ public class Executor {
    */
   public Set<ExecutionTask> inExecutionTasks() {
     return _executionTaskManager.inExecutionTasks();
+  }
+
+  /**
+   * Package private for unit tests.
+   *
+   * @param nowMs Current time in milliseconds.
+   * @return {@code true} if partition movement progress tracking is enabled and the partition movement progress check
+   * interval has elapsed since the last check, {@code false} otherwise.
+   */
+  boolean isPartitionMovementProgressCheckDue(long nowMs) {
+    return _partitionMovementProgressTrackingEnabled
+           && (_lastPartitionMovementProgressCheckMs < 0L
+               || nowMs - _lastPartitionMovementProgressCheckMs >= _partitionMovementProgressCheckIntervalMs);
+  }
+
+  /**
+   * Package private for unit tests.
+   *
+   * @param lastCheckMs The time of the last partition movement progress check in milliseconds.
+   */
+  void setLastPartitionMovementProgressCheckMs(long lastCheckMs) {
+    _lastPartitionMovementProgressCheckMs = lastCheckMs;
   }
 
   /**
@@ -2086,13 +2113,15 @@ public class Executor {
     }
 
     /**
-     * Update the data movement progress of in-progress replica movement tasks if partition movement progress tracking is enabled.
+     * Update the data movement progress of in-progress replica movement tasks if partition movement progress tracking is
+     * enabled and the partition movement progress check interval has elapsed since the last check.
      *
      * @param cluster The current cluster metadata.
      */
     private void maybeUpdateDataMovementProgress(Cluster cluster) {
-      if (_partitionMovementProgressTrackingEnabled) {
-        updateDataMovementProgress(inExecutionTasks(), cluster, _adminClient, _config);
+      long nowMs = _time.milliseconds();
+      if (isPartitionMovementProgressCheckDue(nowMs) && updateDataMovementProgress(inExecutionTasks(), cluster, _adminClient, _config)) {
+        _lastPartitionMovementProgressCheckMs = nowMs;
       }
     }
 
