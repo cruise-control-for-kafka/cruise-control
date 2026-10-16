@@ -363,7 +363,7 @@ User can specify goals to use for rebalance via `goals` parameter. When `goals` 
 
 When rebalancing a cluster, all the brokers in the cluster(except recently removed/demoted brokers if `exclude_recently_removed_brokers`/`exclude_recently_demoted_brokers` set to `true`) are eligible to give / receive replicas. All the brokers will be throttled during the partition movement. The throttling can be set in two ways.
 
-* By throttling number of replica concurrently moving into a broker. It is gated by the request parameter `concurrent_partition_movements_per_broker` or config value `num.concurrent.partition.movements.per.broker` (if request parameter is not set), `concurrent_intra_partition_movements` or config value `num.concurrent.intra.broker.partition.movements`. Similarly, the number of concurrent partition leadership changes is gated by request parameter `concurrent_leader_movements` or config value `num.concurrent.leader.movements`.
+* By throttling number of replica concurrently moving into a broker. It is gated by the request parameter `concurrent_partition_movements_per_broker` or config value `num.concurrent.partition.movements.per.broker` (if request parameter is not set), `concurrent_intra_broker_partition_movements` or config value `num.concurrent.intra.broker.partition.movements`. Similarly, the number of concurrent partition leadership changes is gated by request parameter `concurrent_leader_movements` or config value `num.concurrent.leader.movements`.
 * By throttling the bandwidth used to move replicas into a broker. It is gated by the request parameter `replication_throttle` or config value `default.replication.throttle` (if request parameter is not set).
 
 #### Rebalance disks broker by broker
