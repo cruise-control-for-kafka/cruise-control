@@ -377,6 +377,12 @@ When `rebalance_disk=true`, Kafka Cruise Control balances the load between the d
 
       POST /kafkacruisecontrol/rebalance?rebalance_disk=true&rebalance_disk_broker_by_broker=true&dryrun=false
 
+Three things to know when limiting or serializing a disk rebalance:
+
+* **The goal status covers only the requested brokers.** When `destination_broker_ids` limits a disk rebalance, `IntraBrokerDiskUsageDistributionGoal` is reported as `FIXED` once the requested brokers are balanced, even if disks on other brokers are still unbalanced. The status is a single value for the whole request, so a per-broker answer requires one request per broker.
+* **A replica movement whose disk or broker fails mid-flight is counted as finished.** The progress report and the moved-data figure include tasks that ended in `DEAD`, so an execution that lost a replica movement can still report 100%. Check `deadIntraBrokerPartitionMovement` in `GET /kafkacruisecontrol/state?substates=executor&verbose=true` to see whether any movement failed. Note also that Kafka keeps the pending move in the future replica's log directory, so a movement that Cruise Control reports as dead may still be completed by the broker itself after it comes back.
+* **With `rebalance_disk_broker_by_broker=true`, a broker whose movements cannot complete holds up the brokers after it.** Replica movements are handed out for one broker at a time, so a movement that never finishes prevents the remaining brokers from starting. `POST /kafkacruisecontrol/stop_proposal_execution` cancels the execution.
+
 ### Add a list of new brokers to Kafka Cluster
 The following POST request adds the given brokers to the Kafka cluster
 
