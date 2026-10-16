@@ -9,7 +9,6 @@ import com.linkedin.kafka.cruisecontrol.analyzer.ActionAcceptance;
 import com.linkedin.kafka.cruisecontrol.analyzer.BalancingAction;
 import com.linkedin.kafka.cruisecontrol.analyzer.BalancingConstraint;
 import com.linkedin.kafka.cruisecontrol.analyzer.OptimizationOptions;
-import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModelStats;
@@ -56,7 +55,8 @@ import static java.lang.Math.abs;
  *   because reads may be served from the page cache.</li>
  * </ul>
  * Disks within the same broker are assumed to have the same I/O capability. The balance threshold is determined by
- * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#DISK_BALANCE_THRESHOLD_CONFIG}.
+ * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#INTRA_BROKER_DISK_IO_BALANCE_THRESHOLD_CONFIG}, which
+ * falls back to {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#DISK_BALANCE_THRESHOLD_CONFIG} if not set.
  */
 public class IntraBrokerDiskIORateDistributionGoal extends AbstractGoal {
   private static final Logger LOG = LoggerFactory.getLogger(IntraBrokerDiskIORateDistributionGoal.class);
@@ -96,7 +96,7 @@ public class IntraBrokerDiskIORateDistributionGoal extends AbstractGoal {
   /**
    * Initialize the disk I/O rate thresholds.
    * To avoid churns, we add a balance margin to the user specified rebalance threshold. e.g. when user sets the
-   * threshold to be resourceBalancePercentage, we use (resourceBalancePercentage-1)*balanceMargin instead.
+   * threshold to be intraBrokerDiskIOBalancePercentage, we use (intraBrokerDiskIOBalancePercentage-1)*balanceMargin instead.
    * @param clusterModel The state of the cluster.
    * @param optimizationOptions Options to take into account during optimization.
    */
@@ -107,7 +107,7 @@ public class IntraBrokerDiskIORateDistributionGoal extends AbstractGoal {
     _balanceLowerThresholdByBroker.clear();
     _averageDiskIORateByBroker.clear();
     _diskIORateByDisk.clear();
-    double balancePercentageWithMargin = (_balancingConstraint.resourceBalancePercentage(Resource.DISK) - 1) * BALANCE_MARGIN;
+    double balancePercentageWithMargin = (_balancingConstraint.intraBrokerDiskIOBalancePercentage() - 1) * BALANCE_MARGIN;
     for (Broker broker : brokersToBalance(clusterModel)) {
       double totalDiskIORate = 0;
       int numAliveDisks = 0;

@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.config.ConfigException;
 import org.junit.Test;
 
 import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils.getAggregatedMetricValues;
@@ -36,6 +37,7 @@ import static com.linkedin.kafka.cruisecontrol.common.TestConstants.LOGDIR0;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.LOGDIR1;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 /**
@@ -46,6 +48,8 @@ public class IntraBrokerDiskIORateDistributionGoalTest {
   private static final String LOGDIR2 = "/mnt/i02";
   private static final double LOGDIR_CAPACITY = TestConstants.LARGE_BROKER_CAPACITY / 2;
   private static final double DELTA = 1E-6;
+  private static final double STRICT_BALANCE_THRESHOLD = 1.02;
+  private static final double LOOSE_BALANCE_THRESHOLD = 1.5;
   private static final String HOT_TOPIC = "hot";
   private static final String COLD_TOPIC = "cold";
   private static final String WARM_TOPIC = "warm";
@@ -95,14 +99,15 @@ public class IntraBrokerDiskIORateDistributionGoalTest {
     // (2) Reads are discounted: followers are expected to move to the disk hosting the fan-out leader.
     double readWeight = 0.3;
     clusterModel = fanOutAndIngestCluster();
-    goal = new IntraBrokerDiskIORateDistributionGoal(balancingConstraint(readWeight));
+    BalancingConstraint constraint = balancingConstraint(readWeight);
+    goal = new IntraBrokerDiskIORateDistributionGoal(constraint);
     assertTrue(goal.optimize(clusterModel, Collections.emptySet(), OPTIMIZATION_OPTIONS));
 
     Broker broker = clusterModel.broker(0);
     long numMovedFollowers = broker.disk(LOGDIR1).replicas().stream().filter(r -> r.topicPartition().topic().equals(INGEST_TOPIC)).count();
     assertTrue("Expected some followers to move to " + LOGDIR1, numMovedFollowers > 0);
     double averageDiskIORate = (diskIORate(broker.disk(LOGDIR0), readWeight) + diskIORate(broker.disk(LOGDIR1), readWeight)) / 2;
-    double balancePercentage = AnalyzerConfig.DEFAULT_DISK_BALANCE_THRESHOLD;
+    double balancePercentage = constraint.intraBrokerDiskIOBalancePercentage();
     for (Disk disk : broker.disks()) {
       double rate = diskIORate(disk, readWeight);
       assertTrue(String.format("Disk %s I/O rate %f is out of balance (average: %f).", disk.logDir(), rate, averageDiskIORate),
@@ -195,6 +200,46 @@ public class IntraBrokerDiskIORateDistributionGoalTest {
     assertNumAttemptsIsBounded(goal, clusterModel);
   }
 
+  @Test
+  public void testDiskIOBalanceThresholdFallsBackToDiskBalanceThreshold() {
+    BalancingConstraint constraint = balancingConstraint(1.0, LOOSE_BALANCE_THRESHOLD, null);
+    assertEquals(LOOSE_BALANCE_THRESHOLD, constraint.intraBrokerDiskIOBalancePercentage(), 0.0);
+  }
+
+  @Test
+  public void testInvalidDiskIOBalanceThreshold() {
+    assertThrows(ConfigException.class, () -> balancingConstraint(1.0, LOOSE_BALANCE_THRESHOLD, 0.9));
+  }
+
+  /**
+   * A single broker with two disks with estimated disk I/O rates of 120 (replicas of 100, 10 and 10) and 100 (a single replica),
+   * i.e. both disks are about 9% away from the average disk I/O rate of 110. The goal is expected to decide whether to balance
+   * them based on {@link AnalyzerConfig#INTRA_BROKER_DISK_IO_BALANCE_THRESHOLD_CONFIG} rather than
+   * {@link AnalyzerConfig#DISK_BALANCE_THRESHOLD_CONFIG}.
+   */
+  @Test
+  public void testGoalUsesDiskIOBalanceThreshold() throws OptimizationFailureException {
+    Map<String, List<Double>> diskIORatesByLogdir = new TreeMap<>();
+    diskIORatesByLogdir.put(LOGDIR0, List.of(100.0, 10.0, 10.0));
+    diskIORatesByLogdir.put(LOGDIR1, List.of(100.0));
+
+    // (1) A strict disk balance threshold, but a loose disk I/O balance threshold: no action is expected.
+    ClusterModel clusterModel = createClusterModel(1, diskIORatesByLogdir);
+    Map<TopicPartition, String> initialLogdirs = logdirsByTopicPartition(clusterModel.broker(0));
+    IntraBrokerDiskIORateDistributionGoal goal =
+        new IntraBrokerDiskIORateDistributionGoal(balancingConstraint(1.0, STRICT_BALANCE_THRESHOLD, LOOSE_BALANCE_THRESHOLD));
+    assertTrue(goal.optimize(clusterModel, Collections.emptySet(), OPTIMIZATION_OPTIONS));
+    assertEquals(initialLogdirs, logdirsByTopicPartition(clusterModel.broker(0)));
+
+    // (2) A loose disk balance threshold, but a strict disk I/O balance threshold: a replica of 10 is expected to move.
+    clusterModel = createClusterModel(1, diskIORatesByLogdir);
+    goal = new IntraBrokerDiskIORateDistributionGoal(balancingConstraint(1.0, LOOSE_BALANCE_THRESHOLD, STRICT_BALANCE_THRESHOLD));
+    assertTrue(goal.optimize(clusterModel, Collections.emptySet(), OPTIMIZATION_OPTIONS));
+    Broker broker = clusterModel.broker(0);
+    assertEquals(110.0, diskIORate(broker.disk(LOGDIR0), 1.0), DELTA);
+    assertEquals(110.0, diskIORate(broker.disk(LOGDIR1), 1.0), DELTA);
+  }
+
   /**
    * Verify that the goal has not evaluated the same proposals over and over again. Each disk that is out of the balanced range
    * is expected to (1) try to move each of its replicas to each candidate disk, and (2) try to swap each pair of replicas with each
@@ -215,8 +260,16 @@ public class IntraBrokerDiskIORateDistributionGoalTest {
   }
 
   private static BalancingConstraint balancingConstraint(double readWeight) {
+    return balancingConstraint(readWeight, AnalyzerConfig.DEFAULT_DISK_BALANCE_THRESHOLD, null);
+  }
+
+  private static BalancingConstraint balancingConstraint(double readWeight, double diskBalanceThreshold, Double diskIOBalanceThreshold) {
     Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
     props.setProperty(AnalyzerConfig.INTRA_BROKER_DISK_IO_READ_WEIGHT_CONFIG, Double.toString(readWeight));
+    props.setProperty(AnalyzerConfig.DISK_BALANCE_THRESHOLD_CONFIG, Double.toString(diskBalanceThreshold));
+    if (diskIOBalanceThreshold != null) {
+      props.setProperty(AnalyzerConfig.INTRA_BROKER_DISK_IO_BALANCE_THRESHOLD_CONFIG, Double.toString(diskIOBalanceThreshold));
+    }
     return new BalancingConstraint(new KafkaCruiseControlConfig(props));
   }
 

@@ -26,6 +26,7 @@ public class BalancingConstraint {
   private final double _replicaBalancePercentage;
   private final double _leaderReplicaBalancePercentage;
   private final double _diskIOReadWeight;
+  private double _intraBrokerDiskIOBalancePercentage;
   private final double _topicReplicaBalancePercentage;
   private final int _topicReplicaBalanceMinGap;
   private final int _topicReplicaBalanceMaxGap;
@@ -77,6 +78,10 @@ public class BalancingConstraint {
     _replicaBalancePercentage = config.getDouble(AnalyzerConfig.REPLICA_COUNT_BALANCE_THRESHOLD_CONFIG);
     _leaderReplicaBalancePercentage = config.getDouble(AnalyzerConfig.LEADER_REPLICA_COUNT_BALANCE_THRESHOLD_CONFIG);
     _diskIOReadWeight = config.getDouble(AnalyzerConfig.INTRA_BROKER_DISK_IO_READ_WEIGHT_CONFIG);
+    // Set intra-broker disk I/O balance percentage -- if not explicitly configured, fall back to the disk balance percentage.
+    Double intraBrokerDiskIOBalancePercentage = config.getDouble(AnalyzerConfig.INTRA_BROKER_DISK_IO_BALANCE_THRESHOLD_CONFIG);
+    _intraBrokerDiskIOBalancePercentage = intraBrokerDiskIOBalancePercentage == null ? _resourceBalancePercentage.get(Resource.DISK)
+                                                                                     : intraBrokerDiskIOBalancePercentage;
     _topicReplicaBalancePercentage = config.getDouble(AnalyzerConfig.TOPIC_REPLICA_COUNT_BALANCE_THRESHOLD_CONFIG);
     _topicReplicaBalanceMinGap = config.getInt(AnalyzerConfig.TOPIC_REPLICA_COUNT_BALANCE_MIN_GAP_CONFIG);
     _topicReplicaBalanceMaxGap = config.getInt(AnalyzerConfig.TOPIC_REPLICA_COUNT_BALANCE_MAX_GAP_CONFIG);
@@ -122,6 +127,7 @@ public class BalancingConstraint {
     props.put(AnalyzerConfig.REPLICA_COUNT_BALANCE_THRESHOLD_CONFIG, Double.toString(_replicaBalancePercentage));
     props.put(AnalyzerConfig.LEADER_REPLICA_COUNT_BALANCE_THRESHOLD_CONFIG, Double.toString(_leaderReplicaBalancePercentage));
     props.put(AnalyzerConfig.INTRA_BROKER_DISK_IO_READ_WEIGHT_CONFIG, Double.toString(_diskIOReadWeight));
+    props.put(AnalyzerConfig.INTRA_BROKER_DISK_IO_BALANCE_THRESHOLD_CONFIG, Double.toString(_intraBrokerDiskIOBalancePercentage));
     props.put(AnalyzerConfig.TOPIC_REPLICA_COUNT_BALANCE_THRESHOLD_CONFIG, Double.toString(_topicReplicaBalancePercentage));
     props.put(AnalyzerConfig.TOPIC_REPLICA_COUNT_BALANCE_MIN_GAP_CONFIG, Integer.toString(_topicReplicaBalanceMinGap));
     props.put(AnalyzerConfig.TOPIC_REPLICA_COUNT_BALANCE_MAX_GAP_CONFIG, Integer.toString(_topicReplicaBalanceMaxGap));
@@ -185,6 +191,14 @@ public class BalancingConstraint {
    */
   public double diskIOReadWeight() {
     return _diskIOReadWeight;
+  }
+
+  /**
+   * @return The balance percentage for the estimated disk I/O rate across the disks of the same broker for
+   * {@link com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskIORateDistributionGoal}.
+   */
+  public double intraBrokerDiskIOBalancePercentage() {
+    return _intraBrokerDiskIOBalancePercentage;
   }
 
   /**
@@ -307,6 +321,8 @@ public class BalancingConstraint {
     for (Resource resource : Resource.cachedValues()) {
       setBalancePercentageFor(resource, resourceBalancePercentage);
     }
+    // Also apply the (already validated) balance percentage to the disk I/O rate across the disks of the same broker.
+    _intraBrokerDiskIOBalancePercentage = resourceBalancePercentage;
   }
 
   /**
@@ -342,7 +358,8 @@ public class BalancingConstraint {
                          + "inboundNwBalancePercentage=%.4f,outboundNwBalancePercentage=%.4f,cpuCapacityThreshold=%.4f,"
                          + "diskCapacityThreshold=%.4f,inboundNwCapacityThreshold=%.4f,outboundNwCapacityThreshold=%.4f,"
                          + "maxReplicasPerBroker=%d,replicaBalancePercentage=%.4f,leaderReplicaBalancePercentage=%.4f,"
-                         + "diskIOReadWeight=%.4f,topicReplicaBalancePercentage=%.4f,topicReplicaBalanceGap=[%d,%d],"
+                         + "diskIOReadWeight=%.4f,intraBrokerDiskIOBalancePercentage=%.4f,"
+                         + "topicReplicaBalancePercentage=%.4f,topicReplicaBalanceGap=[%d,%d],"
                          + "goalViolationDistributionThresholdMultiplier=%.4f,"
                          + "topicsWithMinLeadersPerBrokerPattern=%s,"
                          + "minTopicLeadersPerBroker=%d,fastModePerBrokerMoveTimeoutMs=%d,"
@@ -353,6 +370,7 @@ public class BalancingConstraint {
                          _capacityThreshold.get(Resource.CPU), _capacityThreshold.get(Resource.DISK),
                          _capacityThreshold.get(Resource.NW_IN), _capacityThreshold.get(Resource.NW_OUT),
                          _maxReplicasPerBroker, _replicaBalancePercentage, _leaderReplicaBalancePercentage, _diskIOReadWeight,
+                         _intraBrokerDiskIOBalancePercentage,
                          _topicReplicaBalancePercentage, _topicReplicaBalanceMinGap, _topicReplicaBalanceMaxGap,
                          _goalViolationDistributionThresholdMultiplier, _topicsWithMinLeadersPerBrokerPattern.pattern(),
                          _minTopicLeadersPerBroker, _fastModePerBrokerMoveTimeoutMs, _brokerSetResolver.getClass().getName(),

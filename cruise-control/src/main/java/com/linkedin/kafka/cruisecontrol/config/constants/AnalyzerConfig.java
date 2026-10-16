@@ -110,6 +110,18 @@ public final class AnalyzerConfig {
       + "and 0.0 means only writes are considered.";
 
   /**
+   * <code>intra.broker.disk.io.balance.threshold</code>
+   */
+  public static final String INTRA_BROKER_DISK_IO_BALANCE_THRESHOLD_CONFIG = "intra.broker.disk.io.balance.threshold";
+  public static final Double DEFAULT_INTRA_BROKER_DISK_IO_BALANCE_THRESHOLD = null;
+  public static final String INTRA_BROKER_DISK_IO_BALANCE_THRESHOLD_DOC = "The maximum allowed extent of unbalance for the "
+      + "estimated disk I/O rate across the disks of the same broker, used by IntraBrokerDiskIORateDistributionGoal. For "
+      + "example, 1.20 means the highest estimated disk I/O rate of a disk should not be above 1.20x of the average estimated "
+      + "disk I/O rate of all the disks of its broker. If not set, the value of " + DISK_BALANCE_THRESHOLD_CONFIG + " is used. "
+      + "Since a single hot replica can account for a large share of the I/O rate of a disk, consider a looser value than "
+      + DISK_BALANCE_THRESHOLD_CONFIG + ".";
+
+  /**
    * <code>leader.replica.count.balance.threshold</code>
    */
   public static final String LEADER_REPLICA_COUNT_BALANCE_THRESHOLD_CONFIG = "leader.replica.count.balance.threshold";
@@ -526,6 +538,16 @@ public final class AnalyzerConfig {
                             atLeast(0),
                             ConfigDef.Importance.LOW,
                             INTRA_BROKER_DISK_IO_READ_WEIGHT_DOC)
+                    .define(INTRA_BROKER_DISK_IO_BALANCE_THRESHOLD_CONFIG,
+                            ConfigDef.Type.DOUBLE,
+                            DEFAULT_INTRA_BROKER_DISK_IO_BALANCE_THRESHOLD,
+                            ConfigDef.LambdaValidator.with((name, value) -> {
+                              if (value != null) {
+                                atLeast(1).ensureValid(name, value);
+                              }
+                            }, () -> "null or " + atLeast(1)),
+                            ConfigDef.Importance.LOW,
+                            INTRA_BROKER_DISK_IO_BALANCE_THRESHOLD_DOC)
                     .define(TOPIC_REPLICA_COUNT_BALANCE_THRESHOLD_CONFIG,
                             ConfigDef.Type.DOUBLE,
                             DEFAULT_TOPIC_REPLICA_COUNT_BALANCE_THRESHOLD,
