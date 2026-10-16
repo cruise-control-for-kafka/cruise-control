@@ -156,7 +156,8 @@ public class KafkaCruiseControlServletApp extends KafkaCruiseControlApp {
         }
         if (securityProvider != null) {
             securityProvider.init(_config);
-            ConstraintSecurityHandler securityHandler = new CruiseControlSecurityHandler();
+            ConstraintSecurityHandler securityHandler = new CruiseControlSecurityHandler(
+                _config.getString(WebServerConfig.WEBSERVER_API_URLPREFIX_CONFIG));
             securityHandler.setConstraintMappings(securityProvider.constraintMappings());
             securityHandler.setAuthenticator(securityProvider.authenticator());
             securityHandler.setLoginService(securityProvider.loginService());
