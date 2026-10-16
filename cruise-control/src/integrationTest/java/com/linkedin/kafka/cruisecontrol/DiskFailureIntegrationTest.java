@@ -27,7 +27,6 @@ import com.linkedin.kafka.cruisecontrol.detector.AnomalyState;
 import com.linkedin.kafka.cruisecontrol.detector.TopicReplicationFactorAnomalyFinder;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCKafkaTestUtils;
 import net.minidev.json.JSONArray;
-import org.apache.commons.io.FileUtils;
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -137,7 +136,7 @@ public class DiskFailureIntegrationTest extends CruiseControlIntegrationTestHarn
     waitForProposal();
     
     Entry<File, File> entry = _brokerLogDirs.get(BROKER_ID_TO_CAUSE_DISK_FAILURE);
-    FileUtils.deleteDirectory(entry.getKey());
+    CCKafkaTestUtils.deleteRecursively(entry.getKey());
     LOG.info("Disk failure injected");
     waitForOfflineReplicaDetection();
     waitForDiskFailureFixStarted();

@@ -11,7 +11,6 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import jakarta.servlet.http.HttpServletResponse;
-import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
 import org.apache.http.NameValuePair;
@@ -78,7 +77,7 @@ class PrometheusAdapter {
             int responseCode = response.getStatusLine().getStatusCode();
             HttpEntity entity = response.getEntity();
             InputStream content = entity.getContent();
-            String responseString = IOUtils.toString(content, StandardCharsets.UTF_8);
+            String responseString = new String(content.readAllBytes(), StandardCharsets.UTF_8);
             if (responseCode != HttpServletResponse.SC_OK) {
                 throw new IOException(String.format("Received non-success response code on Prometheus API HTTP call,"
                                                     + " response code = %d, response body = %s",

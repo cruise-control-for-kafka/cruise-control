@@ -27,8 +27,6 @@ import java.util.Set;
 import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.ANOMALY_DETECTION_TIME_MS_OBJECT_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.KAFKA_CRUISE_CONTROL_OBJECT_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.MAX_METADATA_WAIT_MS;
-import static org.apache.commons.io.FileUtils.readFileToString;
-import static org.apache.commons.io.FileUtils.writeStringToFile;
 
 /**
  * This class detects broker failures.
@@ -92,7 +90,7 @@ public abstract class AbstractBrokerFailureDetector extends AbstractAnomalyDetec
 
   private void persistFailedBrokerList() {
     try {
-      writeStringToFile(_failedBrokersFile, failedBrokerString(), StandardCharsets.UTF_8);
+      Files.writeString(_failedBrokersFile.toPath(), failedBrokerString(), StandardCharsets.UTF_8);
 
       Set<PosixFilePermission> perms = new HashSet<>();
       perms.add(PosixFilePermission.OWNER_READ);
@@ -118,7 +116,7 @@ public abstract class AbstractBrokerFailureDetector extends AbstractAnomalyDetec
   String loadPersistedFailedBrokerList() {
     String failedBrokerListString = null;
     try {
-      failedBrokerListString = readFileToString(_failedBrokersFile, StandardCharsets.UTF_8);
+      failedBrokerListString = Files.readString(_failedBrokersFile.toPath(), StandardCharsets.UTF_8);
     } catch (FileNotFoundException | NoSuchFileException fnfe) {
       // This means no previous failures have ever been persisted in the file.
       failedBrokerListString = "";

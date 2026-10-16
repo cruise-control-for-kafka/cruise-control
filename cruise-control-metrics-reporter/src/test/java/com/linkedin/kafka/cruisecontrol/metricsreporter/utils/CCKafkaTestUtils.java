@@ -8,13 +8,15 @@ import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Properties;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.commons.io.FileUtils;
+import java.util.stream.Stream;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -35,7 +37,7 @@ public final class CCKafkaTestUtils {
           continue;
         }
         try {
-          FileUtils.forceDelete(toCleanUp);
+          deleteRecursively(toCleanUp);
         } catch (IOException issue) {
           if (firstIssue == null) {
             firstIssue = issue;
@@ -183,6 +185,19 @@ public final class CCKafkaTestUtils {
       }
     }
     return port;
+  }
+
+  /**
+   * Recursively delete a file or directory.
+   * @param file the file or directory to delete
+   */
+  public static void deleteRecursively(File file) throws IOException {
+    if (!file.exists()) {
+      return;
+    }
+    try (Stream<Path> paths = Files.walk(file.toPath())) {
+      paths.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+    }
   }
 
   /**

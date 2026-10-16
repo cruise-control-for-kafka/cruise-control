@@ -4,7 +4,6 @@
 package com.linkedin.kafka.cruisecontrol.metricsreporter.utils;
 
 import kafka.server.KafkaConfig;
-import org.apache.commons.io.FileUtils;
 import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,7 +43,7 @@ public class CCEmbeddedKRaftController implements AutoCloseable {
     public void close() throws Exception {
         CCKafkaTestUtils.quietly(this::shutdown);
         CCKafkaTestUtils.quietly(this::awaitShutdown);
-        CCKafkaTestUtils.quietly(() -> FileUtils.forceDelete(_logDir));
+        CCKafkaTestUtils.quietly(() -> CCKafkaTestUtils.deleteRecursively(_logDir));
     }
 
     /**
