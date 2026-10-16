@@ -17,6 +17,7 @@ import com.linkedin.kafka.cruisecontrol.exception.KafkaCruiseControlException;
 import com.linkedin.kafka.cruisecontrol.exception.OptimizationFailureException;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutionProposal;
 import com.linkedin.kafka.cruisecontrol.executor.Executor;
+import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelGeneration;
 import org.apache.kafka.clients.admin.AdminClient;
@@ -37,10 +38,13 @@ import java.util.Set;
 
 import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils.getAggregatedMetricValues;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 @RunWith(Parameterized.class)
 public class RemoveDisksTest {
+    private static final double DELTA = 1e-6;
     private final Goal _goalToTest;
     private final ClusterModel _clusterModel;
     private final boolean _expectedToOptimize;
@@ -107,8 +111,24 @@ public class RemoveDisksTest {
 
     @Test
     public void testRemoveDisks() throws KafkaCruiseControlException {
-        // mark disk 0 of broker 0 for removal
-        _clusterModel.broker(0).disk(TestConstants.LOGDIR0).markDiskForRemoval();
+        Broker broker = _clusterModel.broker(0);
+        double removedDiskCapacity = broker.disk(TestConstants.LOGDIR0).capacity();
+        double brokerDiskCapacity = broker.capacityFor(Resource.DISK);
+        double hostDiskCapacity = broker.host().capacityFor(Resource.DISK);
+        double rackDiskCapacity = broker.rack().capacityFor(Resource.DISK);
+        double clusterDiskCapacity = _clusterModel.capacityFor(Resource.DISK);
+
+        // mark disk 0 of broker 0 for removal -- marking it again is a no-op.
+        _clusterModel.markDiskForRemoval(0, TestConstants.LOGDIR0);
+        _clusterModel.markDiskForRemoval(0, TestConstants.LOGDIR0);
+
+        // The capacity of the disk is dropped from the capacity of its broker, host, rack and cluster.
+        assertTrue(broker.disk(TestConstants.LOGDIR0).isMarkedForRemoval());
+        assertEquals(0.0, broker.disk(TestConstants.LOGDIR0).capacity(), DELTA);
+        assertEquals(brokerDiskCapacity - removedDiskCapacity, broker.capacityFor(Resource.DISK), DELTA);
+        assertEquals(hostDiskCapacity - removedDiskCapacity, broker.host().capacityFor(Resource.DISK), DELTA);
+        assertEquals(rackDiskCapacity - removedDiskCapacity, broker.rack().capacityFor(Resource.DISK), DELTA);
+        assertEquals(clusterDiskCapacity - removedDiskCapacity, _clusterModel.capacityFor(Resource.DISK), DELTA);
 
         List<Goal> goalsByPriority = Collections.singletonList(_goalToTest);
         _goalToTest.configure(_kafkaCruiseControlConfig.mergedConfigValues());
@@ -127,8 +147,13 @@ public class RemoveDisksTest {
             assertEquals(0, proposals.iterator().next().replicasToMoveBetweenDisksByBroker().get(0).brokerId().intValue());
             assertEquals(TestConstants.LOGDIR1, proposals.iterator().next().replicasToMoveBetweenDisksByBroker().get(0).logdir());
         } else {
-            assertThrows(OptimizationFailureException.class,
+            OptimizationFailureException e = assertThrows(OptimizationFailureException.class,
                     () -> goalOptimizer.optimizations(_clusterModel, goalsByPriority, new OperationProgress()));
+            // The replica does not fit on the remaining disk below the capacity limit: this is reported as such, rather than as a
+            // lack of capacity of the cluster.
+            assertTrue(e.getMessage(), e.getMessage().startsWith(String.format(
+                    "[IntraBrokerDiskCapacityGoal] Could not move all replicas from disk %s on broker 0 (1 replicas", TestConstants.LOGDIR0)));
+            assertNull(e.provisionRecommendation());
         }
     }
 }

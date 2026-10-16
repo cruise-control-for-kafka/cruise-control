@@ -162,7 +162,10 @@ public class OptimizationResult extends AbstractCruiseControlResponse {
       String goalName = entry.getKey();
       sb.append(String.format("%n%n[%6d ms] Stats for %s(%s):%n", _optimizerResult.optimizationDuration(goalName).toMillis(), goalName,
                               _optimizerResult.goalResultDescription(goalName)));
-      sb.append(entry.getValue().toString());
+      ClusterModelStats stats = entry.getValue();
+      // Intra-broker goals keep the load of each broker unchanged, hence only their disk-level stats are relevant.
+      boolean isDiskLevelOnly = _optimizerResult.isIntraBrokerGoal(goalName) && stats.diskBalanceStats() != null;
+      sb.append(isDiskLevelOnly ? stats.diskBalanceStats().toString() : stats.toString());
     }
   }
 

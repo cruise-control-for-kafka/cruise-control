@@ -56,6 +56,7 @@ public class PartitionLoadRunnable extends OperationRunnable {
                                   _parameters.partitionLowerBoundary(),
                                   _parameters.topic(),
                                   topicNameLength,
+                                  _parameters.populateDiskInfo(),
                                   _kafkaCruiseControl.config());
   }
 }

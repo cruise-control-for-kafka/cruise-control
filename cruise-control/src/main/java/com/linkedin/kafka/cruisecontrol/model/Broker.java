@@ -375,7 +375,7 @@ public class Broker implements Serializable, Comparable<Broker> {
    * @param logdir Logdir of the dead disk to be added to the current broker.
    * @return The dead disk that was added to this broker.
    */
-  Disk addDeadDisk(String logdir) {
+  public Disk addDeadDisk(String logdir) {
     Disk disk = new Disk(logdir, this, -1);
     _diskByLogdir.put(logdir, disk);
     return disk;
@@ -544,6 +544,25 @@ public class Broker implements Serializable, Comparable<Broker> {
   }
 
   /**
+   * Mark the disk for removal and drop its capacity from the broker capacity.
+   *
+   * @param logdir Log directory of the disk.
+   * @return Disk capacity dropped due to the disk removal.
+   */
+  double markDiskForRemoval(String logdir) {
+    Disk disk = _diskByLogdir.get(logdir);
+    if (disk == null) {
+      throw new IllegalArgumentException(String.format("Broker %d does not have disk %s.", _id, logdir));
+    }
+    // A disk already marked for removal has dropped its capacity. The capacity of a dead disk is not dropped here: remove_disks
+    // rejects dead disks, and ClusterModel#markDiskDead drops the capacity of a disk that dies.
+    double capacityToDrop = disk.isAlive() && !disk.isMarkedForRemoval() ? disk.capacity() : 0.0;
+    _brokerCapacity[Resource.DISK.id()] -= capacityToDrop;
+    disk.markDiskForRemoval();
+    return capacityToDrop;
+  }
+
+  /**
    * Clear the content of monitoring data at each replica in the broker.
    */
   void clearLoad() {
@@ -620,11 +639,24 @@ public class Broker implements Serializable, Comparable<Broker> {
    *         been created with a request to populate replica placement info, otherwise returns an empty map.
    */
   public Map<String, DiskStats> diskStats() {
+    return diskStats(Collections.emptyMap());
+  }
+
+  /**
+   * Get per-logdir disk statistics of the broker.
+   *
+   * @param potentialBytesOutRateByLogdir The NW_OUT rate of the replicas on each disk if all of them were leaders (see
+   *                                      {@link ClusterModel#potentialBytesOutRateByLogdir(int)}). A missing logdir is
+   *                                      reported with a potential NW_OUT rate of 0.
+   * @return The per-logdir disk statistics. This method is relevant only when the {@link ClusterModel} has
+   *         been created with a request to populate replica placement info, otherwise returns an empty map.
+   */
+  public Map<String, DiskStats> diskStats(Map<String, Double> potentialBytesOutRateByLogdir) {
     if (_diskByLogdir.isEmpty()) {
       return Collections.emptyMap();
     }
     Map<String, DiskStats> diskStatMap = new HashMap<>();
-    _diskByLogdir.forEach((k, v) -> diskStatMap.put(k, v.diskStats()));
+    _diskByLogdir.forEach((k, v) -> diskStatMap.put(k, v.diskStats(potentialBytesOutRateByLogdir.getOrDefault(k, 0.0))));
     return diskStatMap;
   }
 

@@ -23,7 +23,7 @@ RemoveDisksEndpoint:
         example: "Balance disk utilization across all brokers in the cluster."
       - name: brokerid_and_logdirs
         in: query
-        description: List of broker id and logdir pair to be demoted in the cluster.
+        description: List of broker id and logdir pairs of the disks to remove.
         schema:
           type: object
           additionalProperties:
@@ -32,12 +32,36 @@ RemoveDisksEndpoint:
               type: string
         required: true
         example: 101-/tmp/kafka-logs-1,101-/tmp/kafka-logs-2
+      - name: allow_capacity_estimation
+        in: query
+        description: Whether to allow capacity estimation when cruise-control is unable to obtain all per-broker capacity information.
+        schema:
+          type: boolean
+          default: true
+      - name: verbose
+        in: query
+        description: Whether to return the proposed replica movements (including the logdirs of the moved replicas) and the
+          load before the disk removal.
+        schema:
+          type: boolean
+          default: false
       - name: json
         in: query
         description: Whether to return in JSON format or not.
         schema:
           type: boolean
           default: false
+      - name: get_response_schema
+        in: query
+        description: Whether to return JSON schema in response header or not.
+        schema:
+          type: boolean
+          default: false
+      - name: doAs
+        in: query
+        description: The user specified by a trusted proxy in that authentication model.
+        schema:
+          type: string
     responses:
       '200':
         description: Successful removed disks response.

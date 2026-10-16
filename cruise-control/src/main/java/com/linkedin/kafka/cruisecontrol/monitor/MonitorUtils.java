@@ -15,6 +15,7 @@ import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.exception.BrokerCapacityResolutionException;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
+import com.linkedin.kafka.cruisecontrol.model.Disk;
 import com.linkedin.kafka.cruisecontrol.model.ModelUtils;
 import com.linkedin.kafka.cruisecontrol.monitor.metricdefinition.KafkaMetricDef;
 import java.util.Arrays;
@@ -342,14 +343,21 @@ public final class MonitorUtils {
    *   <li>Get the dead brokers and mark them as dead.</li>
    *   <li>Get the alive brokers with bad disks and mark them accordingly.</li>
    * </ul>
+   * A dead broker is in the cluster model only if the model has a replica on it -- e.g. the model of
+   * {@link LoadMonitor#clusterCapacity()} only has the alive brokers. Brokers that are not in the cluster model are skipped.
    *
    * @param clusterModel The cluster model to set the broker states.
    * @param cluster Kafka cluster.
    */
   static void setBadBrokerState(ClusterModel clusterModel, Cluster cluster) {
-    MonitorUtils.deadBrokersWithReplicas(cluster).forEach(brokerId -> clusterModel.setBrokerState(brokerId, Broker.State.DEAD));
+    for (Integer brokerId : MonitorUtils.deadBrokersWithReplicas(cluster)) {
+      if (clusterModel.broker(brokerId) != null) {
+        clusterModel.setBrokerState(brokerId, Broker.State.DEAD);
+      }
+    }
     for (Integer brokerId : MonitorUtils.brokersWithOfflineReplicas(cluster)) {
-      if (clusterModel.broker(brokerId).isAlive()) {
+      Broker broker = clusterModel.broker(brokerId);
+      if (broker != null && broker.isAlive()) {
         clusterModel.setBrokerState(brokerId, Broker.State.BAD_DISKS);
       }
     }
@@ -386,7 +394,15 @@ public final class MonitorUtils {
               }
             }
           } else {
-            clusterModel.broker(brokerId).disk(logdir).setState(DEAD);
+            Broker broker = clusterModel.broker(brokerId);
+            Disk disk = broker.disk(logdir);
+            if (disk == null) {
+              // The capacity of the failed logdir is not reported (e.g. the logdirs of the broker differ from the ones of the
+              // default capacity it is estimated with), so it is added as a dead disk.
+              broker.addDeadDisk(logdir);
+            } else {
+              disk.setState(DEAD);
+            }
           }
         });
       } catch (TimeoutException te) {
