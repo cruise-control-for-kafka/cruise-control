@@ -56,36 +56,52 @@ public final class AnalyzerConfig {
    */
   public static final String CPU_BALANCE_THRESHOLD_CONFIG = "cpu.balance.threshold";
   public static final double DEFAULT_CPU_BALANCE_THRESHOLD = 1.10;
-  public static final String CPU_BALANCE_THRESHOLD_DOC = "The maximum allowed extent of unbalance for CPU utilization. "
-      + "For example, 1.10 means the highest CPU usage of a broker should not be above 1.10x of average CPU utilization"
-      + " of all the brokers.";
+  public static final String CPU_BALANCE_THRESHOLD_DOC = "The maximum allowed extent of unbalance for CPU "
+      + "utilization. Utilization of a broker is measured as a percentage of its own CPU capacity. For example, "
+      + "1.10 means the CPU utilization percentage of a broker should be within 0.90x and 1.10x of the average CPU "
+      + "utilization percentage of the cluster (i.e. total CPU usage divided by total CPU capacity) -- hence, "
+      + "brokers with more capacity are expected to take proportionally more load. Note that a large value does "
+      + "not allow a fixed ratio between the loads of brokers; instead, it disables the balancing for CPU "
+      + "utilization.";
 
   /**
    * <code>disk.balance.threshold</code>
    */
   public static final String DISK_BALANCE_THRESHOLD_CONFIG = "disk.balance.threshold";
   public static final double DEFAULT_DISK_BALANCE_THRESHOLD = 1.10;
-  public static final String DISK_BALANCE_THRESHOLD_DOC = "The maximum allowed extent of unbalance for disk utilization. "
-      + "For example, 1.10 means the highest disk usage of a broker should not be above 1.10x of average disk utilization"
-      + " of all the brokers.";
+  public static final String DISK_BALANCE_THRESHOLD_DOC = "The maximum allowed extent of unbalance for disk "
+      + "utilization. Utilization of a broker is measured as a percentage of its own disk capacity. For example, "
+      + "1.10 means the disk utilization percentage of a broker should be within 0.90x and 1.10x of the average "
+      + "disk utilization percentage of the cluster (i.e. total disk usage divided by total disk capacity) -- "
+      + "hence, brokers with more capacity are expected to take proportionally more load. Note that a large value "
+      + "does not allow a fixed ratio between the loads of brokers; instead, it disables the balancing for disk "
+      + "utilization.";
 
   /**
    * <code>network.inbound.balance.threshold</code>
    */
   public static final String NETWORK_INBOUND_BALANCE_THRESHOLD_CONFIG = "network.inbound.balance.threshold";
   public static final double DEFAULT_NETWORK_INBOUND_BALANCE_THRESHOLD = 1.10;
-  public static final String NETWORK_INBOUND_BALANCE_THRESHOLD_DOC = "The maximum allowed extent of unbalance for network "
-      + "inbound usage. For example, 1.10 means the highest network inbound usage of a broker should not be above "
-      + "1.10x of average network inbound usage of all the brokers.";
+  public static final String NETWORK_INBOUND_BALANCE_THRESHOLD_DOC = "The maximum allowed extent of unbalance for "
+      + "network inbound utilization. Utilization of a broker is measured as a percentage of its own network "
+      + "inbound capacity. For example, 1.10 means the network inbound utilization percentage of a broker should "
+      + "be within 0.90x and 1.10x of the average network inbound utilization percentage of the cluster (i.e. "
+      + "total network inbound usage divided by total network inbound capacity) -- hence, brokers with more "
+      + "capacity are expected to take proportionally more load. Note that a large value does not allow a fixed "
+      + "ratio between the loads of brokers; instead, it disables the balancing for network inbound utilization.";
 
   /**
    * <code>network.outbound.balance.threshold</code>
    */
   public static final String NETWORK_OUTBOUND_BALANCE_THRESHOLD_CONFIG = "network.outbound.balance.threshold";
   public static final double DEFAULT_NETWORK_OUTBOUND_BALANCE_THRESHOLD = 1.10;
-  public static final String NETWORK_OUTBOUND_BALANCE_THRESHOLD_DOC = "The maximum allowed extent of unbalance for network "
-      + "outbound usage. For example, 1.10 means the highest network outbound usage of a broker should not be above "
-      + "1.10x of average network outbound usage of all the brokers.";
+  public static final String NETWORK_OUTBOUND_BALANCE_THRESHOLD_DOC = "The maximum allowed extent of unbalance for "
+      + "network outbound utilization. Utilization of a broker is measured as a percentage of its own network "
+      + "outbound capacity. For example, 1.10 means the network outbound utilization percentage of a broker should "
+      + "be within 0.90x and 1.10x of the average network outbound utilization percentage of the cluster (i.e. "
+      + "total network outbound usage divided by total network outbound capacity) -- hence, brokers with more "
+      + "capacity are expected to take proportionally more load. Note that a large value does not allow a fixed "
+      + "ratio between the loads of brokers; instead, it disables the balancing for network outbound utilization.";
 
   /**
    * <code>replica.count.balance.threshold</code>

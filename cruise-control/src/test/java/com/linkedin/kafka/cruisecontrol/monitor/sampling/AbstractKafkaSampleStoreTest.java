@@ -11,11 +11,6 @@ import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.Node;
 import org.easymock.EasyMock;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
-import org.powermock.reflect.Whitebox;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -31,9 +26,6 @@ import static org.junit.Assert.assertThrows;
 /**
  * Unit test for {@link AbstractKafkaSampleStore}
  */
-@RunWith(PowerMockRunner.class)
-@PowerMockIgnore("javax.management.*")
-@PrepareForTest(AbstractKafkaSampleStore.class)
 public class AbstractKafkaSampleStoreTest {
 
     @Test
@@ -42,7 +34,7 @@ public class AbstractKafkaSampleStoreTest {
         Map<String, ?> config = Collections.emptyMap();
         AdminClient adminClient = EasyMock.mock(AdminClient.class);
         AbstractKafkaSampleStore kafkaSampleStore = EasyMock.partialMockBuilder(AbstractKafkaSampleStore.class).createMock();
-        Whitebox.setInternalState(kafkaSampleStore, "_sampleStoreTopicReplicationFactor", expected);
+        kafkaSampleStore._sampleStoreTopicReplicationFactor = expected;
         EasyMock.replay(adminClient, kafkaSampleStore);
 
         short actual = kafkaSampleStore.sampleStoreTopicReplicationFactor(config, adminClient);
