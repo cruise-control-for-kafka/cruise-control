@@ -154,7 +154,8 @@ public class HeterogeneousCapacityBalanceTest {
    * A higher priority replica distribution goal that expects the same replica count on every broker prevents the usage
    * distribution goal from moving load off the small brokers: they stay at their capacity limit (0.5G) while the rest is
    * unevenly spread over the large brokers. Hence, in clusters with heterogeneous broker capacities, the replica count
-   * based distribution goals should be left out of the goal list if resource utilization is to be balanced by capacity.
+   * based distribution goals should be left out of the goal list, or given a lower priority than the usage distribution
+   * goals, if resource utilization is to be balanced by capacity.
    */
   @Test
   public void testReplicaDistributionGoalsBlockCapacityProportionalBalance() throws Exception {
@@ -165,6 +166,20 @@ public class HeterogeneousCapacityBalanceTest {
                                                    NetworkOutboundUsageDistributionGoal.class), false);
       assertFalse(message, isCapacityProportional(cluster, AnalyzerConfig.DEFAULT_NETWORK_OUTBOUND_BALANCE_THRESHOLD));
     }
+  }
+
+  /**
+   * Replica distribution goals with a lower priority than the usage distribution goal cannot undo the capacity-proportional
+   * balance, since their actions must be accepted by the already optimized goals. They report that they could not be
+   * satisfied, as an equal (leader) replica count is not compatible with a capacity-proportional load.
+   */
+  @Test
+  public void testReplicaDistributionGoalsBelowUsageGoalKeepCapacityProportionalBalance() throws Exception {
+    ClusterModel cluster = heterogeneousCluster();
+    String message = optimizeAndDescribe(cluster, new Properties(),
+                                         List.of(NetworkOutboundCapacityGoal.class, NetworkOutboundUsageDistributionGoal.class,
+                                                 ReplicaDistributionGoal.class, LeaderReplicaDistributionGoal.class), false);
+    assertTrue(message, isCapacityProportional(cluster, AnalyzerConfig.DEFAULT_NETWORK_OUTBOUND_BALANCE_THRESHOLD));
   }
 
   /**
