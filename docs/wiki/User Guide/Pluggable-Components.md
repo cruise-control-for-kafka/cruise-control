@@ -31,11 +31,11 @@ The goals in Kafka Cruise Control are pluggable with different priorities.
     * NetworkOutboundCapacityGoal
     * CpuCapacityGoal
 
-* **ReplicaDistributionGoal**: Attempt to make all the brokers in a cluster to have the similar number of replicas.
+* **ReplicaDistributionGoal**: Attempt to make all the brokers in a cluster to have the similar number of replicas. This goal does not take broker capacities into account. In clusters with heterogeneous broker capacities (e.g. brokers with 1G and 10G network), it may prevent the ResourceDistributionGoals from balancing the resource utilization in proportion to broker capacities; consider removing it from `goals` and `default.goals` in such clusters.
 
 * **PotentialNwOutGoal**: A goal that ensures the potential network output (when all the replicas becomes leaders) on each of the broker do not exceed the broker’s network outbound bandwidth capacity.
 
-* **ResourceDistributionGoals**: Attempt to make the resource utilization variance among all the brokers are within a certain range. This goal does not do anything if the cluster is in a low utilization mode (when all the resource utilization of each broker is below a configured percentage.) This is not a single goal, but consists of the following separate goals for each of the resources. 
+* **ResourceDistributionGoals**: Attempt to make the resource utilization variance among all the brokers are within a certain range. Utilization is measured as a percentage of each broker's own capacity, so brokers with more capacity are expected to take proportionally more load -- e.g. with 7G of outbound traffic on two brokers with 1G network and two brokers with 10G network, each broker is expected to be at ~32% of its capacity (i.e. ~0.32G and ~3.2G). The corresponding `*.balance.threshold` configs set the allowed deviation from this cluster-wide average utilization percentage -- not the ratio between the most and the least loaded brokers; hence, setting them to a large value disables balancing rather than allowing more load on brokers with more capacity. In clusters with heterogeneous broker capacities, higher priority goals that ignore broker capacities (e.g. ReplicaDistributionGoal) can prevent these goals from reaching a capacity-proportional distribution. This goal does not do anything if the cluster is in a low utilization mode (when all the resource utilization of each broker is below a configured percentage.) This is not a single goal, but consists of the following separate goals for each of the resources. 
     * DiskUtilDistributionGoal
     * NetworkInboundUtilDistributionGoal
     * NetworkOutboundUtilDistributionGoal
@@ -43,9 +43,9 @@ The goals in Kafka Cruise Control are pluggable with different priorities.
 
 * **TopicReplicaDistributionGoal**: Attempt to make the replicas of the same topic evenly distributed across the entire cluster.
 
-* **LeaderReplicaDistributionGoal**: Attempt to make all the brokers in a cluster to have the similar number of leader replicas.
+* **LeaderReplicaDistributionGoal**: Attempt to make all the brokers in a cluster to have the similar number of leader replicas. This goal does not take broker capacities into account. In clusters with heterogeneous broker capacities (e.g. brokers with 1G and 10G network), it may prevent the ResourceDistributionGoals from balancing the resource utilization in proportion to broker capacities; consider removing it from `goals` and `default.goals` in such clusters.
 
-* **LeaderBytesInDistributionGoal**: Attempt to make the leader bytes in rate on each host to be balanced.
+* **LeaderBytesInDistributionGoal**: Attempt to make the leader bytes in rate on each host to be balanced. This goal does not take broker capacities into account.
 
 * **PreferredLeaderElectionGoal**: Attempt to make the first replica in replica list leader replica of the partition for all topic partition.
 
