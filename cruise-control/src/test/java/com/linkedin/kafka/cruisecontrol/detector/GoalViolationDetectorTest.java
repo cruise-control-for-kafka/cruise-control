@@ -119,6 +119,33 @@ public class GoalViolationDetectorTest {
   }
 
   @Test
+  public void testIntraBrokerGoalViolationDetectionUsesThresholdMultiplier() throws Exception {
+    // The disks of broker 0 are within the disk balance threshold multiplied by the goal violation distribution threshold multiplier.
+    DetectorFixture fixture = new DetectorFixture(Map.of(AnalyzerConfig.GOAL_VIOLATION_DISTRIBUTION_THRESHOLD_MULTIPLIER_CONFIG, "2.0"));
+    fixture.expectHasBrokerWithMultipleLogDirs(true);
+    fixture.expectClusterModelWithReplicaPlacementInfo();
+    GoalViolationDetector detector = fixture.replayAndDetect();
+
+    assertTrue(fixture._anomalies.isEmpty());
+    assertEquals(MAX_BALANCEDNESS_SCORE, detector.balancednessScore(), DELTA);
+    // Intra-broker goal violations have been checked.
+    assertEquals(2, fixture._semaphore.numAcquired());
+  }
+
+  @Test
+  public void testIntraBrokerGoalViolationDetectionWithLowDiskUtilization() throws Exception {
+    // The average disk utilization of each broker is below the low utilization threshold, so balancing its disks is not worthwhile.
+    DetectorFixture fixture = new DetectorFixture(Map.of(AnalyzerConfig.DISK_LOW_UTILIZATION_THRESHOLD_CONFIG, "0.5"));
+    fixture.expectHasBrokerWithMultipleLogDirs(true);
+    fixture.expectClusterModelWithReplicaPlacementInfo();
+    GoalViolationDetector detector = fixture.replayAndDetect();
+
+    assertTrue(fixture._anomalies.isEmpty());
+    assertEquals(MAX_BALANCEDNESS_SCORE, detector.balancednessScore(), DELTA);
+    assertEquals(2, fixture._semaphore.numAcquired());
+  }
+
+  @Test
   public void testSkipIntraBrokerGoalViolationDetectionWithoutJbod() throws Exception {
     DetectorFixture fixture = new DetectorFixture(REPLICA_CAPACITY_VIOLATION_CONFIGS);
     // The strict mock fails the test upon generating a cluster model with replica placement info.
@@ -288,6 +315,8 @@ public class GoalViolationDetectorTest {
 
     DetectorFixture(Map<String, String> configOverrides) throws Exception {
       Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
+      // Unless overridden, detect the violations of distribution goals at the same threshold as a manual rebalance.
+      props.setProperty(AnalyzerConfig.GOAL_VIOLATION_DISTRIBUTION_THRESHOLD_MULTIPLIER_CONFIG, "1.0");
       props.putAll(configOverrides);
       _config = new KafkaCruiseControlConfig(props);
       _kafkaCruiseControl = EasyMock.mock(KafkaCruiseControl.class);
