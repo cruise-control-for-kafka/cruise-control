@@ -1065,15 +1065,13 @@ public class Executor {
                newThrottleRate);
       return false;
     }
-    // Make upcoming inter-broker replica movement tasks of the ongoing execution pick up the new throttle rate.
-    throttleHelper.setThrottleRate(newThrottleRate);
-    // Apply the new throttle rate to the brokers participating in the in-progress inter-broker replica movements.
-    List<ExecutionProposal> inProgressProposals = inExecutionTasks().stream()
-        .filter(task -> task.state() == ExecutionTaskState.IN_PROGRESS && task.type() == INTER_BROKER_REPLICA_ACTION)
-        .map(ExecutionTask::proposal)
-        .collect(Collectors.toList());
+    // Make upcoming inter-broker replica movement tasks of the ongoing execution pick up the new throttle rate, and apply it
+    // to the brokers participating in the in-progress inter-broker replica movements.
     try {
-      throttleHelper.setThrottles(inProgressProposals);
+      throttleHelper.updateThrottleRate(newThrottleRate, () -> inExecutionTasks().stream()
+          .filter(task -> task.state() == ExecutionTaskState.IN_PROGRESS && task.type() == INTER_BROKER_REPLICA_ACTION)
+          .map(ExecutionTask::proposal)
+          .collect(Collectors.toList()));
     } catch (ExecutionException | InterruptedException | TimeoutException e) {
       throw new IllegalStateException(String.format("Failed to apply the updated replication throttle [%d bytes/sec]"
                                                     + " to the in-progress inter-broker replica movements.", newThrottleRate), e);
@@ -1781,9 +1779,13 @@ public class Executor {
 
           AlterPartitionReassignmentsResult result = null;
           if (!tasksToExecute.isEmpty()) {
-            throttleHelper.setThrottles(tasksToExecute.stream().map(ExecutionTask::proposal).collect(Collectors.toList()));
-            // Execute the tasks.
-            _executionTaskManager.markTasksInProgress(tasksToExecute);
+            // Hold the lock of the throttle helper until the tasks are marked in progress, so that a concurrent update of the
+            // replication throttle either takes effect before their throttles are set or applies to them as in-progress tasks.
+            synchronized (throttleHelper) {
+              throttleHelper.setThrottles(tasksToExecute.stream().map(ExecutionTask::proposal).collect(Collectors.toList()));
+              // Execute the tasks.
+              _executionTaskManager.markTasksInProgress(tasksToExecute);
+            }
             result = ExecutionUtils.submitReplicaReassignmentTasks(_adminClient, tasksToExecute);
           }
           // Wait indefinitely for partition movements to finish.

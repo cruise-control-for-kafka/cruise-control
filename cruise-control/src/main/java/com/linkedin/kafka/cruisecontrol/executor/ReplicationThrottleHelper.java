@@ -27,11 +27,16 @@ import java.util.HashSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * See https://kafka.apache.org/documentation/#rep-throttle
+ *
+ * <p>The throttle rate of an ongoing execution can be updated dynamically (see {@link #updateThrottleRate(long, Supplier)}).
+ * This class is thread safe: its methods synchronize on this helper, so a caller can also hold the lock of this helper to make
+ * a sequence of operations atomic with respect to a concurrent throttle rate update.</p>
  */
 class ReplicationThrottleHelper {
   private static final Logger LOG = LoggerFactory.getLogger(ReplicationThrottleHelper.class);
@@ -44,7 +49,8 @@ class ReplicationThrottleHelper {
   static final int RETRIES = 30;
 
   private final Admin _adminClient;
-  private volatile Long _throttleRate;
+  // Guarded by this. The throttle rate (null if no throttling is applied), which may be updated during the execution.
+  private Long _throttleRate;
   private final int _retries;
   private final Set<Integer> _deadBrokers;
 
@@ -72,27 +78,35 @@ class ReplicationThrottleHelper {
   }
 
   /**
-   * Dynamically update the throttle rate used by this helper. The new rate is applied to the brokers the next time
-   * throttles are set for them -- e.g. via {@link #setThrottles(List)}.
+   * Update the throttle rate, and apply the new rate to the in-progress inter-broker replica movements right away. Upcoming
+   * inter-broker replica movements are throttled with the new rate as their throttles are set via {@link #setThrottles(List)}.
+   *
+   * <p>The in-progress replica movements are retrieved while holding the lock of this helper. Otherwise, the throttles of a
+   * movement that completes concurrently might be removed by {@link #clearThrottles(List, List)} and then set again by this
+   * update, which would leave them in place after the execution.</p>
    *
    * @param throttleRate The new replication throttle rate in bytes per second.
+   * @param inProgressProposals Supplies the proposals of the in-progress inter-broker replica movements.
    */
-  void setThrottleRate(Long throttleRate) {
+  synchronized void updateThrottleRate(long throttleRate, Supplier<List<ExecutionProposal>> inProgressProposals)
+  throws ExecutionException, InterruptedException, TimeoutException {
     _throttleRate = throttleRate;
+    setThrottles(inProgressProposals.get());
   }
 
-  Long throttleRate() {
+  synchronized Long throttleRate() {
     return _throttleRate;
   }
 
-  void setThrottles(List<ExecutionProposal> replicaMovementProposals)
+  synchronized void setThrottles(List<ExecutionProposal> replicaMovementProposals)
   throws ExecutionException, InterruptedException, TimeoutException {
-    if (throttlingEnabled()) {
-      LOG.info("Setting a rebalance throttle of {} bytes/sec", _throttleRate);
+    Long throttleRate = _throttleRate;
+    if (throttleRate != null) {
+      LOG.info("Setting a rebalance throttle of {} bytes/sec", throttleRate);
       Set<Integer> participatingBrokers = getParticipatingBrokers(replicaMovementProposals);
       Map<String, Set<String>> throttledReplicas = getThrottledReplicasByTopic(replicaMovementProposals);
       for (int broker : participatingBrokers) {
-        setThrottledRateIfNecessary(broker);
+        setThrottledRateIfNecessary(broker, throttleRate);
       }
       for (Map.Entry<String, Set<String>> entry : throttledReplicas.entrySet()) {
         setThrottledReplicas(entry.getKey(), entry.getValue());
@@ -118,9 +132,9 @@ class ReplicationThrottleHelper {
   }
 
   // clear throttles for a specific list of execution tasks
-  void clearThrottles(List<ExecutionTask> completedTasks, List<ExecutionTask> inProgressTasks)
+  synchronized void clearThrottles(List<ExecutionTask> completedTasks, List<ExecutionTask> inProgressTasks)
   throws ExecutionException, InterruptedException, TimeoutException {
-    if (throttlingEnabled()) {
+    if (_throttleRate != null) {
       List<ExecutionProposal> completedProposals =
         completedTasks
           .stream()
@@ -161,10 +175,6 @@ class ReplicationThrottleHelper {
     }
   }
 
-  private boolean throttlingEnabled() {
-    return _throttleRate != null;
-  }
-
   private Set<Integer> getParticipatingBrokers(List<ExecutionProposal> replicaMovementProposals) {
     Set<Integer> participatingBrokers = new TreeSet<>();
     for (ExecutionProposal proposal : replicaMovementProposals) {
@@ -190,17 +200,15 @@ class ReplicationThrottleHelper {
     return throttledReplicasByTopic;
   }
 
-  private void setThrottledRateIfNecessary(int brokerId) throws ExecutionException, InterruptedException, TimeoutException {
-    if (_throttleRate == null) {
-      throw new IllegalStateException("Throttle rate cannot be null");
-    }
+  private void setThrottledRateIfNecessary(int brokerId, long throttleRate)
+  throws ExecutionException, InterruptedException, TimeoutException {
     Config brokerConfigs = getBrokerConfigs(brokerId);
     List<AlterConfigOp> ops = new ArrayList<>();
     for (String replicaThrottleRateConfigKey : Arrays.asList(LEADER_REPLICATION_THROTTLED_RATE_CONFIG, FOLLOWER_REPLICATION_THROTTLED_RATE_CONFIG)) {
       ConfigEntry currThrottleRate = brokerConfigs.get(replicaThrottleRateConfigKey);
-      if (currThrottleRate == null || !currThrottleRate.value().equals(String.valueOf(_throttleRate))) {
-        LOG.debug("Setting {} to {} bytes/second for broker {}", replicaThrottleRateConfigKey, _throttleRate, brokerId);
-        ops.add(new AlterConfigOp(new ConfigEntry(replicaThrottleRateConfigKey, String.valueOf(_throttleRate)), AlterConfigOp.OpType.SET));
+      if (currThrottleRate == null || !currThrottleRate.value().equals(String.valueOf(throttleRate))) {
+        LOG.debug("Setting {} to {} bytes/second for broker {}", replicaThrottleRateConfigKey, throttleRate, brokerId);
+        ops.add(new AlterConfigOp(new ConfigEntry(replicaThrottleRateConfigKey, String.valueOf(throttleRate)), AlterConfigOp.OpType.SET));
       }
     }
     if (!ops.isEmpty()) {

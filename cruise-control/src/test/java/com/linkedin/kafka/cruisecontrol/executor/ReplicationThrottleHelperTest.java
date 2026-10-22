@@ -294,9 +294,12 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     assertExpectedThrottledRateForBroker(2, initialThrottleRate);
     assertExpectedThrottledReplicas(TOPIC0, "0:0,0:1,0:2");
 
-    // Dynamically update the throttle rate and re-apply the throttles for the in-progress proposal.
-    throttleHelper.setThrottleRate(updatedThrottleRate);
-    throttleHelper.setThrottles(Collections.singletonList(proposal));
+    // Dynamically update the throttle rate and re-apply the throttles for the in-progress proposal. The in-progress proposals
+    // must be retrieved while holding the lock of the helper, so that a concurrent clearThrottles cannot be undone.
+    throttleHelper.updateThrottleRate(updatedThrottleRate, () -> {
+      assertTrue(Thread.holdsLock(throttleHelper));
+      return Collections.singletonList(proposal);
+    });
 
     assertEquals(Long.valueOf(updatedThrottleRate), throttleHelper.throttleRate());
     assertExpectedThrottledRateForBroker(0, updatedThrottleRate);
