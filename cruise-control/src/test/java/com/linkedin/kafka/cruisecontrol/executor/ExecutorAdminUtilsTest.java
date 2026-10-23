@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AlterReplicaLogDirsResult;
+import org.apache.kafka.clients.admin.DescribeReplicaLogDirsResult;
 import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.TopicPartitionReplica;
@@ -107,11 +108,55 @@ public class ExecutorAdminUtilsTest {
     EasyMock.verify(mockAdminClient);
   }
 
+  @Test
+  public void testGetLogdirInfoForExecutionTaskSkipsReplicaWithOfflineLogdir() throws Exception {
+    // Move the replicas on brokers 0 and 1 from d0 to d1. Broker 1's logdir is offline.
+    ExecutionProposal proposal = new ExecutionProposal(TP, 10, new ReplicaPlacementInfo(0, LOGDIR_0),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0, LOGDIR_0),
+                                                                     new ReplicaPlacementInfo(1, LOGDIR_0)),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0, LOGDIR_1),
+                                                                     new ReplicaPlacementInfo(1, LOGDIR_1)));
+    ExecutionTask taskWithOnlineLogdir = intraBrokerTask(0, proposal, 0);
+    ExecutionTask taskWithOfflineLogdir = intraBrokerTask(1, proposal, 1);
+    TopicPartitionReplica tpr0 = new TopicPartitionReplica(TP.topic(), TP.partition(), 0);
+    TopicPartitionReplica tpr1 = new TopicPartitionReplica(TP.topic(), TP.partition(), 1);
+
+    // A replica on an offline logdir is reported with a SUCCESSFUL future that carries no logdir at all -- not with a
+    // failed future -- so the response has to be filtered on its content rather than on the future completing.
+    Map<TopicPartitionReplica, KafkaFuture<ReplicaLogDirInfo>> futureByReplica = new HashMap<>();
+    futureByReplica.put(tpr0, KafkaFuture.completedFuture(replicaLogDirInfo(LOGDIR_0, LOGDIR_1)));
+    futureByReplica.put(tpr1, KafkaFuture.completedFuture(offlineReplicaLogDirInfo()));
+    DescribeReplicaLogDirsResult mockResult = EasyMock.mock(DescribeReplicaLogDirsResult.class);
+    EasyMock.expect(mockResult.values()).andReturn(futureByReplica);
+
+    Admin mockAdminClient = EasyMock.mock(Admin.class);
+    EasyMock.expect(mockAdminClient.describeReplicaLogDirs(EasyMock.anyObject())).andReturn(mockResult);
+    EasyMock.replay(mockAdminClient, mockResult);
+
+    Map<ExecutionTask, ReplicaLogDirInfo> logdirInfoByTask =
+        ExecutorAdminUtils.getLogdirInfoForExecutionTask(Arrays.asList(taskWithOnlineLogdir, taskWithOfflineLogdir),
+                                                         mockAdminClient, CONFIG);
+
+    // Only the replica with a known current logdir is reported. Reporting the other one would make
+    // ExecutionUtils#isIntraBrokerReplicaActionDone dereference a null logdir, and would hide the task from
+    // Executor#maybeMarkTaskAsDead, whose only condition for an intra-broker task is its absence from this map.
+    assertEquals(Collections.singleton(taskWithOnlineLogdir), logdirInfoByTask.keySet());
+    assertEquals(LOGDIR_0, logdirInfoByTask.get(taskWithOnlineLogdir).getCurrentReplicaLogDir());
+    EasyMock.verify(mockAdminClient, mockResult);
+  }
+
   private static ExecutionTask intraBrokerTask(long executionId, ExecutionProposal proposal, int brokerId) {
     ExecutionTask task = new ExecutionTask(executionId, proposal, brokerId, ExecutionTask.TaskType.INTRA_BROKER_REPLICA_ACTION,
                                            EXECUTION_ALERTING_THRESHOLD_MS);
     task.inProgress(0L);
     return task;
+  }
+
+  private static ReplicaLogDirInfo offlineReplicaLogDirInfo() throws Exception {
+    // What the admin client hands back for a replica whose logdir is offline: every field unset.
+    Constructor<ReplicaLogDirInfo> constructor = ReplicaLogDirInfo.class.getDeclaredConstructor();
+    constructor.setAccessible(true);
+    return constructor.newInstance();
   }
 
   private static ReplicaLogDirInfo replicaLogDirInfo(String currentLogdir, String futureLogdir) throws Exception {
