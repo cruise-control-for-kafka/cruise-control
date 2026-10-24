@@ -7,6 +7,8 @@ package com.linkedin.kafka.cruisecontrol.servlet.handler.sync;
 import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.executor.ConcurrencyType;
+import com.linkedin.kafka.cruisecontrol.executor.DynamicThrottleResult;
+import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.AdminParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.ChangeExecutionConcurrencyParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.DropRecentBrokersParameters;
@@ -21,7 +23,6 @@ import org.slf4j.LoggerFactory;
 
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.ADMIN_PARAMETER_OBJECT_CONFIG;
 import static com.linkedin.cruisecontrol.common.utils.Utils.validateNotNull;
-
 
 public class AdminRequest extends AbstractSyncRequest {
   private static final Logger LOG = LoggerFactory.getLogger(AdminRequest.class);
@@ -163,30 +164,50 @@ public class AdminRequest extends AbstractSyncRequest {
       sb.append(String.format("Max inter-broker partition movements is set to %d%n", maxInterBrokerPartitionMovements));
       LOG.info("Max inter-broker partition movements is set to: {} by user.", maxInterBrokerPartitionMovements);
     }
-    // 6. Change the replication throttle of the ongoing execution.
+    // 6. Change or remove the replication throttle of the ongoing execution.
     Long replicationThrottle = changeExecutionConcurrencyParameters.replicationThrottle();
-    if (replicationThrottle != null) {
+    if (changeExecutionConcurrencyParameters.removeReplicationThrottle()) {
+      DynamicThrottleResult result = _kafkaCruiseControl.removeOngoingExecutionReplicationThrottle();
+      if (result == DynamicThrottleResult.REMOVED) {
+        sb.append(String.format("Replication throttle of the ongoing execution is removed%n"));
+        LOG.info("Replication throttle of the ongoing execution is removed by user.");
+      } else {
+        String reason = reasonForNoRemoval(result, "inter-broker");
+        sb.append(String.format("Replication throttle is not removed since %s%n", reason));
+        LOG.info("Replication throttle removal requested by user is not applied since {}.", reason);
+      }
+    } else if (replicationThrottle != null) {
       if (_kafkaCruiseControl.updateOngoingExecutionReplicationThrottle(replicationThrottle)) {
         sb.append(String.format("Replication throttle of the ongoing execution is set to %d bytes/sec%n", replicationThrottle));
         LOG.info("Replication throttle of the ongoing execution is set to: {} bytes/sec by user.", replicationThrottle);
       } else {
-        sb.append(String.format("Replication throttle is not updated to %d bytes/sec since there is no ongoing inter-broker"
-                                + " replica movement%n", replicationThrottle));
-        LOG.info("Replication throttle requested by user is not updated to: {} bytes/sec since there is no ongoing"
-                 + " inter-broker replica movement.", replicationThrottle);
+        sb.append(String.format("Replication throttle is not updated to %d bytes/sec since %s%n", replicationThrottle,
+                                reasonForNoMovement("inter-broker")));
+        LOG.info("Replication throttle requested by user is not updated to: {} bytes/sec since {}.", replicationThrottle,
+                 reasonForNoMovement("inter-broker"));
       }
     }
-    // 7. Change the log dir throttle of the ongoing execution.
+    // 7. Change or remove the log dir throttle of the ongoing execution.
     Long logDirThrottle = changeExecutionConcurrencyParameters.logDirThrottle();
-    if (logDirThrottle != null) {
+    if (changeExecutionConcurrencyParameters.removeLogDirThrottle()) {
+      DynamicThrottleResult result = _kafkaCruiseControl.removeOngoingExecutionLogDirThrottle();
+      if (result == DynamicThrottleResult.REMOVED) {
+        sb.append(String.format("Log dir throttle of the ongoing execution is removed%n"));
+        LOG.info("Log dir throttle of the ongoing execution is removed by user.");
+      } else {
+        String reason = reasonForNoRemoval(result, "intra-broker");
+        sb.append(String.format("Log dir throttle is not removed since %s%n", reason));
+        LOG.info("Log dir throttle removal requested by user is not applied since {}.", reason);
+      }
+    } else if (logDirThrottle != null) {
       if (_kafkaCruiseControl.updateOngoingExecutionLogDirThrottle(logDirThrottle)) {
         sb.append(String.format("Log dir throttle of the ongoing execution is set to %d bytes/sec%n", logDirThrottle));
         LOG.info("Log dir throttle of the ongoing execution is set to: {} bytes/sec by user.", logDirThrottle);
       } else {
-        sb.append(String.format("Log dir throttle is not updated to %d bytes/sec since there is no ongoing intra-broker"
-                                + " replica movement%n", logDirThrottle));
-        LOG.info("Log dir throttle requested by user is not updated to: {} bytes/sec since there is no ongoing"
-                 + " intra-broker replica movement.", logDirThrottle);
+        sb.append(String.format("Log dir throttle is not updated to %d bytes/sec since %s%n", logDirThrottle,
+                                reasonForNoMovement("intra-broker")));
+        LOG.info("Log dir throttle requested by user is not updated to: {} bytes/sec since {}.", logDirThrottle,
+                 reasonForNoMovement("intra-broker"));
       }
     }
 
@@ -257,6 +278,31 @@ public class AdminRequest extends AbstractSyncRequest {
     }
 
     return sb.toString();
+  }
+
+  /**
+   * @param movementType The replica movement type a throttle request applies to, for the message.
+   * @return Why a throttle request had no effect, naming the executor state so that "no execution at all" and "an execution
+   * whose other phase is running" do not read identically.
+   */
+  /**
+   * @param result The outcome of a removal that did not remove anything.
+   * @param movementType The replica movement type the request applies to, for the message.
+   * @return Why the removal had no effect. A removal does nothing for two different reasons, and reporting them with the same
+   * sentence produced "there is no ongoing intra-broker replica movement (executor state:
+   * INTRA_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS)" -- a response that contradicts itself.
+   */
+  private String reasonForNoRemoval(DynamicThrottleResult result, String movementType) {
+    return result == DynamicThrottleResult.NOT_THROTTLED ? "the ongoing execution is not throttled"
+                                                         : reasonForNoMovement(movementType);
+  }
+
+  private String reasonForNoMovement(String movementType) {
+    ExecutorState.State state = _kafkaCruiseControl.executionState();
+    if (state == ExecutorState.State.NO_TASK_IN_PROGRESS) {
+      return "no execution is in progress";
+    }
+    return String.format("there is no ongoing %s replica movement (executor state: %s)", movementType, state);
   }
 
   @Override

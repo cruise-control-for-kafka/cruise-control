@@ -258,6 +258,58 @@ public class ParameterUtilsTest {
   }
 
   @Test
+  public void testParseRequestedThrottleUnsetValueAsksForRemoval() {
+    for (String parameter : new String[]{ParameterUtils.REPLICATION_THROTTLE_PARAM, ParameterUtils.LOG_DIR_THROTTLE_PARAM}) {
+      for (String value : new String[]{ParameterUtils.UNSET_PARAMETER_VALUE, "NULL", " null "}) {
+        CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+        Map<String, String[]> paramMap = Collections.singletonMap(parameter, new String[]{parameter});
+        EasyMock.expect(mockRequest.getParameterMap()).andReturn(paramMap).times(2);
+        EasyMock.expect(mockRequest.getParameter(parameter)).andReturn(value).times(2);
+        EasyMock.replay(mockRequest);
+
+        // The unset value asks for a removal, so it yields no rate -- and must not be parsed as a number.
+        if (parameter.equals(ParameterUtils.REPLICATION_THROTTLE_PARAM)) {
+          Assert.assertNull(ParameterUtils.requestedReplicationThrottle(mockRequest));
+          Assert.assertTrue(ParameterUtils.removeRequestedReplicationThrottle(mockRequest));
+        } else {
+          Assert.assertNull(ParameterUtils.requestedLogDirThrottle(mockRequest));
+          Assert.assertTrue(ParameterUtils.removeRequestedLogDirThrottle(mockRequest));
+        }
+        EasyMock.verify(mockRequest);
+      }
+    }
+  }
+
+  @Test
+  public void testParseRequestedThrottleDoesNotAskForRemovalWithARate() {
+    for (String parameter : new String[]{ParameterUtils.REPLICATION_THROTTLE_PARAM, ParameterUtils.LOG_DIR_THROTTLE_PARAM}) {
+      CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+      Map<String, String[]> paramMap = Collections.singletonMap(parameter, new String[]{parameter});
+      EasyMock.expect(mockRequest.getParameterMap()).andReturn(paramMap).once();
+      EasyMock.expect(mockRequest.getParameter(parameter)).andReturn("1024").once();
+      EasyMock.replay(mockRequest);
+
+      if (parameter.equals(ParameterUtils.REPLICATION_THROTTLE_PARAM)) {
+        Assert.assertFalse(ParameterUtils.removeRequestedReplicationThrottle(mockRequest));
+      } else {
+        Assert.assertFalse(ParameterUtils.removeRequestedLogDirThrottle(mockRequest));
+      }
+      EasyMock.verify(mockRequest);
+    }
+  }
+
+  @Test
+  public void testParseRequestedThrottleRemovalIsNotRequestedWhenAbsent() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    EasyMock.expect(mockRequest.getParameterMap()).andReturn(Collections.emptyMap()).times(2);
+    EasyMock.replay(mockRequest);
+
+    Assert.assertFalse(ParameterUtils.removeRequestedReplicationThrottle(mockRequest));
+    Assert.assertFalse(ParameterUtils.removeRequestedLogDirThrottle(mockRequest));
+    EasyMock.verify(mockRequest);
+  }
+
+  @Test
   public void testParseRequestedLogDirThrottleRejectsNonPositiveValue() {
     for (String value : new String[]{"0", "-1"}) {
       CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);

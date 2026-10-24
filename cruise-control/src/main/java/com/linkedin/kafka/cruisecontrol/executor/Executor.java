@@ -824,7 +824,12 @@ public class Executor {
    * @return The current executor state.
    */
   public ExecutorState state() {
-    return _executorState;
+    // Attach the throttles in force rather than threading them through every ExecutorState factory: read from the live
+    // helpers, so a rate changed by an admin request is visible immediately instead of at the next progress check.
+    ReplicationThrottleHelper throttleHelper = _ongoingExecutionThrottleHelper;
+    LogDirThrottleHelper logDirThrottleHelper = _ongoingExecutionLogDirThrottleHelper;
+    return _executorState.withThrottles(throttleHelper == null ? null : throttleHelper.throttleRate(),
+                                        logDirThrottleHelper == null ? null : logDirThrottleHelper.appliedThrottleByBroker());
   }
 
   /**
@@ -1073,11 +1078,66 @@ public class Executor {
           .map(ExecutionTask::proposal)
           .collect(Collectors.toList()));
     } catch (ExecutionException | InterruptedException | TimeoutException e) {
-      throw new IllegalStateException(String.format("Failed to apply the updated replication throttle [%d bytes/sec]"
-                                                    + " to the in-progress inter-broker replica movements.", newThrottleRate), e);
+      throw new IllegalStateException(String.format("Failed to apply the updated replication throttle [%d bytes/sec] to the "
+                                                    + "in-progress inter-broker replica movements. Upcoming inter-broker replica "
+                                                    + "movements use the new rate, while the brokers of the in-progress ones may "
+                                                    + "still carry the previous rate.", newThrottleRate), e);
     }
     LOG.info("Replication throttle of the ongoing execution is updated to {} bytes/sec.", newThrottleRate);
     return true;
+  }
+
+  /**
+   * Remove the replication throttle of the ongoing execution: the brokers of the in-progress inter-broker replica movements
+   * stop being throttled right away, and the upcoming inter-broker replica movements of this execution are not throttled.
+   *
+   * @return {@link DynamicThrottleResult#REMOVED} if the throttle has been removed, {@link DynamicThrottleResult#NOT_THROTTLED}
+   * if the ongoing inter-broker replica movements are not throttled, {@link DynamicThrottleResult#NO_ONGOING_MOVEMENT} if there
+   * is no ongoing inter-broker replica movement.
+   */
+  public DynamicThrottleResult removeOngoingExecutionReplicationThrottle() {
+    ReplicationThrottleHelper throttleHelper = _ongoingExecutionThrottleHelper;
+    if (!_hasOngoingExecution || throttleHelper == null) {
+      LOG.info("Skip removing the replication throttle since there is no ongoing inter-broker replica movement.");
+      return DynamicThrottleResult.NO_ONGOING_MOVEMENT;
+    }
+    boolean removed;
+    try {
+      removed = throttleHelper.removeThrottleRate(() -> inExecutionTasks().stream()
+          .filter(task -> task.state() == ExecutionTaskState.IN_PROGRESS && task.type() == INTER_BROKER_REPLICA_ACTION)
+          .map(ExecutionTask::proposal)
+          .collect(Collectors.toList()));
+    } catch (ExecutionException | InterruptedException | TimeoutException e) {
+      throw new IllegalStateException("Failed to remove the replication throttle of the in-progress inter-broker replica"
+                                      + " movements. The upcoming inter-broker replica movements are not throttled.", e);
+    }
+    if (removed) {
+      LOG.info("Replication throttle of the ongoing execution is removed.");
+      return DynamicThrottleResult.REMOVED;
+    }
+    return DynamicThrottleResult.NOT_THROTTLED;
+  }
+
+  /**
+   * Remove the log dir throttle of the ongoing execution: the original per-broker value of the log dir throttle config is
+   * restored on every broker this execution has throttled, and the upcoming intra-broker replica movements of this execution
+   * are not throttled.
+   *
+   * @return {@link DynamicThrottleResult#REMOVED} if the throttle has been removed, {@link DynamicThrottleResult#NOT_THROTTLED}
+   * if the ongoing intra-broker replica movements are not throttled, {@link DynamicThrottleResult#NO_ONGOING_MOVEMENT} if there
+   * is no ongoing intra-broker replica movement.
+   */
+  public DynamicThrottleResult removeOngoingExecutionLogDirThrottle() {
+    LogDirThrottleHelper logDirThrottleHelper = _ongoingExecutionLogDirThrottleHelper;
+    if (!_hasOngoingExecution || logDirThrottleHelper == null) {
+      LOG.info("Skip removing the log dir throttle since there is no ongoing intra-broker replica movement.");
+      return DynamicThrottleResult.NO_ONGOING_MOVEMENT;
+    }
+    if (logDirThrottleHelper.removeThrottleRate()) {
+      LOG.info("Log dir throttle of the ongoing execution is removed.");
+      return DynamicThrottleResult.REMOVED;
+    }
+    return DynamicThrottleResult.NOT_THROTTLED;
   }
 
   /**

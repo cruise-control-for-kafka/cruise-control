@@ -210,6 +210,40 @@ public class LogDirThrottleHelperTest extends CCKafkaIntegrationTestHarness {
   }
 
   @Test
+  public void testRemoveThrottleRate() throws Exception {
+    String preExistingThrottle = "500";
+    setThrottleConfig("0", preExistingThrottle);
+    waitForThrottle(0, preExistingThrottle, ConfigEntry.ConfigSource.DYNAMIC_BROKER_CONFIG);
+
+    LogDirThrottleHelper throttleHelper = new LogDirThrottleHelper(_adminClient, THROTTLE_RATE,
+                                                                   new LogDirThrottleHelper.AppliedThrottles());
+    throttleHelper.setThrottles(Arrays.asList(intraBrokerTask(0, 0), intraBrokerTask(1, 1)));
+    assertPerBrokerThrottle(0, THROTTLE_RATE_STRING);
+    assertPerBrokerThrottle(1, THROTTLE_RATE_STRING);
+
+    // Removing the throttle restores what each broker had, with the movements still in progress.
+    assertTrue(throttleHelper.removeThrottleRate());
+    assertPerBrokerThrottle(0, preExistingThrottle);
+    assertPerBrokerThrottle(1, null);
+    assertTrue(throttleHelper.throttledBrokers().isEmpty());
+
+    // Upcoming tasks are not throttled, and a second removal is a no-op.
+    throttleHelper.setThrottles(Collections.singletonList(intraBrokerTask(2, 2)));
+    assertPerBrokerThrottle(2, null);
+    assertFalse(throttleHelper.removeThrottleRate());
+
+    // Unlike clearAllThrottles, the removal leaves the helper open: the same execution can be throttled again.
+    assertTrue(throttleHelper.updateThrottleRate(THROTTLE_RATE, Collections.singletonList(intraBrokerTask(3, 1))));
+    assertPerBrokerThrottle(1, THROTTLE_RATE_STRING);
+
+    throttleHelper.clearAllThrottles();
+    assertPerBrokerThrottle(0, preExistingThrottle);
+    assertPerBrokerThrottle(1, null);
+    // Once the throttles are restored the helper is closed, so a removal is refused like an update.
+    assertFalse(throttleHelper.removeThrottleRate());
+  }
+
+  @Test
   public void testNoAdminRequestWithoutThrottle() {
     AdminClient mockAdminClient = EasyMock.strictMock(AdminClient.class);
     EasyMock.replay(mockAdminClient);

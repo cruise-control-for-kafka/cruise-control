@@ -321,6 +321,40 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
   }
 
   @Test
+  public void testRemovingThrottleOfAnOngoingExecution() throws Exception {
+    createTopics();
+
+    final long initialThrottleRate = 100L;
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_adminClient, initialThrottleRate);
+    ExecutionProposal proposal = new ExecutionProposal(new TopicPartition(TOPIC0, 0),
+                                                       100,
+                                                       new ReplicaPlacementInfo(0),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(1)),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(2)));
+
+    throttleHelper.setThrottles(Collections.singletonList(proposal));
+    assertExpectedThrottledRateForBroker(0, initialThrottleRate);
+    assertExpectedThrottledReplicas(TOPIC0, "0:0,0:1,0:2");
+
+    // Removing the throttle of the ongoing execution clears the rate of the participating brokers and the throttled
+    // replicas of their topics, with the movement still in progress.
+    assertTrue(throttleHelper.removeThrottleRate(() -> {
+      assertTrue(Thread.holdsLock(throttleHelper));
+      return Collections.singletonList(proposal);
+    }));
+    assertNull(throttleHelper.throttleRate());
+    for (int i = 0; i < clusterSize(); i++) {
+      assertExpectedThrottledRateForBroker(i, null);
+    }
+    assertExpectedThrottledReplicas(TOPIC0, "");
+
+    // Upcoming task batches of the same execution are not throttled either, and a second removal is a no-op.
+    throttleHelper.setThrottles(Collections.singletonList(proposal));
+    assertExpectedThrottledRateForBroker(0, null);
+    assertFalse(throttleHelper.removeThrottleRate(Collections::emptyList));
+  }
+
+  @Test
   public void testAddingThrottlesWithPreExistingThrottles() throws Exception {
     createTopics();
 

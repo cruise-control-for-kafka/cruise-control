@@ -49,6 +49,8 @@ public class ChangeExecutionConcurrencyParameters extends AbstractParameters {
   protected Integer _maxInterBrokerPartitionMovements;
   protected Long _replicationThrottle;
   protected Long _logDirThrottle;
+  protected boolean _removeReplicationThrottle;
+  protected boolean _removeLogDirThrottle;
 
   protected ChangeExecutionConcurrencyParameters() {
     super();
@@ -65,6 +67,8 @@ public class ChangeExecutionConcurrencyParameters extends AbstractParameters {
     _maxInterBrokerPartitionMovements = ParameterUtils.maxPartitionMovements(_requestContext);
     _replicationThrottle = ParameterUtils.requestedReplicationThrottle(_requestContext);
     _logDirThrottle = ParameterUtils.requestedLogDirThrottle(_requestContext);
+    _removeReplicationThrottle = ParameterUtils.removeRequestedReplicationThrottle(_requestContext);
+    _removeLogDirThrottle = ParameterUtils.removeRequestedLogDirThrottle(_requestContext);
   }
 
   /**
@@ -86,7 +90,9 @@ public class ChangeExecutionConcurrencyParameters extends AbstractParameters {
         && changeExecutionConcurrencyParameters.brokerLeaderMovementConcurrency() == null
         && changeExecutionConcurrencyParameters.maxInterBrokerPartitionMovements() == null
         && changeExecutionConcurrencyParameters.replicationThrottle() == null
-        && changeExecutionConcurrencyParameters.logDirThrottle() == null) {
+        && changeExecutionConcurrencyParameters.logDirThrottle() == null
+        && !changeExecutionConcurrencyParameters.removeReplicationThrottle()
+        && !changeExecutionConcurrencyParameters.removeLogDirThrottle()) {
       return null;
     }
     return changeExecutionConcurrencyParameters;
@@ -122,6 +128,22 @@ public class ChangeExecutionConcurrencyParameters extends AbstractParameters {
 
   public Long logDirThrottle() {
     return _logDirThrottle;
+  }
+
+  /**
+   * @return {@code true} if the request asks for the replication throttle of the ongoing execution to be removed rather than
+   * changed -- i.e. {@code replication_throttle=null}.
+   */
+  public boolean removeReplicationThrottle() {
+    return _removeReplicationThrottle;
+  }
+
+  /**
+   * @return {@code true} if the request asks for the log dir throttle of the ongoing execution to be removed rather than
+   * changed -- i.e. {@code log_dir_throttle=null}.
+   */
+  public boolean removeLogDirThrottle() {
+    return _removeLogDirThrottle;
   }
 
   @Override

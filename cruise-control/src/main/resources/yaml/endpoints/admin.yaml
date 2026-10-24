@@ -70,18 +70,30 @@ AdminEndpoint:
           minimum: 1
       - name: replication_throttle
         in: query
-        description: Change the replication throttle (bytes/second) applied to the inter-broker replica movements of the ongoing execution.
+        description: >-
+          Change the replication throttle (bytes/second) applied to the inter-broker replica movements of the ongoing
+          execution. The value null removes the throttle. The value 0 is a quota of zero bytes per second, which halts the
+          throttled replica movements until the throttle is changed again. The request returns once the new rate is verified
+          on every participating broker and topic, which can take tens of seconds.
         schema:
-          type: integer
-          format: int64
-          minimum: 0
+          oneOf:
+            - type: integer
+              format: int64
+              minimum: 0
+            - type: string
+              enum: [ "null" ]
       - name: log_dir_throttle
         in: query
-        description: Change the log dir throttle (bytes/second) applied to the intra-broker replica movements of the ongoing execution.
+        description: >-
+          Change the log dir throttle (bytes/second) applied to the intra-broker replica movements of the ongoing execution.
+          The value null removes the throttle, restoring the per-broker value each broker had before.
         schema:
-          type: integer
-          format: int64
-          minimum: 1
+          oneOf:
+            - type: integer
+              format: int64
+              minimum: 1
+            - type: string
+              enum: [ "null" ]
       - name: drop_recently_removed_brokers
         in: query
         description: Drop broker ids from recently removed broker list so that Cruise Control can move replicas to these brokers.

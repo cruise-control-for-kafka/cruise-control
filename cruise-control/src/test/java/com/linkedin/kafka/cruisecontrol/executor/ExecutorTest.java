@@ -434,8 +434,10 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
 
     // The requested replication throttle must be non-negative.
     assertThrows(IllegalArgumentException.class, () -> executor.updateOngoingExecutionReplicationThrottle(-1L));
-    // Without an ongoing execution with inter-broker replica movements, the replication throttle cannot be updated.
+    // Without an ongoing execution with inter-broker replica movements, the replication throttle cannot be updated
+    // or removed.
     assertFalse(executor.updateOngoingExecutionReplicationThrottle(100L));
+    assertEquals(DynamicThrottleResult.NO_ONGOING_MOVEMENT, executor.removeOngoingExecutionReplicationThrottle());
   }
 
   @Test
@@ -447,8 +449,10 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
     // The requested log dir throttle must be positive.
     assertThrows(IllegalArgumentException.class, () -> executor.updateOngoingExecutionLogDirThrottle(0L));
     assertThrows(IllegalArgumentException.class, () -> executor.updateOngoingExecutionLogDirThrottle(-1L));
-    // Without an ongoing execution with intra-broker replica movements, the log dir throttle cannot be updated.
+    // Without an ongoing execution with intra-broker replica movements, the log dir throttle cannot be updated
+    // or removed.
     assertFalse(executor.updateOngoingExecutionLogDirThrottle(100L));
+    assertEquals(DynamicThrottleResult.NO_ONGOING_MOVEMENT, executor.removeOngoingExecutionLogDirThrottle());
   }
 
   @Test

@@ -27,6 +27,7 @@ import com.linkedin.kafka.cruisecontrol.exception.BrokerCapacityResolutionExcept
 import com.linkedin.kafka.cruisecontrol.exception.KafkaCruiseControlException;
 import com.linkedin.kafka.cruisecontrol.exception.OngoingExecutionException;
 import com.linkedin.kafka.cruisecontrol.executor.ConcurrencyType;
+import com.linkedin.kafka.cruisecontrol.executor.DynamicThrottleResult;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutionProposal;
 import com.linkedin.kafka.cruisecontrol.executor.Executor;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
@@ -524,6 +525,24 @@ public class KafkaCruiseControl {
    */
   public boolean updateOngoingExecutionReplicationThrottle(long replicationThrottle) {
     return _executor.updateOngoingExecutionReplicationThrottle(replicationThrottle);
+  }
+
+  /**
+   * Remove the replication throttle of the ongoing execution (if any).
+   *
+   * @return The outcome of the removal -- removed, not throttled, or no ongoing inter-broker replica movement.
+   */
+  public DynamicThrottleResult removeOngoingExecutionReplicationThrottle() {
+    return _executor.removeOngoingExecutionReplicationThrottle();
+  }
+
+  /**
+   * Remove the log dir throttle of the ongoing execution (if any).
+   *
+   * @return The outcome of the removal -- removed, not throttled, or no ongoing intra-broker replica movement.
+   */
+  public DynamicThrottleResult removeOngoingExecutionLogDirThrottle() {
+    return _executor.removeOngoingExecutionLogDirThrottle();
   }
 
   /**

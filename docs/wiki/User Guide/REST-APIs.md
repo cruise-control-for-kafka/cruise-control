@@ -648,8 +648,8 @@ Supported parameters are:
 | max_partition_movements_in_cluster            | integer   | upper bound of max replica movements into/out of brokers across cluster   | N/A                   | yes       |                                                            
 | concurrent_intra_broker_partition_movements   | integer   | upper bound of ongoing replica movements between disks within a broker    | N/A                   | yes       |
 | concurrent_leader_movements                   | integer   | upper bound of ongoing leadership movements                               | N/A                   | yes       |
-| replication_throttle                          | long      | replication throttle (bytes/second) for the ongoing execution             | N/A                   | yes       |
-| log_dir_throttle                              | long      | log dir throttle (bytes/second) for the ongoing execution                 | N/A                   | yes       |
+| replication_throttle                          | long      | replication throttle (bytes/second) for the ongoing execution, or `null` to remove it | N/A       | yes       |
+| log_dir_throttle                              | long      | log dir throttle (bytes/second) for the ongoing execution, or `null` to remove it | N/A           | yes       |
 | drop_recently_removed_brokers                 | list      | list of id of recently removed brokers to be dropped                      | N/A                   | yes       |
 | drop_recently_demoted_brokers                 | list      | list of id of recently demoted brokers to be dropped                      | N/A                   | yes       |
 | doAs                                          | string    | propagated user by the trusted proxy service                              | null                  | yes       | 
@@ -678,11 +678,23 @@ To change the replication throttle of an ongoing execution, send POST request li
 
 The new throttle rate is applied right away to the brokers participating in the in-progress inter-broker replica movements, and picked up by the upcoming inter-broker replica movements of the ongoing execution. It has no effect if there is no ongoing inter-broker replica movement.
 
+Three things to know about the value:
+
+* `replication_throttle=null` **removes** the throttle: the in-progress inter-broker replica movements stop being throttled and the upcoming ones of this execution run unthrottled. An absent parameter means "no change requested", which is not the same thing.
+* `replication_throttle=0` is **not** "no throttle". Kafka reads it as a quota of zero bytes per second, so the throttled replica movements stop making progress until the throttle is changed again -- which makes it a way to pause an ongoing execution's replica movements, but a surprising one if `null` was meant. There is no timeout on an inter-broker replica movement, so a movement halted this way is waited on indefinitely.
+* The request **returns once the new rate has been verified on every participating broker and topic**, which can take tens of seconds: the throttle configs are written and read back one entity at a time, and a config write is not necessarily visible to the next read.
+
+The throttle in force for the ongoing execution is reported as `ongoingReplicationThrottle` by `GET /kafkacruisecontrol/state?substates=executor`.
+
 To change the log dir throttle of an ongoing execution, send POST request like:
 
      POST /kafkacruisecontrol/admin?log_dir_throttle=[bytes_per_second]
 
 The new throttle rate (which must be positive) is applied right away to the brokers participating in the in-progress intra-broker replica movements, and picked up by the upcoming intra-broker replica movements of the ongoing execution -- even if the execution started without a log dir throttle. The original value of `replica.alter.log.dirs.io.max.bytes.per.second` on these brokers is still restored once the execution finishes. It has no effect if there is no ongoing intra-broker replica movement.
+
+`log_dir_throttle=null` **removes** the throttle: the original per-broker value of `replica.alter.log.dirs.io.max.bytes.per.second` is restored on every broker this execution throttled, and the upcoming intra-broker replica movements run unthrottled. The throttle of the same execution can be set again afterwards. Unlike the replication throttle, a rate below 1 is rejected, so there is no zero-quota case here.
+
+The throttle in force on each broker is reported as `ongoingLogDirThrottleByBroker` by `GET /kafkacruisecontrol/state?substates=executor`.
 
 To drop recently removed/demoted brokers, send POST request like:
 

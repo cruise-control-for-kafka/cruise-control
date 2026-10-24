@@ -98,6 +98,37 @@ class ReplicationThrottleHelper {
     return _throttleRate;
   }
 
+  /**
+   * Remove the throttle of an ongoing execution: stop throttling the in-progress inter-broker replica movements and let the
+   * upcoming ones run unthrottled. The in-progress proposals are retrieved while holding the lock of this helper, for the same
+   * reason as in {@link #updateThrottleRate(long, Supplier)}.
+   *
+   * <p>This is what an {@code admin} request asking for a {@code null} throttle means. It is deliberately not the same as a
+   * rate of 0, which Kafka reads as a quota of zero bytes per second -- i.e. a halt.</p>
+   *
+   * @param inProgressProposals Supplies the proposals of the in-progress inter-broker replica movements.
+   * @return {@code true} if a throttle was removed, {@code false} if the execution was not throttled to begin with.
+   */
+  synchronized boolean removeThrottleRate(Supplier<List<ExecutionProposal>> inProgressProposals)
+  throws ExecutionException, InterruptedException, TimeoutException {
+    if (_throttleRate == null) {
+      LOG.info("Skip removing the replication throttle, since the ongoing execution is not throttled.");
+      return false;
+    }
+    // Clear the rate first, so that the upcoming task batches are not throttled even if the removal below fails midway.
+    _throttleRate = null;
+    List<ExecutionProposal> proposals = inProgressProposals.get();
+    Set<Integer> participatingBrokers = getParticipatingBrokers(proposals);
+    LOG.info("Removing the replication throttle of the ongoing execution from brokers {}.", participatingBrokers);
+    for (int broker : participatingBrokers) {
+      removeThrottledRateFromBroker(broker);
+    }
+    for (Map.Entry<String, Set<String>> entry : getThrottledReplicasByTopic(proposals).entrySet()) {
+      removeThrottledReplicasFromTopic(entry.getKey(), entry.getValue());
+    }
+    return true;
+  }
+
   synchronized void setThrottles(List<ExecutionProposal> replicaMovementProposals)
   throws ExecutionException, InterruptedException, TimeoutException {
     Long throttleRate = _throttleRate;
