@@ -32,7 +32,7 @@ import static org.junit.Assert.assertThrows;
  * Unit test for {@link AbstractKafkaSampleStore}
  */
 @RunWith(PowerMockRunner.class)
-@PowerMockIgnore("javax.management.*")
+@PowerMockIgnore({"javax.management.*", "org.easymock.*"})
 @PrepareForTest(AbstractKafkaSampleStore.class)
 public class AbstractKafkaSampleStoreTest {
 
