@@ -11,6 +11,7 @@ import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeLargeReplica
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeMinIsrWithOfflineReplicasStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeOneAboveMinIsrWithOfflineReplicasStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeSmallReplicaMovementStrategy;
+import com.linkedin.kafka.cruisecontrol.executor.strategy.ThrottleAwareReplicaMovementStrategy;
 import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.common.config.ConfigDef;
@@ -94,6 +95,17 @@ public final class ExecutorConfig {
       + "moved, in bytes per second.";
 
   /**
+   * <code>replica.movement.throttle.write.rate.margin</code>
+   */
+  public static final String REPLICA_MOVEMENT_THROTTLE_WRITE_RATE_MARGIN_CONFIG = "replica.movement.throttle.write.rate.margin";
+  public static final double DEFAULT_REPLICA_MOVEMENT_THROTTLE_WRITE_RATE_MARGIN = 0.2;
+  public static final String REPLICA_MOVEMENT_THROTTLE_WRITE_RATE_MARGIN_DOC = "The fraction by which the write rates are "
+      + "increased when checking whether the replication throttle of the source and destination brokers can carry the write rate "
+      + "of a partition in addition to the write rates of the inter-broker replica movements in progress on them, i.e. a movement "
+      + "starts if (1 + margin) * (write rates in progress + write rate of the partition) <= throttle. Used by "
+      + ThrottleAwareReplicaMovementStrategy.class.getSimpleName() + " if the execution has a replication throttle.";
+
+  /**
    * <code>replica.movement.strategies</code>
    */
   public static final String REPLICA_MOVEMENT_STRATEGIES_CONFIG = "replica.movement.strategies";
@@ -103,6 +115,7 @@ public final class ExecutorConfig {
       .add(PrioritizeSmallReplicaMovementStrategy.class.getName())
       .add(PrioritizeMinIsrWithOfflineReplicasStrategy.class.getName())
       .add(PrioritizeOneAboveMinIsrWithOfflineReplicasStrategy.class.getName())
+      .add(ThrottleAwareReplicaMovementStrategy.class.getName())
       .add(BaseReplicaMovementStrategy.class.getName()).toString();
   public static final String REPLICA_MOVEMENT_STRATEGIES_DOC = "A list of supported strategies used to determine execution"
       + " order for generated partition movement tasks.";
@@ -548,6 +561,12 @@ public final class ExecutorConfig {
                             DEFAULT_DEFAULT_REPLICATION_THROTTLE,
                             ConfigDef.Importance.MEDIUM,
                             DEFAULT_REPLICATION_THROTTLE_DOC)
+                    .define(REPLICA_MOVEMENT_THROTTLE_WRITE_RATE_MARGIN_CONFIG,
+                            ConfigDef.Type.DOUBLE,
+                            DEFAULT_REPLICA_MOVEMENT_THROTTLE_WRITE_RATE_MARGIN,
+                            atLeast(0),
+                            ConfigDef.Importance.LOW,
+                            REPLICA_MOVEMENT_THROTTLE_WRITE_RATE_MARGIN_DOC)
                     .define(REPLICA_MOVEMENT_STRATEGIES_CONFIG,
                             ConfigDef.Type.LIST,
                             DEFAULT_REPLICA_MOVEMENT_STRATEGIES,

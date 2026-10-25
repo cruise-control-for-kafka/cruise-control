@@ -11,6 +11,7 @@ import com.linkedin.kafka.cruisecontrol.executor.concurrency.ExecutionConcurrenc
 import com.linkedin.kafka.cruisecontrol.executor.strategy.BaseReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.ReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.StrategyOptions;
+import com.linkedin.kafka.cruisecontrol.executor.strategy.ThrottleAwareReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.model.ReplicaPlacementInfo;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -19,6 +20,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -63,12 +65,21 @@ import static org.apache.kafka.clients.admin.DescribeReplicaLogDirsResult.Replic
  * The task is tracked both under source broker and destination broker's plan.
  * Once a task is fulfilled, the task will be removed from both source broker and destination broker's execution plan.
  * <p>
+ * If the replica movement strategy contains {@link ThrottleAwareReplicaMovementStrategy} and the execution has a replication
+ * throttle, an inter-broker replica movement is started only if the replication throttle of its source
+ * (i.e. the current leader of the partition) and destination brokers can carry the write rates of the movements in progress on
+ * them plus the write rate of this partition, increased by a margin (see {@link ReplicationThrottleBudget}). A hot partition,
+ * whose write rate the throttle cannot carry even alone, starts alone once no movement is in progress on its brokers and no
+ * movement that fits can start, whatever the order of tasks. Hence, a hot partition never holds up the movements that fit.
+ * <p>
  * This class is not thread safe.
  */
 public class ExecutionTaskPlanner {
   private static final Logger LOG = LoggerFactory.getLogger(ExecutionTaskPlanner.class);
   private Map<Integer, SortedSet<ExecutionTask>> _interPartMoveTasksByBrokerId;
   private Comparator<Integer> _interPartMoveBrokerComparator;
+  private boolean _throttleAware;
+  private final Set<TopicPartition> _partitionsExceedingReplicationThrottle;
   private final Map<Integer, SortedSet<ExecutionTask>> _intraPartMoveTasksByBrokerId;
   private final Set<ExecutionTask> _remainingInterBrokerReplicaMovements;
   private final Set<ExecutionTask> _remainingIntraBrokerReplicaMovements;
@@ -92,6 +103,8 @@ public class ExecutionTaskPlanner {
   public ExecutionTaskPlanner(Admin adminClient, KafkaCruiseControlConfig config) {
     _executionId = 0L;
     _interPartMoveTasksByBrokerId = new HashMap<>();
+    _throttleAware = false;
+    _partitionsExceedingReplicationThrottle = new HashSet<>();
     _intraPartMoveTasksByBrokerId = new HashMap<>();
     _remainingInterBrokerReplicaMovements = new HashSet<>();
     _remainingIntraBrokerReplicaMovements = new HashSet<>();
@@ -205,6 +218,8 @@ public class ExecutionTaskPlanner {
                                                                 ? _defaultReplicaMovementTaskStrategy
                                                                 : replicaMovementStrategy.chainBaseReplicaMovementStrategyIfAbsent();
     _interPartMoveTasksByBrokerId = chosenReplicaMovementTaskStrategy.applyStrategy(_remainingInterBrokerReplicaMovements, strategyOptions);
+    _throttleAware = ThrottleAwareReplicaMovementStrategy.isEnabledIn(chosenReplicaMovementTaskStrategy);
+    _partitionsExceedingReplicationThrottle.clear();
     _interPartMoveBrokerComparator = brokerComparator(strategyOptions, chosenReplicaMovementTaskStrategy);
   }
 
@@ -280,6 +295,27 @@ public class ExecutionTaskPlanner {
   }
 
   /**
+   * @return {@code true} if inter-broker replica movements are started within the replication throttle budget of brokers,
+   * {@code false} otherwise.
+   */
+  boolean isThrottleAware() {
+    return _throttleAware;
+  }
+
+  /**
+   * @return The number of remaining inter-broker replica movement tasks by broker id, sorted by the number of tasks in descending order.
+   * A task is counted under its source broker and each of its destination brokers.
+   */
+  public Map<Integer, Integer> numRemainingInterBrokerReplicaMovementsByBrokerId() {
+    Map<Integer, Integer> numTasksByBrokerId = new LinkedHashMap<>();
+    _interPartMoveTasksByBrokerId.entrySet().stream()
+                                 .filter(e -> !e.getValue().isEmpty())
+                                 .sorted((e1, e2) -> Integer.compare(e2.getValue().size(), e1.getValue().size()))
+                                 .forEach(e -> numTasksByBrokerId.put(e.getKey(), e.getValue().size()));
+    return numTasksByBrokerId;
+  }
+
+  /**
    * @return The remaining intra-broker replica movement tasks.
    */
   public Set<ExecutionTask> remainingIntraBrokerReplicaMovements() {
@@ -348,8 +384,57 @@ public class ExecutionTaskPlanner {
   public List<ExecutionTask> getInterBrokerReplicaMovementTasks(Map<Integer, Integer> readyBrokers,
                                                                 Set<TopicPartition> inProgressPartitions,
                                                                 int maxInterBrokerPartitionMovements) {
+    return getInterBrokerReplicaMovementTasks(readyBrokers, inProgressPartitions, maxInterBrokerPartitionMovements, null);
+  }
+
+  /**
+   * Get a list of executable inter-broker replica movements that comply with the concurrency constraint, partitions in move
+   * constraint and, if the replica movement strategy is throttle-aware, the replication throttle budget provided.
+   *
+   * @param readyBrokers The brokers that is ready to execute more movements.
+   * @param inProgressPartitions Topic partitions of replicas that are already in progress. This is needed because the
+   *                             controller does not allow updating the ongoing replica reassignment for a partition
+   *                             whose replica is being reassigned.
+   * @param maxInterBrokerPartitionMovements Maximum cap for number of partitions to move at any time
+   * @param budget The replication throttle budget of brokers, or {@code null} to ignore the replication throttle.
+   * @return A list of movements that is executable for the ready brokers.
+   */
+  List<ExecutionTask> getInterBrokerReplicaMovementTasks(Map<Integer, Integer> readyBrokers,
+                                                         Set<TopicPartition> inProgressPartitions,
+                                                         int maxInterBrokerPartitionMovements,
+                                                         ReplicationThrottleBudget budget) {
     LOG.trace("Getting inter-broker replica movement tasks for brokers with concurrency {}", readyBrokers);
+    ReplicationThrottleBudget throttleBudget = _throttleAware ? budget : null;
     List<ExecutionTask> executableReplicaMovements = new ArrayList<>();
+    addInterBrokerReplicaMovementTasks(readyBrokers, inProgressPartitions, maxInterBrokerPartitionMovements, throttleBudget, false,
+                                       executableReplicaMovements);
+    if (throttleBudget != null) {
+      // Only once no movement that fits in the budget can start, start movements that do not fit even alone on broker sides
+      // that are idle, so that such a movement does not wait forever, nor take the throttle that movements that fit could use.
+      addInterBrokerReplicaMovementTasks(readyBrokers, inProgressPartitions, maxInterBrokerPartitionMovements, throttleBudget, true,
+                                         executableReplicaMovements);
+    }
+    return executableReplicaMovements;
+  }
+
+  /**
+   * Add executable inter-broker replica movements that comply with the concurrency constraint, partitions in move constraint
+   * and, if provided, the replication throttle budget, to the given movements.
+   *
+   * @param readyBrokers The brokers that is ready to execute more movements.
+   * @param inProgressPartitions Topic partitions of replicas that are already in progress.
+   * @param maxInterBrokerPartitionMovements Maximum cap for number of partitions to move at any time
+   * @param budget The replication throttle budget of brokers, or {@code null} to ignore the replication throttle.
+   * @param allowIdleBrokerSides {@code true} to let a movement fit in the budget on a broker side with no movement in progress
+   *                             even if the throttle cannot carry it, see {@link ReplicationThrottleBudget#fits(ExecutionTask, boolean)}.
+   * @param executableReplicaMovements The executable movements to add to, which are already removed from the execution plan.
+   */
+  private void addInterBrokerReplicaMovementTasks(Map<Integer, Integer> readyBrokers,
+                                                  Set<TopicPartition> inProgressPartitions,
+                                                  int maxInterBrokerPartitionMovements,
+                                                  ReplicationThrottleBudget budget,
+                                                  boolean allowIdleBrokerSides,
+                                                  List<ExecutionTask> executableReplicaMovements) {
     SortedSet<Integer> interPartMoveBrokerIds = new TreeSet<>(_interPartMoveBrokerComparator);
     List<Integer> interPartMoveBrokerIdsList = new ArrayList<>(_interPartMoveTasksByBrokerId.size());
 
@@ -362,8 +447,9 @@ public class ExecutionTaskPlanner {
     interPartMoveBrokerIds.addAll(_interPartMoveTasksByBrokerId.keySet());
     Set<Integer> brokerInvolved = new HashSet<>();
     Set<TopicPartition> partitionsInvolved = new HashSet<>();
+    executableReplicaMovements.forEach(task -> partitionsInvolved.add(task.proposal().topicPartition()));
 
-    int numInProgressPartitions = inProgressPartitions.size();
+    int numInProgressPartitions = inProgressPartitions.size() + executableReplicaMovements.size();
     boolean maxPartitionMovesReached = false;
 
     while (newTaskAdded && !maxPartitionMovesReached) {
@@ -405,6 +491,7 @@ public class ExecutionTaskPlanner {
           TopicPartition tp = task.proposal().topicPartition();
           // Check if the proposal is executable.
           if (isExecutableProposal(task.proposal(), readyBrokers)
+              && (budget == null || budget.fits(task, allowIdleBrokerSides))
               && !inProgressPartitions.contains(tp)
               && !partitionsInvolved.contains(tp)) {
             partitionsInvolved.add(tp);
@@ -418,6 +505,10 @@ public class ExecutionTaskPlanner {
             interPartMoveBrokerIds.removeAll(destinationBrokers);
             // Remove the proposal from the execution plan.
             removeInterBrokerReplicaActionForExecution(task);
+            if (budget != null) {
+              maybeWarnReplicationThrottleExceeded(task, budget);
+              budget.reserve(task);
+            }
             interPartMoveBrokerIds.add(sourceBroker);
             interPartMoveBrokerIds.addAll(destinationBrokers);
             // Decrement the slots for both source and destination brokers
@@ -435,7 +526,6 @@ public class ExecutionTaskPlanner {
         }
       }
     }
-    return executableReplicaMovements;
   }
 
   /**
@@ -471,6 +561,7 @@ public class ExecutionTaskPlanner {
   public void clear() {
     _intraPartMoveTasksByBrokerId.clear();
     _interPartMoveTasksByBrokerId.clear();
+    _partitionsExceedingReplicationThrottle.clear();
     _remainingLeadershipMovements.clear();
     _remainingInterBrokerReplicaMovements.clear();
     _remainingIntraBrokerReplicaMovements.clear();
@@ -493,6 +584,27 @@ public class ExecutionTaskPlanner {
       }
     }
     return true;
+  }
+
+  /**
+   * Warn once per partition if the replication throttle cannot carry the write rate of the partition of the given task even if
+   * the task is the only one in progress on its brokers, i.e. the movement cannot catch up unless the throttle is raised.
+   *
+   * @param task Inter-broker replica movement task to start.
+   * @param budget The replication throttle budget of brokers.
+   */
+  private void maybeWarnReplicationThrottleExceeded(ExecutionTask task, ReplicationThrottleBudget budget) {
+    TopicPartition tp = task.proposal().topicPartition();
+    if (_partitionsExceedingReplicationThrottle.contains(tp)) {
+      return;
+    }
+    String exceededThrottles = budget.exceededThrottles(task);
+    if (!exceededThrottles.isEmpty()) {
+      _partitionsExceedingReplicationThrottle.add(tp);
+      LOG.warn("Starting the movement of partition {}, whose write rate of {} B/s exceeds the {} (with margin). The movement "
+               + "cannot catch up unless the replication throttle is raised.", tp, String.format("%.0f", budget.writeRate(task)),
+               exceededThrottles);
+    }
   }
 
   private void removeInterBrokerReplicaActionForExecution(ExecutionTask task) {
