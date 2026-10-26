@@ -34,8 +34,6 @@ import org.junit.Test;
 
 import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.anomalyComparator;
 import static org.easymock.EasyMock.anyLong;
-import static org.hamcrest.CoreMatchers.instanceOf;
-import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils.ANOMALY_DETECTOR_INITIAL_QUEUE_SIZE;
@@ -89,7 +87,6 @@ public class BrokerFailureDetectorTest extends CCKafkaIntegrationTestHarness {
       failedBrokerListString = detector.loadPersistedFailedBrokerList();
       assertEquals(String.format("%d=%d", brokerId, anomalyTime), failedBrokerListString);
       Anomaly anomaly = anomalies.remove();
-      assertThat(anomaly, instanceOf(BrokerFailures.class));
       BrokerFailures brokerFailures = (BrokerFailures) anomaly;
       assertEquals("The failed broker should be 0 and time should be 100L", Collections.singletonMap(brokerId, 100L),
                    brokerFailures.failedBrokers());
