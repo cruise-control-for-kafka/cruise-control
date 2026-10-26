@@ -30,16 +30,10 @@ project.ext {
     }
     developers {
       developer {
-        name "Adem Efe Gencer"
-        email "efegencer@gmail.com"
-      }
-      developer {
-        name "Jiangjie (Becket) Qin"
-        email "becket.qin@gmail.com"
-      }
-      developer {
-        name "Sir Joel Koshy"
-        email "jjkoshy@yahoo.com"
+        name "Cruise Control for Kafka Maintainers"
+        email "dev@lists.cruise-control.io"
+        organization "Cruise Control for Kafka"
+        organizationUrl "https://github.com/cruise-control-for-kafka"
       }
     }
     scm {
