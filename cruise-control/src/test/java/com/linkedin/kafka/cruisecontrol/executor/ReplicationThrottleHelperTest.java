@@ -197,6 +197,47 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
   }
 
   @Test
+  public void testClearThrottlesContinuesPastBrokerFailure() throws Exception {
+    final int partitionId = 0;
+    // A proposal to move a partition with 2 replicas from broker 0 and 1 to broker 0 and 2
+    ExecutionProposal proposal = new ExecutionProposal(new TopicPartition(TOPIC0, partitionId),
+                                                       100,
+                                                       new ReplicaPlacementInfo(0),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(1)),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(2)));
+
+    AdminClient mockAdminClient = EasyMock.mock(AdminClient.class);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(mockAdminClient, 100L);
+
+    // Broker 0's config read fails; brokers 1 and 2 have no throttle to remove.
+    ConfigResource broker0 = new ConfigResource(ConfigResource.Type.BROKER, "0");
+    DescribeConfigsResult failedDescribe = EasyMock.mock(DescribeConfigsResult.class);
+    KafkaFuture<Map<ConfigResource, Config>> failedFuture = EasyMock.mock(KafkaFuture.class);
+    EasyMock.expect(failedFuture.get(EasyMock.anyLong(), EasyMock.anyObject()))
+            .andThrow(new ExecutionException(new TimeoutException("broker 0 unreachable")));
+    EasyMock.expect(failedDescribe.all()).andReturn(failedFuture);
+    EasyMock.expect(mockAdminClient.describeConfigs(Collections.singletonList(broker0))).andReturn(failedDescribe);
+    EasyMock.replay(failedDescribe, failedFuture);
+    expectDescribeBrokerConfigs(mockAdminClient, Arrays.asList(1, 2), EMPTY_CONFIG);
+
+    // The topic-level throttled replicas are still removed and verified despite the broker failure.
+    String throttledReplicas = "0:0,0:1,0:2";
+    Config topicConfig = new Config(Arrays.asList(
+            new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG, throttledReplicas),
+            new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG, throttledReplicas)));
+    expectDescribeTopicConfigs(mockAdminClient, TOPIC0, topicConfig, true);
+    expectIncrementalTopicConfigs(mockAdminClient, TOPIC0, true);
+    expectDescribeTopicConfigs(mockAdminClient, TOPIC0, EMPTY_CONFIG, true);
+    ExecutionTask mockCompleteTask = prepareMockCompleteTask(proposal);
+    EasyMock.replay(mockAdminClient);
+
+    // The broker failure is surfaced only after every other throttle has been cleared.
+    assertThrows(ExecutionException.class,
+                 () -> throttleHelper.clearThrottles(Collections.singletonList(mockCompleteTask), Collections.emptyList()));
+    EasyMock.verify(mockAdminClient, mockCompleteTask);
+  }
+
+  @Test
   public void testSetThrottleOnNonExistentTopic() throws Exception {
     final long throttleRate = 100L;
     final int brokerId0 = 0;
@@ -510,6 +551,34 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
   }
 
   @Test
+  public void testWaitForConfigsRetriesOnTransientReadFailure() throws Exception {
+    AdminClient mockAdminClient = EasyMock.strictMock(AdminClient.class);
+    // The first read fails while the topic still exists, so verification retries instead of passing
+    expectDescribeTopicConfigs(mockAdminClient, TOPIC0, EMPTY_CONFIG, false);
+    expectListTopics(mockAdminClient, Collections.singleton(TOPIC0));
+    expectDescribeTopicConfigs(mockAdminClient, TOPIC0, EMPTY_CONFIG, true);
+    EasyMock.replay(mockAdminClient);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(mockAdminClient, 100L, 2);
+    ConfigResource cf = new ConfigResource(ConfigResource.Type.TOPIC, TOPIC0);
+    throttleHelper.waitForConfigs(cf, Collections.singletonList(
+        new AlterConfigOp(new ConfigEntry("k", null), AlterConfigOp.OpType.DELETE)));
+    EasyMock.verify(mockAdminClient);
+  }
+
+  @Test
+  public void testWaitForConfigsSkipsDeletedTopic() throws Exception {
+    AdminClient mockAdminClient = EasyMock.strictMock(AdminClient.class);
+    expectDescribeTopicConfigs(mockAdminClient, TOPIC0, EMPTY_CONFIG, false);
+    expectListTopics(mockAdminClient, Collections.emptySet());
+    EasyMock.replay(mockAdminClient);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(mockAdminClient, 100L, 2);
+    ConfigResource cf = new ConfigResource(ConfigResource.Type.TOPIC, TOPIC0);
+    throttleHelper.waitForConfigs(cf, Collections.singletonList(
+        new AlterConfigOp(new ConfigEntry("k", "v"), AlterConfigOp.OpType.SET)));
+    EasyMock.verify(mockAdminClient);
+  }
+
+  @Test
   public void testConfigsEqual() {
     Map<String, String> expectedConfigs = new HashMap<>();
     List<ConfigEntry> entries = new ArrayList<>();
@@ -540,6 +609,28 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     entries.add(mockStaticConfig);
     assertTrue(ReplicationThrottleHelper.configsEqual(new Config(entries), expectedConfigs));
     EasyMock.verify(mockStaticConfig);
+
+    // A deleted per-broker config that resolves to a cluster-wide dynamic default
+    // (kafka-configs --entity-default) is also considered applied
+    ConfigEntry mockDynamicDefaultConfig = mockConfigEntry("name6", "value6", ConfigEntry.ConfigSource.DYNAMIC_DEFAULT_BROKER_CONFIG);
+    expectedConfigs.put("name6", null);
+    entries.add(mockDynamicDefaultConfig);
+    assertTrue(ReplicationThrottleHelper.configsEqual(new Config(entries), expectedConfigs));
+    EasyMock.verify(mockDynamicDefaultConfig);
+
+    // A deleted config that resolves to the Kafka default is also considered applied
+    ConfigEntry mockDefaultConfig = mockConfigEntry("name7", "value7", ConfigEntry.ConfigSource.DEFAULT_CONFIG);
+    expectedConfigs.put("name7", null);
+    entries.add(mockDefaultConfig);
+    assertTrue(ReplicationThrottleHelper.configsEqual(new Config(entries), expectedConfigs));
+    EasyMock.verify(mockDefaultConfig);
+
+    // A non-null expected value must still match even when the source is a default layer
+    expectedConfigs.put("name6", "value6");
+    assertTrue(ReplicationThrottleHelper.configsEqual(new Config(entries), expectedConfigs));
+    expectedConfigs.put("name6", "other-value");
+    assertFalse(ReplicationThrottleHelper.configsEqual(new Config(entries), expectedConfigs));
+    expectedConfigs.put("name6", null);
   }
 
   private ExecutionTask prepareMockCompleteTask(ExecutionProposal proposal) {
