@@ -16,6 +16,13 @@ At high-level, the decision is made in 2 steps.
 1. Tentatively add new replicas to brokers in cluster in a rack-aware, round-robin way
 2. Further optimize new replica's location with provided goal list
 
+To decrease the replication factor, the leader replica is always retained, and the replicas to delete are selected in the following order:
+1. Offline replicas (i.e. replicas on dead brokers or broken disks)
+2. Out-of-sync replicas
+3. The remaining followers, following the reverse order of their position in the replica list of the partition
+
+Hence, decreasing the replication factor works even if there are dead brokers or broken disks in the cluster, as long as all offline replicas are removed by the replication factor change (i.e. each partition with offline replicas has enough online replicas to satisfy the target replication factor). Otherwise, the request is rejected, and the offline replicas can be fixed first (e.g. using `fix_offline_replicas` endpoint). Removing out-of-sync replicas first avoids waiting for lagging replicas to catch up, e.g. in a cluster under heavy load. Moreover, replication throttle is not applied to replica movements that only remove replicas, since they do not replicate any data.
+
 # Instruction
 To access this new utility, a new POST endpoint,`topic_configuration` is added to Cruise Control. 
 See request detail and supported parameters at [REST API wiki page](https://github.com/cruise-control-for-kafka/cruise-control/wiki/REST-APIs#change-kafka-topic-configuration).

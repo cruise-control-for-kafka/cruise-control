@@ -895,7 +895,9 @@ public class ClusterModel implements Serializable {
       throw new IllegalStateException(String.format("Unable to delete replica for topic partition %s since it only has %d replicas.",
                                                     topicPartition, currentReplicaCount));
     }
-    removeReplica(brokerId, topicPartition);
+    Replica removedReplica = removeReplica(brokerId, topicPartition);
+    // A deleted replica no longer needs to be moved away from a dead broker or broken disk.
+    _selfHealingEligibleReplicas.remove(removedReplica);
     // Update partition info.
     Partition partition = _partitionsByTopicPartition.get(topicPartition);
     partition.deleteReplica(brokerId);
@@ -952,7 +954,9 @@ public class ClusterModel implements Serializable {
 
   /**
    * For partitions of specified topics, create or delete replicas in given cluster model to change the partition's replication
-   * factor to target replication factor. New replicas for partition are added in a rack-aware, round-robin way.
+   * factor to target replication factor. New replicas for partition are added in a rack-aware, round-robin way. When
+   * replicas are deleted, the leader replica is retained and offline replicas (i.e. on dead brokers or broken disks), then
+   * out-of-sync replicas are deleted first (see {@link ModelUtils#replicasToRetainOnReplicationFactorDecrease}).
    *
    * @param topicsByReplicationFactor The topics to modify replication factor with target replication factor.
    * @param brokersByRack A map from rack to broker.
@@ -987,8 +991,8 @@ public class ClusterModel implements Serializable {
             continue;
           }
 
-          List<Integer> newAssignedReplica = new ArrayList<>();
           if (partitionInfo.replicas().length < replicationFactor) {
+            List<Integer> newAssignedReplica = new ArrayList<>();
             Set<String> currentOccupiedRack = new HashSet<>();
             // Make sure the current replicas are in new replica list.
             for (Node node : partitionInfo.replicas()) {
@@ -1014,16 +1018,14 @@ public class ClusterModel implements Serializable {
               rackCursor = (rackCursor + 1) % racks.size();
             }
           } else {
-            // Make sure the leader replica is in new replica list.
-            newAssignedReplica.add(partitionInfo.leader().id());
+            // Retain the leader replica and prefer removing offline, then out-of-sync replicas.
+            List<Integer> replicasToRetain =
+                ModelUtils.replicasToRetainOnReplicationFactorDecrease(partitionInfo, offlineReplicaBrokerIds(partition, partitionInfo),
+                                                                       replicationFactor);
             for (Node node : partitionInfo.replicas()) {
-              if (node.id() != newAssignedReplica.get(0)) {
-                if (newAssignedReplica.size() < replicationFactor) {
-                  newAssignedReplica.add(node.id());
-                } else {
-                  deleteReplica(new TopicPartition(topic, partitionInfo.partition()), node.id());
-                  needToRefreshClusterMaxReplicationFactor = true;
-                }
+              if (!replicasToRetain.contains(node.id())) {
+                deleteReplica(tp, node.id());
+                needToRefreshClusterMaxReplicationFactor = true;
               }
             }
           }
@@ -1033,6 +1035,29 @@ public class ClusterModel implements Serializable {
     if (needToRefreshClusterMaxReplicationFactor) {
       refreshClusterMaxReplicationFactor();
     }
+  }
+
+  /**
+   * Get ids of brokers hosting offline replicas of the given partition, based on both the given partition info and
+   * the cluster model (i.e. replicas on dead brokers or broken disks).
+   *
+   * @param partition The partition in the cluster model.
+   * @param partitionInfo The partition info from the Kafka cluster metadata.
+   * @return Ids of brokers hosting offline replicas of the given partition.
+   */
+  private static Set<Integer> offlineReplicaBrokerIds(Partition partition, PartitionInfo partitionInfo) {
+    Set<Integer> offlineBrokerIds = new HashSet<>();
+    if (partitionInfo.offlineReplicas() != null) {
+      for (Node node : partitionInfo.offlineReplicas()) {
+        offlineBrokerIds.add(node.id());
+      }
+    }
+    for (Replica replica : partition.replicas()) {
+      if (replica.isCurrentOffline()) {
+        offlineBrokerIds.add(replica.broker().id());
+      }
+    }
+    return offlineBrokerIds;
   }
 
   /**
