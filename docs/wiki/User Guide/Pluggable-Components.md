@@ -85,6 +85,37 @@ Sometimes this could result in prolonged execution time due to some long tail ta
 
 The strategies can be chained to use and can be dynamically set using `replica_movement_strategies` in corresponding request(e.g. [rebalance request](https://github.com/cruise-control-for-kafka/cruise-control/wiki/REST-APIs#trigger-a-workload-balance)).
 
+## Execution State Store
+The Execution State Store persists the state of the ongoing execution -- i.e. the parameters it was started with, its proposals, and the
+latest state of each execution task. The state is updated continuously while the execution makes progress: when it starts, right before
+a batch of tasks is submitted to Kafka (so that every task that Kafka may be executing is recorded as in progress), and whenever a task
+finishes. The state is deleted once the execution finishes (i.e. completes, is stopped, or fails), and retained if Cruise Control is shut
+down or crashes during the execution.
+
+Upon startup, Cruise Control reconciles the persisted state (if any) with the current state of the cluster -- e.g. a task that was in
+progress is checked for whether Kafka is still executing it, has completed it, or has not started it. Then, it either resumes the
+remaining tasks of the interrupted execution (see `resume.interrupted.execution.on.startup`) -- monitoring the tasks that Kafka is still
+executing rather than submitting them again -- or cleans it up: it waits for the in-flight tasks to finish and removes the replication
+throttles left behind by the interrupted execution.
+
+An interrupted execution is resumed only if the cluster is as the execution left it. It is cleaned up instead if it last made progress
+longer ago than `resume.interrupted.execution.max.age.ms`, if it was resumed `resume.interrupted.execution.max.count` times already, or if
+anything changed while Cruise Control was not running that the execution itself cannot explain: a partition of the execution is not
+where the execution left it, a replica outside the execution was moved to another broker (or between the logdirs of a broker the
+execution moves replicas between), partitions were created or deleted, a destination broker is not alive, a throttled rate of a broker
+of the execution was changed, or a destination does not have enough usable space for the remaining movements. Resuming a plan made for
+a different cluster could e.g. move replicas to a broker that has been filled up since.
+
+The cleanup is reported as the `RECOVERING_INTERRUPTED_EXECUTION` executor state: new executions (and self-healing) wait for it, and
+stopping it (e.g. `stop_proposal_execution`) cancels the in-flight reassignments of the interrupted execution right away -- as does
+reaching `interrupted.execution.cleanup.timeout.ms`. A throttled rate is removed only if it still has the value that the execution set;
+a rate changed by someone else in the meantime is kept. The state endpoint reports how the latest interrupted execution was recovered
+until the next execution starts.
+
+The default implementation of Execution State Store (see `FileExecutionStateStore`) keeps the state as a JSON document in a local file
+(see `executor.state.file.path`). Custom implementations (e.g. backed by ZooKeeper or a Kafka topic) can be plugged in via
+`executor.state.store.class`; `NoopExecutionStateStore` disables persisting the execution state.
+
 ## Maintenance Event Reader
 When a system/tool in Kafka Ecosystem has knowledge about an upcoming planned maintenance, such as a switch change, an upcoming VM freeze, 
 or reboot of VMs on cloud deployments, the desired preventative mitigation strategy (i.e. `maintenance event`) can be conveyed to 

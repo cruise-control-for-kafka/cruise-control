@@ -5,6 +5,7 @@
 package com.linkedin.kafka.cruisecontrol.config.constants;
 
 import com.linkedin.kafka.cruisecontrol.executor.ExecutorNoopNotifier;
+import com.linkedin.kafka.cruisecontrol.executor.persistence.FileExecutionStateStore;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.BaseReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PostponeUrpReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeLargeReplicaMovementStrategy;
@@ -497,6 +498,69 @@ public final class ExecutorConfig {
   public static final String AUTO_STOP_EXTERNAL_AGENT_DOC = "When starting a new proposal execution while external agent is reassigning partitions,"
       + " automatically stop the external agent and start the execution."
       + " Set to false to keep the external agent reassignment and skip starting the execution.";
+
+  /**
+   * <code>executor.state.store.class</code>
+   */
+  public static final String EXECUTOR_STATE_STORE_CLASS_CONFIG = "executor.state.store.class";
+  public static final String DEFAULT_EXECUTOR_STATE_STORE_CLASS = FileExecutionStateStore.class.getName();
+  public static final String EXECUTOR_STATE_STORE_CLASS_DOC = "The class implementing com.linkedin.kafka.cruisecontrol.executor."
+      + "persistence.ExecutionStateStore to persist the state of the ongoing execution -- i.e. its parameters, proposals, and the"
+      + " latest state of each execution task. The state is updated whenever the execution makes progress, so that after a"
+      + " Cruise Control restart, the interrupted execution can be recovered: its leftover replication throttles are removed,"
+      + " and (if resume.interrupted.execution.on.startup is enabled) its remaining tasks are resumed. Use"
+      + " com.linkedin.kafka.cruisecontrol.executor.persistence.NoopExecutionStateStore to disable persisting the execution state.";
+
+  /**
+   * <code>executor.state.file.path</code>
+   */
+  public static final String EXECUTOR_STATE_FILE_PATH_CONFIG = "executor.state.file.path";
+  public static final String DEFAULT_EXECUTOR_STATE_FILE_PATH = "fileStore/executionState.json";
+  public static final String EXECUTOR_STATE_FILE_PATH_DOC = "The file path to persist the state of the ongoing execution if the"
+      + " executor.state.store.class is com.linkedin.kafka.cruisecontrol.executor.persistence.FileExecutionStateStore. To recover"
+      + " the execution after a restart, this path must be on storage that survives Cruise Control restarts.";
+
+  /**
+   * <code>resume.interrupted.execution.on.startup</code>
+   */
+  public static final String RESUME_INTERRUPTED_EXECUTION_ON_STARTUP_CONFIG = "resume.interrupted.execution.on.startup";
+  public static final boolean DEFAULT_RESUME_INTERRUPTED_EXECUTION_ON_STARTUP = false;
+  public static final String RESUME_INTERRUPTED_EXECUTION_ON_STARTUP_DOC = "Upon startup, if the persisted execution state indicates"
+      + " that an execution was interrupted (e.g. due to a crash or a restart of Cruise Control), resume its remaining tasks with the"
+      + " original parameters. Tasks that were in progress when Cruise Control stopped and are still being executed by Kafka are"
+      + " monitored until completion rather than being submitted again; tasks that were completed in the meantime are skipped."
+      + " If disabled (or the execution cannot be resumed), Cruise Control waits for the interrupted in-progress tasks to finish and"
+      + " removes the replication throttles left behind by the interrupted execution.";
+
+  /**
+   * <code>resume.interrupted.execution.max.age.ms</code>
+   */
+  public static final String RESUME_INTERRUPTED_EXECUTION_MAX_AGE_MS_CONFIG = "resume.interrupted.execution.max.age.ms";
+  public static final long DEFAULT_RESUME_INTERRUPTED_EXECUTION_MAX_AGE_MS = TimeUnit.HOURS.toMillis(1);
+  public static final String RESUME_INTERRUPTED_EXECUTION_MAX_AGE_MS_DOC = "The maximum time in ms since an interrupted execution"
+      + " last made progress for it to be resumed upon startup. An older execution was planned for a cluster that has likely"
+      + " changed since, so it is only cleaned up -- i.e. its leftover replication throttles are removed.";
+
+  /**
+   * <code>resume.interrupted.execution.max.count</code>
+   */
+  public static final String RESUME_INTERRUPTED_EXECUTION_MAX_COUNT_CONFIG = "resume.interrupted.execution.max.count";
+  public static final int DEFAULT_RESUME_INTERRUPTED_EXECUTION_MAX_COUNT = 3;
+  public static final String RESUME_INTERRUPTED_EXECUTION_MAX_COUNT_DOC = "The maximum number of times an interrupted execution"
+      + " is resumed. An execution that was resumed this many times is only cleaned up upon the next startup, so that an"
+      + " execution which keeps Cruise Control from running (e.g. by exhausting its memory) is not resumed forever.";
+
+  /**
+   * <code>interrupted.execution.cleanup.timeout.ms</code>
+   */
+  public static final String INTERRUPTED_EXECUTION_CLEANUP_TIMEOUT_MS_CONFIG = "interrupted.execution.cleanup.timeout.ms";
+  public static final long DEFAULT_INTERRUPTED_EXECUTION_CLEANUP_TIMEOUT_MS = TimeUnit.HOURS.toMillis(1);
+  public static final String INTERRUPTED_EXECUTION_CLEANUP_TIMEOUT_MS_DOC = "The maximum time in ms to wait for the partition"
+      + " reassignments of an interrupted execution that is not resumed to finish, before cancelling them and removing the"
+      + " replication throttles that the interrupted execution left behind. Until then, the executor reports the"
+      + " RECOVERING_INTERRUPTED_EXECUTION state, and a new execution can only be started by stopping the cleanup -- which"
+      + " cancels those reassignments right away.";
+
   private ExecutorConfig() {
   }
 
@@ -797,6 +861,39 @@ public final class ExecutorConfig {
                             ConfigDef.Type.BOOLEAN,
                             DEFAULT_AUTO_STOP_EXTERNAL_AGENT,
                             ConfigDef.Importance.MEDIUM,
-                            AUTO_STOP_EXTERNAL_AGENT_DOC);
+                            AUTO_STOP_EXTERNAL_AGENT_DOC)
+                    .define(EXECUTOR_STATE_STORE_CLASS_CONFIG,
+                            ConfigDef.Type.CLASS,
+                            DEFAULT_EXECUTOR_STATE_STORE_CLASS,
+                            ConfigDef.Importance.LOW,
+                            EXECUTOR_STATE_STORE_CLASS_DOC)
+                    .define(EXECUTOR_STATE_FILE_PATH_CONFIG,
+                            ConfigDef.Type.STRING,
+                            DEFAULT_EXECUTOR_STATE_FILE_PATH,
+                            ConfigDef.Importance.LOW,
+                            EXECUTOR_STATE_FILE_PATH_DOC)
+                    .define(RESUME_INTERRUPTED_EXECUTION_ON_STARTUP_CONFIG,
+                            ConfigDef.Type.BOOLEAN,
+                            DEFAULT_RESUME_INTERRUPTED_EXECUTION_ON_STARTUP,
+                            ConfigDef.Importance.MEDIUM,
+                            RESUME_INTERRUPTED_EXECUTION_ON_STARTUP_DOC)
+                    .define(RESUME_INTERRUPTED_EXECUTION_MAX_AGE_MS_CONFIG,
+                            ConfigDef.Type.LONG,
+                            DEFAULT_RESUME_INTERRUPTED_EXECUTION_MAX_AGE_MS,
+                            atLeast(0),
+                            ConfigDef.Importance.LOW,
+                            RESUME_INTERRUPTED_EXECUTION_MAX_AGE_MS_DOC)
+                    .define(RESUME_INTERRUPTED_EXECUTION_MAX_COUNT_CONFIG,
+                            ConfigDef.Type.INT,
+                            DEFAULT_RESUME_INTERRUPTED_EXECUTION_MAX_COUNT,
+                            atLeast(0),
+                            ConfigDef.Importance.LOW,
+                            RESUME_INTERRUPTED_EXECUTION_MAX_COUNT_DOC)
+                    .define(INTERRUPTED_EXECUTION_CLEANUP_TIMEOUT_MS_CONFIG,
+                            ConfigDef.Type.LONG,
+                            DEFAULT_INTERRUPTED_EXECUTION_CLEANUP_TIMEOUT_MS,
+                            atLeast(0),
+                            ConfigDef.Importance.LOW,
+                            INTERRUPTED_EXECUTION_CLEANUP_TIMEOUT_MS_DOC);
   }
 }
