@@ -82,6 +82,12 @@ Sometimes this could result in prolonged execution time due to some long tail ta
 * **PrioritizeLargeReplicaMovementStrategy**: prioritize large sized replicas
 * **PostponeUrpReplicaMovementStrategy**: prioritize replicas for partition having no out-of-sync replica
 * **PrioritizeMinIsrWithOfflineReplicasStrategy**: prioritize tasks with (At/Under)MinISR partitions with offline replicas
+* **OneReplicaPerPartitionMovementStrategy**: move at most one replica of each partition at a time. Instead of moving a
+  partition to its new replicas at once (e.g. `[0, 1, 2] -> [3, 4, 5]`, during which the partition lives on six brokers and its
+  leader serves five replication streams), the movement is split into sequential steps that each add exactly one new replica
+  (`[0, 1, 2] -> [0, 1, 3] -> [0, 3, 4] -> [3, 4, 5]`). The old leader is kept until the last step. This reduces the load
+  (e.g. disk IO) on the brokers hosting a partition during its movement, at the cost of a longer execution. Each step is tracked
+  as a separate partition movement, and stopping the execution leaves a partition at its last completed step.
 
 The strategies can be chained to use and can be dynamically set using `replica_movement_strategies` in corresponding request(e.g. [rebalance request](https://github.com/cruise-control-for-kafka/cruise-control/wiki/REST-APIs#trigger-a-workload-balance)).
 
