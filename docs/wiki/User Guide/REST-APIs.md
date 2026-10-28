@@ -235,6 +235,7 @@ Supported parameters are:
 | kafka_assigner                    | boolean   | whether to use Kafka assigner mode to generate proposals                              | false                | yes       |
 | allow_capacity_estimation         | boolean   | whether to allow broker capacity to be estimated                                      | true                 | yes       |
 | excluded_topics                   | regex     | regular expression to specify topics excluded from replica and leadership movement    | null                 | yes       |
+| included_topics                   | regex     | regular expression to specify the only topics allowed to move                         | null                 | yes       |
 | use_ready_default_goals           | boolean   | whether to use only ready goals to generate proposals                                 | false                | yes       |
 | exclude_recently_demoted_brokers  | boolean   | whether to allow leader replicas to be moved to recently demoted brokers              | false                | yes       |
 | exclude_recently_removed_brokers  | boolean   | whether allow replicas to be moved to recently removed broker                         | false                | yes       |
@@ -263,6 +264,8 @@ If `verbose` is turned on, Cruise Control will return all the generated proposal
 If `kafka_assigner` is turned on, the proposals will be generated in Kafka Assigner mode,i.e. Cruise Control behaves like [kafka assigner tool](https://github.com/linkedin/kafka-tools/wiki/Kafka-Assigner). This mode performs optimizations using the goals specific to Kafka Assigner -- i.e. goals with name `KafkaAssigner*`.
 
 Users can specify `excluded_topics` to prevent certain topics' replicas from moving in the generated proposals.
+
+Alternatively, users can specify `included_topics` to only move replicas of the matching topics in the generated proposals -- i.e. all other topics are excluded from replica and leadership movement. When specified, `included_topics` takes precedence over the topics excluded by default via `topics.excluded.from.partition.movement` config. `included_topics` and `excluded_topics` are mutually exclusive and cannot be specified in the same request.
 
 If `use_ready_default_goals` is turned on, Cruise Control will use whatever ready goals(based on available metric data) to calculate the proposals.
 
@@ -342,6 +345,7 @@ Supported parameters are:
 | concurrent_leader_movements                   | integer   | upper bound of ongoing leadership movements                                                                                           | null                  | yes       | 
 | skip_hard_goal_check                          | boolean   | Whether allow hard goals be skipped in proposal generation                                                                            | false                 | yes       | 
 | excluded_topics                               | regex     | regular expression to specify topics excluded from replica and leadership movement                                                    | null                  | yes       | 
+| included_topics                               | regex     | regular expression to specify the only topics allowed to move (mutually exclusive with `excluded_topics`)                             | null                  | yes       | 
 | use_ready_default_goals                       | boolean   | whether only use ready goals to generate proposal                                                                                     | false                 | yes       | 
 | exclude_recently_demoted_brokers              | boolean   | whether to allow leader replicas to be moved to recently demoted brokers                                                              | false                 | yes       | 
 | exclude_recently_removed_brokers              | boolean   | whether allow replicas to be moved to recently removed broker                                                                         | false                 | yes       | 
@@ -385,6 +389,7 @@ Supported parameters are:
 | concurrent_leader_movements               | integer   | upper bound of ongoing leadership movements                                                                                           | null                  | yes       | 
 | skip_hard_goal_check                      | boolean   | whether allow hard goals be skipped in proposal generation                                                                            | false                 | yes       | 
 | excluded_topics                           | regex     | regular expression to specify topics excluded from replica and leadership movement                                                    | null                  | yes       | 
+| included_topics                           | regex     | regular expression to specify the only topics allowed to move (mutually exclusive with `excluded_topics`)                             | null                  | yes       | 
 | use_ready_default_goals                   | boolean   | whether only use ready goals to generate proposal                                                                                     | false                 | yes       | 
 | exclude_recently_demoted_brokers          | boolean   | whether to allow leader replicas to be moved to recently demoted brokers                                                              | false                 | yes       | 
 | exclude_recently_removed_brokers          | boolean   | whether allow replicas to be moved to recently removed broker                                                                         | false                 | yes       | 
@@ -422,6 +427,7 @@ Supported parameters are:
 | concurrent_leader_movements               | integer   | upper bound of ongoing leadership movements                                                                                          | null                  | yes       | 
 | skip_hard_goal_check                      | boolean   | whether allow hard goals be skipped in proposal generation                                                                           | false                 | yes       | 
 | excluded_topics                           | regex     | regular expression to specify topics excluded from replica and leadership movement                                                   | null                  | yes       | 
+| included_topics                           | regex     | regular expression to specify the only topics allowed to move (mutually exclusive with `excluded_topics`)                            | null                  | yes       | 
 | use_ready_default_goals                   | boolean   | whether only use ready goals to generate proposal                                                                                    | false                 | yes       | 
 | exclude_recently_demoted_brokers          | boolean   | whether to allow leader replicas to be moved to recently demoted brokers                                                             | false                 | yes       | 
 | exclude_recently_removed_brokers          | boolean   | whether allow replicas to be moved to recently removed broker                                                                        | false                 | yes       | 
@@ -439,7 +445,7 @@ Similar to adding brokers to a cluster, removing brokers from a cluster will **o
 
 Like adding brokers, users can choose whether to throttle the removed broker during the partition movement. If the removed brokers are throttled, the number of partitions concurrently moving out of a broker, number of concurrent partition leadership changes and bandwidth used for replica movement are gated in the same way as add_broker above.
 
-**Note if the topics specified in `excluded_topics` has replicas on the removed broker, the replicas will still get moved off the broker.**
+**Note if the topics specified in `excluded_topics` (or not matching `included_topics`) has replicas on the removed broker, the replicas will still get moved off the broker.**
 
 ### Fix offline replicas in Kafka cluster
 The following POST request moves all the offline replicas from dead disks/brokers.
@@ -460,6 +466,7 @@ Supported parameters are:
 | concurrent_leader_movements               | integer   | upper bound of ongoing leadership movements                                                                                           | null                  | yes       | 
 | skip_hard_goal_check                      | boolean   | Whether allow hard goals be skipped in proposal generation                                                                            | false                 | yes       | 
 | excluded_topics                           | regex     | regular expression to specify topics excluded from replica and leadership movement                                                    | null                  | yes       | 
+| included_topics                           | regex     | regular expression to specify the only topics allowed to move (mutually exclusive with `excluded_topics`)                             | null                  | yes       | 
 | use_ready_default_goals                   | boolean   | whether only use ready goals to generate proposal                                                                                     | false                 | yes       | 
 | exclude_recently_demoted_brokers          | boolean   | whether to allow leader replicas to be moved to recently demoted brokers                                                              | false                 | yes       | 
 | exclude_recently_removed_brokers          | boolean   | whether allow replicas to be moved to recently removed broker                                                                         | false                 | yes       | 
@@ -473,7 +480,7 @@ Supported parameters are:
 
 Likewise, users can throttle partition movement, the throttling can be set in the same way as [`rebalance` request](#trigger-a-workload-balance).
 
-**Note if the topics specified in `excluded_topics` has offline replicas, the replicas will still get moved to healthy brokers.**
+**Note if the topics specified in `excluded_topics` (or not matching `included_topics`) has offline replicas, the replicas will still get moved to healthy brokers.**
 
 ### Demote a list of brokers from the Kafka cluster
 The following POST request moves all the leader replicas away from a list of brokers.
