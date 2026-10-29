@@ -193,6 +193,7 @@ public class UpdateTopicConfigurationRunnable extends GoalBasedOperationRunnable
                                                                          _excludeRecentlyDemotedBrokers,
                                                                          _excludeRecentlyRemovedBrokers,
                                                                          _excludedTopics,
+                                                                         _includedTopics,
                                                                          Collections.emptySet(),
                                                                          true,
                                                                          _fastMode);

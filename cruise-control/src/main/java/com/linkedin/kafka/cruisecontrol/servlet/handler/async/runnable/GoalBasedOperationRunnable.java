@@ -27,6 +27,7 @@ import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.Ru
 import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_MODEL_COMPLETENESS_REQUIREMENTS;
 import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_SKIP_HARD_GOAL_CHECK;
 import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_EXCLUDED_TOPICS;
+import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_INCLUDED_TOPICS;
 import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_IS_TRIGGERED_BY_USER_REQUEST;
 import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_FAST_MODE;
 import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.maybeStopOngoingExecutionToModifyAndWait;
@@ -43,6 +44,7 @@ public abstract class GoalBasedOperationRunnable extends OperationRunnable {
   protected final boolean _stopOngoingExecution;
   protected final boolean _skipHardGoalCheck;
   protected final Pattern _excludedTopics;
+  protected final Pattern _includedTopics;
   protected final boolean _allowCapacityEstimation;
   protected final boolean _excludeRecentlyDemotedBrokers;
   protected final boolean _excludeRecentlyRemovedBrokers;
@@ -68,7 +70,7 @@ public abstract class GoalBasedOperationRunnable extends OperationRunnable {
                                     Supplier<String> reasonSupplier) {
     this(kafkaCruiseControl, future, dryRun, parameters.goals(), stopOngoingExecution,
          parameters.modelCompletenessRequirements(), skipHardGoalCheck, parameters.excludedTopics(),
-         parameters.allowCapacityEstimation(), parameters.excludeRecentlyDemotedBrokers(),
+         parameters.includedTopics(), parameters.allowCapacityEstimation(), parameters.excludeRecentlyDemotedBrokers(),
          parameters.excludeRecentlyRemovedBrokers(), uuid, reasonSupplier, !SELF_HEALING_IS_TRIGGERED_BY_USER_REQUEST,
          parameters.fastMode());
   }
@@ -87,8 +89,8 @@ public abstract class GoalBasedOperationRunnable extends OperationRunnable {
                                     boolean stopOngoingExecution) {
     this(kafkaCruiseControl, future, SELF_HEALING_DRYRUN, goals, stopOngoingExecution,
          SELF_HEALING_MODEL_COMPLETENESS_REQUIREMENTS, SELF_HEALING_SKIP_HARD_GOAL_CHECK, SELF_HEALING_EXCLUDED_TOPICS,
-         allowCapacityEstimation, excludeRecentlyDemotedBrokers, excludeRecentlyRemovedBrokers, uuid, reasonSupplier,
-         SELF_HEALING_IS_TRIGGERED_BY_USER_REQUEST, SELF_HEALING_FAST_MODE);
+         SELF_HEALING_INCLUDED_TOPICS, allowCapacityEstimation, excludeRecentlyDemotedBrokers, excludeRecentlyRemovedBrokers,
+         uuid, reasonSupplier, SELF_HEALING_IS_TRIGGERED_BY_USER_REQUEST, SELF_HEALING_FAST_MODE);
   }
 
   public GoalBasedOperationRunnable(KafkaCruiseControl kafkaCruiseControl,
@@ -99,6 +101,7 @@ public abstract class GoalBasedOperationRunnable extends OperationRunnable {
                                     ModelCompletenessRequirements modelCompletenessRequirements,
                                     boolean skipHardGoalCheck,
                                     Pattern excludedTopics,
+                                    Pattern includedTopics,
                                     boolean allowCapacityEstimation,
                                     boolean excludeRecentlyDemotedBrokers,
                                     boolean excludeRecentlyRemovedBrokers,
@@ -113,6 +116,7 @@ public abstract class GoalBasedOperationRunnable extends OperationRunnable {
     _stopOngoingExecution = stopOngoingExecution;
     _skipHardGoalCheck = skipHardGoalCheck;
     _excludedTopics = excludedTopics;
+    _includedTopics = includedTopics;
     _allowCapacityEstimation = allowCapacityEstimation;
     _excludeRecentlyDemotedBrokers = excludeRecentlyDemotedBrokers;
     _excludeRecentlyRemovedBrokers = excludeRecentlyRemovedBrokers;

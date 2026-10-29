@@ -11,6 +11,7 @@ import com.linkedin.kafka.cruisecontrol.analyzer.kafkaassigner.KafkaAssignerDisk
 import com.linkedin.kafka.cruisecontrol.analyzer.kafkaassigner.KafkaAssignerEvenRackAwareGoal;
 import com.linkedin.kafka.cruisecontrol.async.progress.OperationProgress;
 import com.linkedin.kafka.cruisecontrol.async.progress.WaitingForOngoingExecutionToStop;
+import com.linkedin.kafka.cruisecontrol.common.Utils;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.ReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
@@ -46,6 +47,7 @@ public final class RunnableUtils {
   public static final Set<Integer> SELF_HEALING_DESTINATION_BROKER_IDS = Collections.emptySet();
   public static final ReplicaMovementStrategy SELF_HEALING_REPLICA_MOVEMENT_STRATEGY = null;
   public static final Pattern SELF_HEALING_EXCLUDED_TOPICS = null;
+  public static final Pattern SELF_HEALING_INCLUDED_TOPICS = null;
   public static final Integer SELF_HEALING_CONCURRENT_MOVEMENTS = null;
   public static final Long SELF_HEALING_EXECUTION_PROGRESS_CHECK_INTERVAL_MS = null;
   public static final boolean SELF_HEALING_SKIP_HARD_GOAL_CHECK = false;
@@ -266,6 +268,9 @@ public final class RunnableUtils {
    * @param excludeRecentlyDemotedBrokers Exclude recently demoted brokers from proposal generation for leadership transfer.
    * @param excludeRecentlyRemovedBrokers Exclude recently removed brokers from proposal generation for replica transfer.
    * @param excludedTopicsPattern The topics that should be excluded from the optimization action.
+   * @param includedTopicsPattern The only topics that should be included in the optimization action (i.e. all other topics
+   *                              are excluded), or {@code null} to rely on {@code excludedTopicsPattern}. If set, it takes
+   *                              precedence over both {@code excludedTopicsPattern} and the default excluded topics.
    * @param requestedDestinationBrokerIds Explicitly requested destination broker Ids to limit the replica movement to
    *                                      these brokers (if empty, no explicit filter is enforced -- cannot be null).
    * @param onlyMoveImmigrantReplicas {@code true} to move only immigrant replicas, {@code false} otherwise.
@@ -280,6 +285,7 @@ public final class RunnableUtils {
                                                                boolean excludeRecentlyDemotedBrokers,
                                                                boolean excludeRecentlyRemovedBrokers,
                                                                Pattern excludedTopicsPattern,
+                                                               Pattern includedTopicsPattern,
                                                                Set<Integer> requestedDestinationBrokerIds,
                                                                boolean onlyMoveImmigrantReplicas,
                                                                boolean fastMode) {
@@ -293,7 +299,14 @@ public final class RunnableUtils {
     Set<Integer> excludedBrokersForReplicaMove = excludeRecentlyRemovedBrokers ? recentBrokers.recentlyRemovedBrokers()
                                                                                : Collections.emptySet();
 
-    Set<String> excludedTopics = kafkaCruiseControl.excludedTopics(clusterModel, excludedTopicsPattern);
+    Set<String> excludedTopics;
+    if (includedTopicsPattern != null) {
+      Set<String> includedTopics = Utils.getTopicNamesMatchedWithPattern(includedTopicsPattern, clusterModel::topics);
+      excludedTopics = new HashSet<>(clusterModel.topics());
+      excludedTopics.removeAll(includedTopics);
+    } else {
+      excludedTopics = kafkaCruiseControl.excludedTopics(clusterModel, excludedTopicsPattern);
+    }
     LOG.debug("Topics excluded from partition movement: {}", excludedTopics);
     return new OptimizationOptions(excludedTopics, excludedBrokersForLeadership, excludedBrokersForReplicaMove,
                                    isTriggeredByGoalViolation, requestedDestinationBrokerIds, onlyMoveImmigrantReplicas, fastMode);
