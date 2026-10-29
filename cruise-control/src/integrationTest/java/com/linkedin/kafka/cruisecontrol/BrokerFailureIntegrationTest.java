@@ -1,5 +1,17 @@
 /*
  * Copyright 2021 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol;
@@ -23,8 +35,6 @@ import com.linkedin.kafka.cruisecontrol.detector.TopicReplicationFactorAnomalyFi
 import com.linkedin.kafka.cruisecontrol.detector.notifier.SelfHealingNotifier;
 import net.minidev.json.JSONArray;
 import org.apache.kafka.clients.admin.NewTopic;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -38,7 +48,6 @@ import static com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint.STA
 public class BrokerFailureIntegrationTest extends CruiseControlIntegrationTestHarness {
 
   private static final int PARTITION_COUNT = 10;
-  private static final int KAFKA_CLUSTER_SIZE = 4;
   private static final String CRUISE_CONTROL_KAFKA_CLUSTER_STATE_ENDPOINT =
       KAFKA_CRUISE_CONTROL_BASE_PATH + KAFKA_CLUSTER_STATE + "?verbose=true&json=true";
   private static final String CRUISE_CONTROL_STATE_ENDPOINT =
@@ -61,26 +70,6 @@ public class BrokerFailureIntegrationTest extends CruiseControlIntegrationTestHa
   public static Collection<Boolean> data() {
     Boolean[] data = {true, false};
     return Arrays.asList(data);
-  }
-
-  @Before
-  public void setup() throws Exception {
-    super.start();
-  }
-
-  @Override
-  protected int clusterSize() {
-    return KAFKA_CLUSTER_SIZE;
-  }
-
-  @After
-  public void teardown() {
-    super.stop();
-  }
-
-  @Override
-  public Map<Object, Object> overridingProps() {
-    return KafkaCruiseControlIntegrationTestUtils.createBrokerProps();
   }
 
   @Override
@@ -110,7 +99,7 @@ public class BrokerFailureIntegrationTest extends CruiseControlIntegrationTestHa
 
   @Test
   public void testBrokerFailure() {
-    KafkaCruiseControlIntegrationTestUtils.createTopic(broker(0).plaintextAddr(), 
+    KafkaCruiseControlIntegrationTestUtils.createTopic(bootstrapServers(),
         new NewTopic(TOPIC0, PARTITION_COUNT, (short) 2));
 
     waitForMetadataPropagates();
@@ -121,7 +110,7 @@ public class BrokerFailureIntegrationTest extends CruiseControlIntegrationTestHa
     waitForProposal();
 
     // shut down a broker to initiate a self-healing action
-    broker(BROKER_ID_TO_REMOVE).shutdown();
+    _cluster.shutDownBroker(BROKER_ID_TO_REMOVE);
 
     waitForSelfHealing();
   }
@@ -137,7 +126,7 @@ public class BrokerFailureIntegrationTest extends CruiseControlIntegrationTestHa
             .read("$.*", new TypeRef<>() { });
         Map<String, String> offlineReplicas = JsonPath.read(responseMessage,
             "$.KafkaBrokerState.OfflineReplicaCountByBrokerId");
-        return partitionLeaders.size() == PARTITION_COUNT && brokers == KAFKA_CLUSTER_SIZE - 1
+        return partitionLeaders.size() == PARTITION_COUNT && brokers == clusterSize() - 1
             && offlineReplicas.isEmpty();
     }, 80, new AssertionError("Topic replicas not fixed after broker removed"));
   }

@@ -1,5 +1,17 @@
 /*
  * Copyright 2021 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.servlet.security;
@@ -8,6 +20,9 @@ import com.linkedin.kafka.cruisecontrol.CruiseControlIntegrationTestHarness;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.security.spnego.SpnegoSecurityProvider;
 import org.apache.kerby.kerberos.kerb.KrbException;
+import org.junit.After;
+import org.junit.Before;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -59,19 +74,31 @@ public abstract class SpnegoIntegrationTestHarness extends CruiseControlIntegrat
     return configs;
   }
 
+  /**
+   * Starts the Mini KDC and initializes the test environment.
+   */
   @Override
-  public void start() throws Exception {
-    _miniKdc.start();
-    super.start();
+  @Before
+  public void setUp() {
+    try {
+      _miniKdc.start();
+    } catch (KrbException | IOException e) {
+      throw new RuntimeException(e);
+    }
+    super.setUp();
   }
 
+  /**
+   * Shuts down the containerized cluster, the Cruise Control instance, and Mini KDC.
+   */
   @Override
-  public void stop() {
-    super.stop();
+  @After
+  public void tearDown() {
+    super.tearDown();
     try {
       _miniKdc.stop();
     } catch (KrbException e) {
-      throw new RuntimeException();
+      throw new RuntimeException(e);
     }
   }
 }

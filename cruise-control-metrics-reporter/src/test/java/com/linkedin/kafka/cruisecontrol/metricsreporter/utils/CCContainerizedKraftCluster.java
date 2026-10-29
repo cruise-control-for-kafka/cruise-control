@@ -40,6 +40,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -95,7 +96,9 @@ public class CCContainerizedKraftCluster implements Startable {
   private static final int CONTAINER_EXTERNAL_LISTENER_PORT = 9096;
 
   private final List<KafkaContainer> _brokers;
-  private final String _bootstrapServers;
+  private final String _clusterId;
+  private final String _controllerQuorumVoters;
+  private String _bootstrapServers;
   private final List<String> _brokerAddressList;
   private final Admin _adminClient;
 
@@ -104,15 +107,10 @@ public class CCContainerizedKraftCluster implements Startable {
       throw new IllegalArgumentException("numOfBrokers '" + numOfBrokers + "' must be greater than 0");
     }
 
-    String clusterId = Uuid.randomUuid().toString();
-    String controllerQuorumVoters = getControllerQuorumVoters(numOfBrokers);
+    this._clusterId = Uuid.randomUuid().toString();
+    this._controllerQuorumVoters = getControllerQuorumVoters(numOfBrokers);
     List<Integer> containerHostPorts = getContainerHostPorts(numOfBrokers);
-    String listeners = String.join(",",
-      CONTROLLER_LISTENER_NAME + "://0.0.0.0:" + CONTAINER_CONTROLLER_LISTENER_PORT,
-      INTERNAL_LISTENER_NAME + "://0.0.0.0:" + CONTAINER_INTERNAL_LISTENER_PORT,
-      EXTERNAL_LISTENER_NAME + "://0.0.0.0:" + CONTAINER_EXTERNAL_LISTENER_PORT
-    );
-    this._brokerAddressList = generateServerAddressList(numOfBrokers, containerHostPorts);
+    this._brokerAddressList = new ArrayList<>(generateServerAddressList(numOfBrokers, containerHostPorts));
     this._bootstrapServers = String.join(",", _brokerAddressList);
 
     /*
@@ -127,70 +125,74 @@ public class CCContainerizedKraftCluster implements Startable {
     adminClientPropsWithBootstrapAddress.setProperty(AdminClientConfig.METADATA_MAX_AGE_CONFIG, "10000");
     this._adminClient = Admin.create(adminClientPropsWithBootstrapAddress);
 
-    this._brokers =
-      IntStream
-        .range(0, numOfBrokers)
-        .mapToObj(brokerNum -> {
+    this._brokers = IntStream.range(0, numOfBrokers)
+      .mapToObj(brokerNum -> createBrokerContainer(brokerNum, brokerConfigs.get(brokerNum), "broker,controller",
+        containerHostPorts.get(brokerNum)))
+      .collect(Collectors.toCollection(ArrayList::new));
+  }
 
-          Map<Object, Object> brokerConfig = brokerConfigs.get(brokerNum);
-          brokerConfig.put("listeners", listeners);
-          brokerConfig.put("node.id", brokerNum + "");
-          brokerConfig.put("process.roles", "broker,controller");
-          brokerConfig.put("controller.quorum.voters", controllerQuorumVoters);
-          brokerConfig.put(CommonClientConfigs.METRIC_REPORTER_CLASSES_CONFIG, CruiseControlMetricsReporter.class.getName());
-          brokerConfig.put(CruiseControlMetricsReporterConfig.config(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG),
-          "127.0.0.1:" + CONTAINER_INTERNAL_LISTENER_PORT);
-          brokerConfig.put(CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG, "100");
-          brokerConfig.putIfAbsent(CRUISE_CONTROL_METRICS_TOPIC_CONFIG, DEFAULT_CRUISE_CONTROL_METRICS_TOPIC);
+  private KafkaContainer createBrokerContainer(int brokerNum, Map<Object, Object> brokerConfig, String processRoles, int containerHostPort) {
+    brokerConfig.put("node.id", brokerNum + "");
+    brokerConfig.put("process.roles", processRoles);
 
-          // TestContainers automatically sets `inter.broker.listener.name` so we must disable `security.inter.broker.protocol`
-          // https://kafka.apache.org/documentation/#brokerconfigs_inter.broker.listener.name
-          brokerConfig.put("inter.broker.listener.name", INTERNAL_LISTENER_NAME);
-          brokerConfig.remove("security.inter.broker.protocol");
+    List<String> listeners = new ArrayList<>();
+    listeners.add(INTERNAL_LISTENER_NAME + "://0.0.0.0:" + CONTAINER_INTERNAL_LISTENER_PORT);
+    listeners.add(EXTERNAL_LISTENER_NAME + "://0.0.0.0:" + CONTAINER_EXTERNAL_LISTENER_PORT);
+    if (processRoles.contains("controller")) {
+      listeners.add(CONTROLLER_LISTENER_NAME + "://0.0.0.0:" + CONTAINER_CONTROLLER_LISTENER_PORT);
+    }
+    brokerConfig.put("listeners", String.join(",", listeners));
 
-          String networkAlias = String.format("%s-%d", NETWORK_ALIAS_PREFIX, brokerNum);
-          String metricsTopic = (String) brokerConfig.get(CRUISE_CONTROL_METRICS_TOPIC_CONFIG);
-          int containerHostPort = containerHostPorts.get(brokerNum);
+    brokerConfig.put("controller.quorum.voters", this._controllerQuorumVoters);
+    brokerConfig.put(CommonClientConfigs.METRIC_REPORTER_CLASSES_CONFIG, CruiseControlMetricsReporter.class.getName());
+    brokerConfig.put(CruiseControlMetricsReporterConfig.config(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG),
+      "127.0.0.1:" + CONTAINER_INTERNAL_LISTENER_PORT);
+    brokerConfig.put(CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG, "100");
+    brokerConfig.putIfAbsent(CRUISE_CONTROL_METRICS_TOPIC_CONFIG, DEFAULT_CRUISE_CONTROL_METRICS_TOPIC);
 
-          KafkaContainer kafkaContainer = new KafkaContainer(KAFKA_IMAGE) {
-            // Overridden to allow specifying listeners in `advertised.listeners` list.
-            // Tracking issue in TestContainer's Kafka module here: https://github.com/testcontainers/testcontainers-java/issues/10718
-            @Override
-            protected void containerIsStarting(InspectContainerResponse containerInfo) {
-              String advertisedListeners = String.join(",",
-                INTERNAL_LISTENER_NAME + "://" + containerInfo.getConfig().getHostName() + ":" + CONTAINER_INTERNAL_LISTENER_PORT,
-                EXTERNAL_LISTENER_NAME + "://" + CONTAINER_HOST + ":" + containerHostPort);
+    // TestContainers automatically sets `inter.broker.listener.name` so we must disable `security.inter.broker.protocol`
+    // https://kafka.apache.org/documentation/#brokerconfigs_inter.broker.listener.name
+    brokerConfig.put("inter.broker.listener.name", INTERNAL_LISTENER_NAME);
+    brokerConfig.remove("security.inter.broker.protocol");
 
-              String command = String.format("#!/bin/bash%n"
-                + "export KAFKA_ADVERTISED_LISTENERS=%s%n"
-                + "/etc/kafka/docker/run%n", advertisedListeners);
-              copyFileToContainer(Transferable.of(command, 0777), "/tmp/testcontainers_start.sh");
-            }
-          }
-            .withNetwork(NETWORK)
-            .withNetworkAliases(networkAlias)
-            .withExposedPorts(CONTAINER_EXTERNAL_LISTENER_PORT)
-            // Run as root to avoid permission issues when copying test resources
-            // (e.g., metrics reporter JAR) into the image's Kafka install directories.
-            .withCreateContainerCmdModifier(cmd -> cmd.withUser("root"))
-            .withEnv("CLUSTER_ID", clusterId)
-            // Uncomment the following line when debugging Kafka cluster problems.
-            //.withLogConsumer(outputFrame -> System.out.print(networkAlias + " | " + outputFrame.getUtf8String()))
-            // Uncomment the following line when debugging SSL connection problems.
-            //.withEnv("KAFKA_OPTS", "-Djavax.net.debug=ssl,handshake")
-            .waitingFor(new BrokerWaitStrategy(brokerNum, metricsTopic, _adminClient)
-              .withStartupTimeout(Duration.ofMinutes(1))
-            );
-          kafkaContainer.setPortBindings(List.of(containerHostPort + ":" + CONTAINER_EXTERNAL_LISTENER_PORT));
+    String networkAlias = String.format("%s-%d", NETWORK_ALIAS_PREFIX, brokerNum);
+    String metricsTopic = (String) brokerConfig.get(CRUISE_CONTROL_METRICS_TOPIC_CONFIG);
 
-          overrideBrokerConfig(kafkaContainer, brokerConfig);
+    KafkaContainer kafkaContainer = new KafkaContainer(KAFKA_IMAGE) {
+      // Overridden to allow specifying listeners in `advertised.listeners` list.
+      // Tracking issue in TestContainer's Kafka module here: https://github.com/testcontainers/testcontainers-java/issues/10718
+      @Override
+      protected void containerIsStarting(InspectContainerResponse containerInfo) {
+        String advertisedListeners = String.join(",",
+          INTERNAL_LISTENER_NAME + "://" + containerInfo.getConfig().getHostName() + ":" + CONTAINER_INTERNAL_LISTENER_PORT,
+          EXTERNAL_LISTENER_NAME + "://" + CONTAINER_HOST + ":" + containerHostPort);
 
-          // Mount metrics reporter and copy generated certs into container
-          setupContainerResources(kafkaContainer, brokerConfig);
+        String command = String.format("#!/bin/bash%n"
+          + "export KAFKA_ADVERTISED_LISTENERS=%s%n"
+          + "/etc/kafka/docker/run%n", advertisedListeners);
+        copyFileToContainer(Transferable.of(command, 0777), "/tmp/testcontainers_start.sh");
+      }
+    }
+    .withNetwork(NETWORK)
+    .withNetworkAliases(networkAlias)
+    .withExposedPorts(CONTAINER_EXTERNAL_LISTENER_PORT)
+    // Run as root to avoid permission issues when copying test resources
+    // (e.g., metrics reporter JAR) into the image's Kafka install directories.
+    .withCreateContainerCmdModifier(cmd -> cmd.withUser("root"))
+    .withEnv("CLUSTER_ID", this._clusterId)
+    // Uncomment the following line when debugging Kafka cluster problems.
+    //.withLogConsumer(outputFrame -> System.out.print(networkAlias + " | " + outputFrame.getUtf8String()))
+    // Uncomment the following line when debugging SSL connection problems.
+    //.withEnv("KAFKA_OPTS", "-Djavax.net.debug=ssl,handshake")
+    .waitingFor(new BrokerWaitStrategy(brokerNum, metricsTopic, _adminClient).withStartupTimeout(Duration.ofMinutes(1)));
+    kafkaContainer.setPortBindings(List.of(containerHostPort + ":" + CONTAINER_EXTERNAL_LISTENER_PORT));
 
-          return kafkaContainer;
-        })
-        .toList();
+    overrideBrokerConfig(kafkaContainer, brokerConfig);
+
+    // Mount metrics reporter and copy generated certs into container
+    setupContainerResources(kafkaContainer, brokerConfig);
+
+    return kafkaContainer;
   }
 
   private String getControllerQuorumVoters(int numOfBrokers) {
@@ -217,6 +219,23 @@ public class CCContainerizedKraftCluster implements Startable {
       String path = config.get(key).toString();
       container.withCopyToContainer(MountableFile.forHostPath(path, 0644), path);
     }
+  }
+
+  /**
+   * Add new broker to existing containerized Kraft cluster.
+   *
+   * @param brokerId     the node ID for the new broker
+   * @param brokerConfig the broker configuration properties
+   */
+  public void addBroker(int brokerId, Map<Object, Object> brokerConfig) {
+    int hostPort = CCKafkaTestUtils.findLocalPort();
+    KafkaContainer broker = createBrokerContainer(brokerId, brokerConfig, "broker", hostPort);
+    String brokerAddress = String.format("%s:%s", CONTAINER_HOST, hostPort);
+    broker.start();
+
+    _brokers.add(broker);
+    _brokerAddressList.add(brokerAddress);
+    _bootstrapServers = String.join(",", _brokerAddressList);
   }
 
   /**

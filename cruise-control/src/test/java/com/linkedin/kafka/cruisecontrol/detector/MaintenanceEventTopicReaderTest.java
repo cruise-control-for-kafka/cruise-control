@@ -1,5 +1,17 @@
 /*
  * Copyright 2020 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.detector;
@@ -31,7 +43,6 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.easymock.EasyMock;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -82,9 +93,10 @@ public class MaintenanceEventTopicReaderTest extends CruiseControlIntegrationTes
   /**
    * Setup the unit test and produce maintenance plans to the maintenance topic.
    */
+  @Override
   @Before
-  public void setup() throws Exception {
-    super.start();
+  public void setUp() {
+    super.setUp();
     produceMaintenancePlans();
   }
 
@@ -126,11 +138,6 @@ public class MaintenanceEventTopicReaderTest extends CruiseControlIntegrationTes
     });
   }
 
-  @After
-  public void teardown() {
-    super.stop();
-  }
-
   @Override
   protected Map<String, Object> withConfigs() {
     return Map.of(MAINTENANCE_EVENT_TOPIC_CONFIG, TEST_TOPIC,
@@ -152,9 +159,9 @@ public class MaintenanceEventTopicReaderTest extends CruiseControlIntegrationTes
     Config topicConfig1;
     ConfigResource topicResource = new ConfigResource(ConfigResource.Type.TOPIC, TEST_TOPIC);
     Admin adminClient0 = KafkaCruiseControlUtils.createAdminClient(Collections.singletonMap(
-        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, broker(0).plaintextAddr()));
+        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers()));
     Admin adminClient1 = KafkaCruiseControlUtils.createAdminClient(Collections.singletonMap(
-        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, broker(1).plaintextAddr()));
+        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers()));
     try {
       while (true) {
         description0 = adminClient0.describeTopics(Collections.singleton(TEST_TOPIC)).topicNameValues().get(TEST_TOPIC).get();

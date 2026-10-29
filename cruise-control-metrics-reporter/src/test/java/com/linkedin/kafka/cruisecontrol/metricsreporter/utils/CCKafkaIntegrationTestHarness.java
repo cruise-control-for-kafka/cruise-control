@@ -60,10 +60,6 @@ public abstract class CCKafkaIntegrationTestHarness extends CCAbstractKRaftTestH
     }
   }
 
-  protected CCEmbeddedBroker serverForId(int id) {
-    return broker(id);
-  }
-
   protected CCEmbeddedBroker broker(int id) {
     CCEmbeddedBroker broker = _brokers.get(id);
     if (broker == null) {

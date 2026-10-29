@@ -30,10 +30,10 @@ import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.common.security.auth.SecurityProtocol;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.After;
+import org.junit.Before;
 
 import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_TOPIC_CONFIG;
-
 
 public abstract class CCKafkaClientsIntegrationTestHarness extends CCKafkaIntegrationTestHarness {
   // The containerized Kraft cluster run in dual broker/controller mode requires 3 brokers for reaching
@@ -45,12 +45,13 @@ public abstract class CCKafkaClientsIntegrationTestHarness extends CCKafkaIntegr
   protected List<Map<Object, Object>> _brokerConfigs;
 
   @Override
+  @Before
   public void setUp() {
     Properties adminClientProps = new Properties();
     setSecurityConfigs(adminClientProps, "admin");
 
     _brokerConfigs = buildBrokerConfigs();
-    _cluster = new CCContainerizedKraftCluster(NUM_OF_BROKERS, _brokerConfigs, adminClientProps);
+    _cluster = new CCContainerizedKraftCluster(clusterSize(), _brokerConfigs, adminClientProps);
     _cluster.start();
     _bootstrapUrl = _cluster.getExternalBootstrapAddress();
   }
@@ -58,6 +59,7 @@ public abstract class CCKafkaClientsIntegrationTestHarness extends CCKafkaIntegr
   /**
    * Tear down the unit test.
    */
+  @Override
   @After
   public void tearDown() {
     if (_cluster != null) {

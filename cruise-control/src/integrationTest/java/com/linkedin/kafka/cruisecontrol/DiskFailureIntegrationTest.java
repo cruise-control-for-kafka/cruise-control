@@ -1,19 +1,29 @@
 /*
  * Copyright 2021 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol;
 
-import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
+import java.util.Properties;
 import java.util.StringJoiner;
 import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.JsonPath;
@@ -25,14 +35,9 @@ import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import com.linkedin.kafka.cruisecontrol.detector.AnomalyState;
 import com.linkedin.kafka.cruisecontrol.detector.TopicReplicationFactorAnomalyFinder;
-import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCKafkaTestUtils;
 import net.minidev.json.JSONArray;
-import org.apache.kafka.clients.admin.Admin;
-import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.server.config.ServerLogConfigs;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -46,11 +51,11 @@ import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlIntegrationTest
 
 @RunWith(Parameterized.class)
 public class DiskFailureIntegrationTest extends CruiseControlIntegrationTestHarness {
-
+  private static final String CONTAINER_LOG_DIR_1 = "/tmp/kafka-logs-1";
+  private static final String CONTAINER_LOG_DIR_2 = "/tmp/kafka-logs-2";
   private static final short TOPIC0_REPLICATION_FACTOR = (short) 2;
   private static final int BROKER_ID_TO_CAUSE_DISK_FAILURE = 2;
   private static final int PARTITION_COUNT = 3;
-  private static final int KAFKA_CLUSTER_SIZE = 3;
   private static final String CRUISE_CONTROL_KAFKA_CLUSTER_STATE_ENDPOINT =
       KAFKA_CRUISE_CONTROL_BASE_PATH + KAFKA_CLUSTER_STATE + "?verbose=true&json=true";
   private static final String CRUISE_CONTROL_STATE_ENDPOINT =
@@ -59,7 +64,6 @@ public class DiskFailureIntegrationTest extends CruiseControlIntegrationTestHarn
       KAFKA_CRUISE_CONTROL_BASE_PATH + STATE + "?substates=analyzer&json=true";
   private static final Logger LOG = LoggerFactory.getLogger(DiskFailureIntegrationTest.class);
   private final Configuration _gsonJsonConfig = KafkaCruiseControlIntegrationTestUtils.createJsonMappingConfig();
-  private final List<Entry<File, File>> _brokerLogDirs = new ArrayList<>(KAFKA_CLUSTER_SIZE);
   private final Boolean _vertxEnabled;
 
   public DiskFailureIntegrationTest(Boolean vertxEnabled) {
@@ -75,28 +79,11 @@ public class DiskFailureIntegrationTest extends CruiseControlIntegrationTestHarn
     Boolean[] data = {true, false};
     return Arrays.asList(data);
   }
-  
-  @Before
-  public void setup() throws Exception {
-    super.start();
-  }
 
   @Override
-  protected int clusterSize() {
-    return KAFKA_CLUSTER_SIZE;
-  }
-
-  @After
-  public void teardown() {
-    super.stop();
-  }
-
-  @Override
-  public Map<Object, Object> overridingProps() {
-    Map<Object, Object> props = KafkaCruiseControlIntegrationTestUtils.createBrokerProps();
-    Entry<File, File> logFolders = Map.entry(CCKafkaTestUtils.newTempDir(), CCKafkaTestUtils.newTempDir());
-    _brokerLogDirs.add(logFolders);
-    props.put(ServerLogConfigs.LOG_DIR_CONFIG, logFolders.getKey().getAbsolutePath() + "," + logFolders.getValue().getAbsolutePath());
+  public Properties overridingProps() {
+    Properties props = super.overridingProps();
+    props.put(ServerLogConfigs.LOG_DIR_CONFIG, CONTAINER_LOG_DIR_1 + "," + CONTAINER_LOG_DIR_2);
     return props;
   }
 
@@ -119,14 +106,9 @@ public class DiskFailureIntegrationTest extends CruiseControlIntegrationTestHarn
   }
 
   @Test
-  public void testDiskFailure() throws IOException {
-    Admin adminClient = KafkaCruiseControlUtils.createAdminClient(Collections
-        .singletonMap(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, broker(0).plaintextAddr()));
-    try {
-      adminClient.createTopics(Collections.singleton(new NewTopic(TOPIC0, PARTITION_COUNT, TOPIC0_REPLICATION_FACTOR)));
-    } finally {
-      KafkaCruiseControlUtils.closeAdminClientWithTimeout(adminClient);
-    }
+  public void testDiskFailure() throws IOException, InterruptedException {
+    _cluster.adminClient().createTopics(Collections
+      .singleton(new NewTopic(TOPIC0, PARTITION_COUNT, TOPIC0_REPLICATION_FACTOR)));
 
     waitForMetadataPropagates();
 
@@ -134,9 +116,8 @@ public class DiskFailureIntegrationTest extends CruiseControlIntegrationTestHarn
         .getDefaultProducerProperties(bootstrapServers()));
 
     waitForProposal();
-    
-    Entry<File, File> entry = _brokerLogDirs.get(BROKER_ID_TO_CAUSE_DISK_FAILURE);
-    CCKafkaTestUtils.deleteRecursively(entry.getKey());
+
+    _cluster.getBrokers().get(BROKER_ID_TO_CAUSE_DISK_FAILURE).execInContainer("rm", "-rf", CONTAINER_LOG_DIR_1);
     LOG.info("Disk failure injected");
     waitForOfflineReplicaDetection();
     waitForDiskFailureFixStarted();
@@ -168,7 +149,7 @@ public class DiskFailureIntegrationTest extends CruiseControlIntegrationTestHarn
       String responseMessage = KafkaCruiseControlIntegrationTestUtils
           .callCruiseControl(_app.serverUrl(), CRUISE_CONTROL_KAFKA_CLUSTER_STATE_ENDPOINT);
       Integer offlineReplicas = JsonPath.read(responseMessage,
-          "$.KafkaBrokerState.OfflineReplicaCountByBrokerId." + BROKER_ID_TO_CAUSE_DISK_FAILURE);
+        "$.KafkaBrokerState.OfflineReplicaCountByBrokerId." + BROKER_ID_TO_CAUSE_DISK_FAILURE);
       return offlineReplicas > 0;
     }, 100, new AssertionError("Offline replicas not detected"));
   }

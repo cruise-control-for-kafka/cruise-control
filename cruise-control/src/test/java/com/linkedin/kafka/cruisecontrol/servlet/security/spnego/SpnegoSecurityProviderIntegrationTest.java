@@ -6,30 +6,11 @@ package com.linkedin.kafka.cruisecontrol.servlet.security.spnego;
 
 import com.linkedin.kafka.cruisecontrol.servlet.security.SpnegoIntegrationTestHarness;
 import org.apache.kerby.kerberos.kerb.KrbException;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
 public class SpnegoSecurityProviderIntegrationTest extends SpnegoIntegrationTestHarness {
 
   public SpnegoSecurityProviderIntegrationTest() throws KrbException {
-  }
-
-  /**
-   * Initializes the test environment.
-   * @throws Exception
-   */
-  @Before
-  public void setup() throws Exception {
-    start();
-  }
-
-  /**
-   * Stops the test environment.
-   */
-  @After
-  public void teardown() {
-    stop();
   }
 
   @Test
