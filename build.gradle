@@ -222,7 +222,6 @@ project(':cruise-control-core') {
     implementation "org.apache.commons:commons-math3:${commonsMathVersion}"
 
     api "io.vertx:vertx-core:${vertxVersion}"
-    api "io.vertx:vertx-web:${vertxVersion}"
 
     testImplementation "junit:junit:${junitVersion}"
 
@@ -314,12 +313,8 @@ project(':cruise-control') {
     api project(':cruise-control-metrics-reporter')
     api project(':cruise-control-core')
     api "com.google.guava:guava:${guavaVersion}"
-    api "io.swagger.core.v3:swagger-annotations:${swaggerVersion}"
-    api "io.swagger.core.v3:swagger-core:${swaggerVersion}"
-    api "io.vertx:vertx-web-openapi:${vertxVersion}"
     api "io.vertx:vertx-core:${vertxVersion}"
     api "io.vertx:vertx-web:${vertxVersion}"
-    api "io.vertx:vertx-junit5:${vertxVersion}"
     api "org.apache.kafka:kafka_$scalaBinaryVersion:$kafkaVersion"
     api "org.apache.kafka:kafka-server:$kafkaVersion"
     api "org.apache.kafka:kafka-server-common:$kafkaVersion"
@@ -334,10 +329,10 @@ project(':cruise-control') {
     implementation "com.google.code.gson:gson:${gsonVersion}"
     implementation "org.eclipse.jetty:jetty-server:${jettyVersion}"
     implementation "io.dropwizard.metrics:metrics-jmx:${metricsJmxVersion}"
+    implementation "io.vertx:vertx-web-openapi:${vertxVersion}"
+    implementation "com.fasterxml.jackson.core:jackson-databind"
     implementation "com.nimbusds:nimbus-jose-jwt:${nimbusJoseJwtVersion}"
-    implementation "io.swagger.parser.v3:swagger-parser-v3:${swaggerParserVersion}"
-    implementation "io.github.classgraph:classgraph:${classgraphVersion}"
-    implementation "com.google.code.findbugs:jsr305:${jsr305Version}"
+    compileOnly "com.google.code.findbugs:jsr305:${jsr305Version}"
 
     constraints {
       implementation("org.apache.logging.log4j:log4j-core:${log4jVersion}") {
@@ -348,8 +343,12 @@ project(':cruise-control') {
       }
     }
 
+    testCompileOnly "com.google.code.findbugs:jsr305:${jsr305Version}"
     testImplementation project(path: ':cruise-control-metrics-reporter', configuration: 'testOutput')
     testImplementation project(path: ':cruise-control-core', configuration: 'testOutput')
+    testImplementation "io.github.classgraph:classgraph:${classgraphVersion}"
+    testImplementation "io.swagger.core.v3:swagger-models:${swaggerVersion}"
+    testImplementation "io.swagger.parser.v3:swagger-parser-v3:${swaggerParserVersion}"
     testImplementation "junit:junit:${junitVersion}"
     testImplementation "org.easymock:easymock:${easymockVersion}"
     testImplementation "org.apache.kafka:kafka_$scalaBinaryVersion:$kafkaVersion:test"
@@ -486,8 +485,8 @@ project(':cruise-control-metrics-reporter') {
     implementation "org.apache.kafka:kafka_$scalaBinaryVersion:$kafkaVersion"
     implementation "org.apache.kafka:kafka-server:$kafkaVersion"
     implementation "org.apache.kafka:kafka-clients:$kafkaVersion"
-    implementation "com.google.code.findbugs:jsr305:${jsr305Version}"
 
+    testCompileOnly "com.google.code.findbugs:jsr305:${jsr305Version}"
     testImplementation "junit:junit:${junitVersion}"
     testImplementation "org.bouncycastle:bcpkix-jdk15on:${bouncyCastleVersion}"
     testImplementation "org.powermock:powermock-module-junit4:${powermockVersion}"

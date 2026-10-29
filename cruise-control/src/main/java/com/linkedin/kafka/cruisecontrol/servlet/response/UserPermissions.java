@@ -15,7 +15,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import com.google.gson.Gson;
-import org.apache.commons.lang3.StringUtils;
 
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JSON_VERSION;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;
@@ -62,7 +61,7 @@ public class UserPermissions extends AbstractCruiseControlResponse {
 
     protected String getPlaintext(CruiseControlParameters parameters) {
         fillPermissions(((UserPermissionsParameters) parameters).getUser());
-        return StringUtils.join(_roles, ',');
+        return String.join(",", _roles);
     }
 
     @Override

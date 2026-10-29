@@ -7,7 +7,6 @@ package com.linkedin.kafka.cruisecontrol.detector.notifier;
 import java.io.Serializable;
 import java.util.List;
 import java.util.Map;
-import javax.validation.constraints.NotNull;
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -21,10 +20,8 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 public final class AlertaMessage implements Serializable {
     private static final long serialVersionUID = -7290861136323903837L;
 
-    @NotNull
     @JsonProperty("resource")
     private String _resource;
-    @NotNull
     @JsonProperty("event")
     private String _event;
 
