@@ -1714,9 +1714,9 @@ public class Executor {
         waitForIntraBrokerReplicaTasksToFinish();
         inExecutionTasks = inExecutionTasks();
       }
-      if (inExecutionTasks().isEmpty()) {
+      if (_stopSignal.get() == NO_STOP_EXECUTION) {
         LOG.info("User task {}: Intra-broker partition movements finished.", _uuid);
-      } else if (_stopSignal.get() != NO_STOP_EXECUTION) {
+      } else {
         ExecutionTasksSummary executionTasksSummary = _executionTaskManager.getExecutionTasksSummary(Collections.emptySet());
         Map<ExecutionTaskState, Integer> partitionMovementTasksByState = executionTasksSummary.taskStat().get(INTRA_BROKER_REPLICA_ACTION);
         LOG.info("User task {}: Intra-broker partition movements stopped. For intra-broker partition movements {} tasks cancelled, "
@@ -1975,16 +1975,20 @@ public class Executor {
      */
     private void waitForIntraBrokerReplicaTasksToFinish() {
       List<ExecutionTask> finishedTasks = new ArrayList<>();
+      Set<Long> stoppedTaskIds = new HashSet<>();
       Set<Long> deletedTaskIds = new HashSet<>();
       Set<Long> deadTaskIds = new HashSet<>();
       do {
-        // If there is no finished tasks, we need to check if anything is blocked.
-        maybeReexecuteIntraBrokerReplicaTasks();
+        // If there is no finished tasks, we need to check if anything is blocked -- unless the execution is being stopped.
+        if (_stopSignal.get() == NO_STOP_EXECUTION) {
+          maybeReexecuteIntraBrokerReplicaTasks();
+        }
         Cluster cluster = getClusterForExecutionProgressCheck();
         Map<ExecutionTask, ReplicaLogDirInfo> logDirInfoByTask = getLogdirInfoForExecutionTask(
             _executionTaskManager.inExecutionTasks(Collections.singleton(INTRA_BROKER_REPLICA_ACTION)),
             _adminClient, _config);
 
+        List<ExecutionTask> stoppedIntraBrokerReplicaTasks = new ArrayList<>();
         List<ExecutionTask> slowTasksToReport = new ArrayList<>();
         boolean shouldReportSlowTasks = _time.milliseconds() - _lastSlowTaskReportingTimeMs > _slowTaskAlertingBackoffTimeMs;
         for (ExecutionTask task : inExecutionTasks()) {
@@ -1993,6 +1997,15 @@ public class Executor {
             handleProgressWithTopicDeletion(task, finishedTasks, deletedTaskIds);
           } else if (ExecutionUtils.isIntraBrokerReplicaActionDone(logDirInfoByTask, task)) {
             handleProgressWithCompletion(task, finishedTasks);
+          } else if (_stopSignal.get() != NO_STOP_EXECUTION) {
+            // If the execution is stopped during an ongoing intra-broker replica movement, the executor will not silently
+            // wait for the completion of the current in-progress tasks. Instead, it will mark in progress tasks as dead, and
+            // rollback the ongoing movement of gracefully stopped intra-broker replica movements.
+            LOG.debug("Task {} is marked as dead to stop the execution with a rollback.", task);
+            finishedTasks.add(task);
+            stoppedTaskIds.add(task.executionId());
+            _executionTaskManager.markTaskDead(task);
+            stoppedIntraBrokerReplicaTasks.add(task);
           } else {
             if (shouldReportSlowTasks) {
               task.maybeReportExecutionTooSlow(_time.milliseconds(), slowTasksToReport);
@@ -2004,12 +2017,49 @@ public class Executor {
           }
         }
         sendSlowExecutionAlert(slowTasksToReport);
+        rollbackStoppedIntraBrokerReplicaTasks(stoppedIntraBrokerReplicaTasks, logDirInfoByTask);
         updateOngoingExecutionState();
       } while (!inExecutionTasks().isEmpty() && finishedTasks.isEmpty());
 
-      LOG.info("User task {}: Finished tasks: {}.{}{}", _uuid, finishedTasks,
+      LOG.info("User task {}: Finished tasks: {}.{}{}{}", _uuid, finishedTasks,
+               stoppedTaskIds.isEmpty() ? "" : String.format(". [Stopped: %s]", stoppedTaskIds),
                deletedTaskIds.isEmpty() ? "" : String.format(". [Deleted: %s]", deletedTaskIds),
                deadTaskIds.isEmpty() ? "" : String.format(". [Dead: %s]", deadTaskIds));
+    }
+
+    /**
+     * Rolls back the ongoing movement of stopped intra-broker replica tasks -- i.e. moves the subject replicas back to
+     * their current logdir, which removes the future replicas on the destination logdirs -- and waits until the
+     * rollback is completed.
+     *
+     * @param stoppedIntraBrokerReplicaTasks Intra-broker replica tasks that are marked as dead due to being stopped by user.
+     * @param logdirInfoByTask Replica logdir information by task.
+     */
+    private void rollbackStoppedIntraBrokerReplicaTasks(List<ExecutionTask> stoppedIntraBrokerReplicaTasks,
+                                                        Map<ExecutionTask, ReplicaLogDirInfo> logdirInfoByTask) {
+      if (stoppedIntraBrokerReplicaTasks.isEmpty()) {
+        return;
+      }
+      Set<ExecutionTask> beingCancelled = cancelIntraBrokerReplicaMovements(stoppedIntraBrokerReplicaTasks, logdirInfoByTask,
+                                                                            _adminClient, _config);
+      LOG.debug("Handling stopped intra-broker replica tasks {} (being cancelled: {})", stoppedIntraBrokerReplicaTasks, beingCancelled);
+      while (!beingCancelled.isEmpty()) {
+        // A rollback is completed once the subject replica has no future replica. Tasks whose logdir information cannot be
+        // retrieved (e.g. due to offline disk) are not waited for, to avoid being blocked on a potentially stuck rollback.
+        Map<ExecutionTask, ReplicaLogDirInfo> currentLogdirInfoByTask = getLogdirInfoForExecutionTask(beingCancelled, _adminClient, _config);
+        beingCancelled.removeIf(task -> !currentLogdirInfoByTask.containsKey(task)
+                                        || currentLogdirInfoByTask.get(task).getFutureReplicaLogDir() == null);
+        if (beingCancelled.isEmpty()) {
+          // All tasks have been rolled back.
+          break;
+        }
+        try {
+          LOG.info("User task {}: Waiting for the rollback of ongoing intra-broker replica movements for {}.", _uuid, beingCancelled);
+          Thread.sleep(executionProgressCheckIntervalMs());
+        } catch (InterruptedException e) {
+          // let it go
+        }
+      }
     }
 
     /**

@@ -57,7 +57,9 @@ public final class ExecutorAdminUtils {
    * @param tasks The tasks to check.
    * @param adminClient The adminClient to send describeReplicaLogDirs request.
    * @param config The config object that holds all the Cruise Control related configs
-   * @return Replica logdir information by task.
+   * @return Replica logdir information by task. A task is omitted if the current logdir of its subject replica cannot
+   *         be resolved -- i.e. either the request for it failed, or it succeeded without reporting a current logdir,
+   *         which is how an offline logdir is reported.
    */
   static Map<ExecutionTask, ReplicaLogDirInfo> getLogdirInfoForExecutionTask(Collection<ExecutionTask> tasks,
                                                                              Admin adminClient,
@@ -74,6 +76,16 @@ public final class ExecutorAdminUtils {
     for (Map.Entry<TopicPartitionReplica, KafkaFuture<ReplicaLogDirInfo>> entry : logDirsByReplicas.entrySet()) {
       try {
         ReplicaLogDirInfo info = entry.getValue().get(config.getLong(LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG), TimeUnit.MILLISECONDS);
+        if (info.getCurrentReplicaLogDir() == null) {
+          // A replica whose logdir is offline does not fail this request: the admin client skips a logdir that reports
+          // KafkaStorageException and then completes every requested replica from a map pre-seeded with an empty
+          // ReplicaLogDirInfo, so the future succeeds with no current logdir. Such a replica must be omitted rather
+          // than reported, because callers use the presence of a task in this map to mean "the logdir of its replica
+          // is known": ExecutionUtils#isIntraBrokerReplicaActionDone compares the current logdir against the target,
+          // and Executor#maybeMarkTaskAsDead treats an absent task as one whose disk is down.
+          LOG.warn("The current logdir of replica {} is unknown, which indicates that its logdir is offline.", entry.getKey());
+          continue;
+        }
         logdirInfoByTask.put(taskByReplica.get(entry.getKey()), info);
       } catch (InterruptedException | ExecutionException | TimeoutException e) {
         LOG.warn("Encounter exception {} when fetching logdir information for replica {}", e.getMessage(), entry.getKey());
@@ -111,6 +123,53 @@ public final class ExecutorAdminUtils {
         executionTaskManager.markTaskDead(replicaToTask.get(entry.getKey()));
       }
     }
+  }
+
+  /**
+   * Cancel (i.e. rollback) the ongoing intra-broker replica movements of the given tasks by sending alterReplicaLogDirs
+   * request to move each subject replica back to its current logdir. Upon receiving such a request, the broker removes
+   * the future replica (i.e. stops the ongoing movement) because the requested logdir differs from the destination of
+   * the ongoing movement, and does not start a new movement because the requested logdir is the current logdir.
+   *
+   * @param tasksToCancel The intra-broker replica movement tasks to cancel.
+   * @param logdirInfoByTask Replica logdir information by task. Tasks whose subject replica has no known current logdir
+   *                         are skipped, as there is no logdir to rollback the movement to.
+   * @param adminClient The adminClient to send alterReplicaLogDirs request.
+   * @param config The config object that holds all the Cruise Control related configs
+   * @return Tasks for which the cancellation request has been accepted by the broker.
+   */
+  static Set<ExecutionTask> cancelIntraBrokerReplicaMovements(Collection<ExecutionTask> tasksToCancel,
+                                                              Map<ExecutionTask, ReplicaLogDirInfo> logdirInfoByTask,
+                                                              Admin adminClient,
+                                                              KafkaCruiseControlConfig config) {
+    Map<TopicPartitionReplica, String> replicaAssignment = new HashMap<>();
+    Map<TopicPartitionReplica, ExecutionTask> replicaToTask = new HashMap<>();
+    for (ExecutionTask task : tasksToCancel) {
+      ReplicaLogDirInfo info = logdirInfoByTask.get(task);
+      if (info == null || info.getCurrentReplicaLogDir() == null) {
+        LOG.warn("Skip cancelling task {} because the current logdir of the replica is unknown.", task);
+        continue;
+      }
+      TopicPartitionReplica tpr = new TopicPartitionReplica(task.proposal().topic(), task.proposal().partitionId(), task.brokerId());
+      replicaAssignment.put(tpr, info.getCurrentReplicaLogDir());
+      replicaToTask.put(tpr, task);
+    }
+
+    Set<ExecutionTask> cancelledTasks = new HashSet<>();
+    if (replicaAssignment.isEmpty()) {
+      return cancelledTasks;
+    }
+    for (Map.Entry<TopicPartitionReplica, KafkaFuture<Void>> entry: adminClient.alterReplicaLogDirs(replicaAssignment).values().entrySet()) {
+      ExecutionTask task = replicaToTask.get(entry.getKey());
+      try {
+        entry.getValue().get(config.getLong(LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG), TimeUnit.MILLISECONDS);
+        cancelledTasks.add(task);
+      } catch (InterruptedException | ExecutionException | TimeoutException | LogDirNotFoundException | KafkaStorageException
+          | ReplicaNotAvailableException e) {
+        LOG.warn("Encounter exception {} when trying to cancel task {}.", e.getMessage(), task);
+      }
+    }
+    return cancelledTasks;
   }
 
   /**
