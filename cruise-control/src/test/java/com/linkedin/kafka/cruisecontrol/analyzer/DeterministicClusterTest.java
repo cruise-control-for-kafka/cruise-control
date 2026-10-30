@@ -32,6 +32,7 @@ import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils;
 import com.linkedin.kafka.cruisecontrol.common.DeterministicCluster;
 import com.linkedin.kafka.cruisecontrol.common.TestConstants;
 import com.linkedin.kafka.cruisecontrol.config.ReplicaToOriginalBrokerSetMappingPolicy;
+import com.linkedin.kafka.cruisecontrol.config.TopicPatternBrokerSetMappingPolicy;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.exception.OptimizationFailureException;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
@@ -42,6 +43,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Properties;
 import org.junit.Rule;
 import org.junit.Test;
@@ -332,6 +334,23 @@ public class DeterministicClusterTest {
     p.add(params(balancingConstraint, DeterministicCluster.brokerSetUnSatisfiable4(),
                  Arrays.asList(BrokerSetAwareGoal.class.getName(),
                                DiskUsageDistributionGoal.class.getName()), verifications, null));
+
+    // Broker Set Awareness with topic patterns: topic "hot" is pinned to broker set "fast", while topic "cold" is unconstrained.
+    properties = getDefaultCruiseControlProperties();
+    properties.setProperty(AnalyzerConfig.REPLICA_TO_BROKER_SET_MAPPING_POLICY_CLASS_CONFIG,
+                           TopicPatternBrokerSetMappingPolicy.class.getName());
+    properties.setProperty(AnalyzerConfig.BROKER_SET_CONFIG_FILE_CONFIG,
+                           Objects.requireNonNull(DeterministicClusterTest.class.getClassLoader()
+                                                                            .getResource("testBrokerSetsWithTopicPatterns.json")).getFile());
+    BalancingConstraint topicPatternBalancingConstraint = new BalancingConstraint(new KafkaCruiseControlConfig(properties));
+    topicPatternBalancingConstraint.setResourceBalancePercentage(TestConstants.LOW_BALANCE_PERCENTAGE);
+    topicPatternBalancingConstraint.setCapacityThreshold(TestConstants.MEDIUM_CAPACITY_THRESHOLD);
+
+    p.add(params(topicPatternBalancingConstraint, DeterministicCluster.brokerSetTopicPatternSatisfiable(),
+                 Collections.singletonList(BrokerSetAwareGoal.class.getName()), verifications, null));
+
+    p.add(params(topicPatternBalancingConstraint, DeterministicCluster.brokerSetTopicPatternSatisfiable(),
+                 goalNameByPriority, verifications, null));
     return p;
   }
 
