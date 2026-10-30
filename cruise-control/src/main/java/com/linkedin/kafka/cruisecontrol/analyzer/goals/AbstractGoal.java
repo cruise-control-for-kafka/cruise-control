@@ -421,8 +421,11 @@ public abstract class AbstractGoal implements Goal {
       ActionAcceptance acceptance = AnalyzerUtils.isProposalAcceptableForOptimizedGoals(optimizedGoals, swapProposal, clusterModel);
       LOG.trace("Trying to apply legit and self-satisfied swap {}, actionAcceptance = {}.", swapProposal, acceptance);
       if (acceptance == ACCEPT) {
-        clusterModel.relocateReplica(sourceReplica.topicPartition(), sourceReplica.broker().id(), destinationReplica.disk().logDir());
-        clusterModel.relocateReplica(destinationReplica.topicPartition(), destinationReplica.broker().id(), sourceReplica.disk().logDir());
+        // Get the logdirs before relocation, because relocating a replica updates the disk it resides in.
+        String sourceLogdir = sourceReplica.disk().logDir();
+        String destinationLogdir = destinationReplica.disk().logDir();
+        clusterModel.relocateReplica(sourceReplica.topicPartition(), sourceReplica.broker().id(), destinationLogdir);
+        clusterModel.relocateReplica(destinationReplica.topicPartition(), destinationReplica.broker().id(), sourceLogdir);
         return destinationReplica;
       }
     }
