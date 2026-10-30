@@ -8,6 +8,7 @@ import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutionProposal;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModelStats;
+import com.linkedin.kafka.cruisecontrol.model.DiskBalanceStats;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelGeneration;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
@@ -60,6 +61,10 @@ public class OptimizerResult {
   private static final String PROVISION_STATUS = "provisionStatus";
   @JsonResponseField
   private static final String PROVISION_RECOMMENDATION = "provisionRecommendation";
+  @JsonResponseField(required = false)
+  private static final String DISK_STATISTICS_BEFORE = "diskStatisticsBefore";
+  @JsonResponseField(required = false)
+  private static final String DISK_STATISTICS_AFTER = "diskStatisticsAfter";
   private static final String VIOLATED = "VIOLATED";
   private static final String FIXED = "FIXED";
   private static final String NO_ACTION = "NO-ACTION";
@@ -71,6 +76,7 @@ public class OptimizerResult {
   private final BrokerStats _brokerStatsBeforeOptimization;
   private final BrokerStats _brokerStatsAfterOptimization;
   private final ModelGeneration _modelGeneration;
+  private final ClusterModelStats _clusterModelStatsBeforeOptimization;
   private final ClusterModelStats _clusterModelStats;
   private final Map<Integer, String> _capacityEstimationInfoByBrokerId;
   private final OptimizationOptions _optimizationOptions;
@@ -78,12 +84,14 @@ public class OptimizerResult {
   private final double _onDemandBalancednessScoreAfter;
   private final Map<String, Duration> _optimizationDurationByGoal;
   private final ProvisionResponse _provisionResponse;
+  private final Set<String> _intraBrokerGoalNames;
 
   OptimizerResult(LinkedHashMap<Goal, ClusterModelStats> statsByGoalPriority,
                   Set<String> violatedGoalNamesBeforeOptimization,
                   Set<String> violatedGoalNamesAfterOptimization,
                   Set<ExecutionProposal> proposals,
                   BrokerStats brokerStatsBeforeOptimization,
+                  ClusterModelStats clusterModelStatsBeforeOptimization,
                   ClusterModel clusterModel,
                   OptimizationOptions optimizationOptions,
                   Map<String, Double> balancednessCostByGoal,
@@ -97,17 +105,22 @@ public class OptimizerResult {
     BalancingConstraint balancingConstraint = statsByGoalPriority.entrySet().stream().findAny().get().getValue().balancingConstraint();
     _clusterModelStatsComparatorByGoalName = new LinkedHashMap<>(statsByGoalPriority.size());
     _statsByGoalName = new LinkedHashMap<>(statsByGoalPriority.size());
+    _intraBrokerGoalNames = new HashSet<>();
     for (Map.Entry<Goal, ClusterModelStats> entry : statsByGoalPriority.entrySet()) {
       String goalName = entry.getKey().name();
       Goal.ClusterModelStatsComparator comparator = entry.getKey().clusterModelStatsComparator();
       _clusterModelStatsComparatorByGoalName.put(goalName, comparator);
       _statsByGoalName.put(goalName, entry.getValue());
+      if (entry.getKey().isIntraBrokerGoal()) {
+        _intraBrokerGoalNames.add(goalName);
+      }
     }
 
     _violatedGoalNamesBeforeOptimization = violatedGoalNamesBeforeOptimization;
     _violatedGoalNamesAfterOptimization = violatedGoalNamesAfterOptimization;
     _proposals = proposals;
     _brokerStatsBeforeOptimization = brokerStatsBeforeOptimization;
+    _clusterModelStatsBeforeOptimization = clusterModelStatsBeforeOptimization;
     _brokerStatsAfterOptimization = clusterModel.brokerStats(null);
     _modelGeneration = clusterModel.generation();
     _clusterModelStats = clusterModel.getClusterStats(balancingConstraint, optimizationOptions);
@@ -138,10 +151,22 @@ public class OptimizerResult {
   }
 
   /**
+   * The stats of a goal are the stats of the cluster after the optimization of this goal -- i.e. after this goal and all the goals
+   * of higher priority -- rather than the changes made by this goal alone. E.g. a goal with no action shows the state it found.
+   *
    * @return Stats by goal name ordered by priority.
    */
   public LinkedHashMap<String, ClusterModelStats> statsByGoalName() {
     return _statsByGoalName;
+  }
+
+  /**
+   * @param goalName Goal name.
+   * @return {@code true} if the given goal is an intra-broker goal (see {@link Goal#isIntraBrokerGoal()}), i.e. it moves replicas
+   * only between the disks of the same broker, hence does not change broker-level stats; {@code false} otherwise.
+   */
+  public boolean isIntraBrokerGoal(String goalName) {
+    return _intraBrokerGoalNames.contains(goalName);
   }
 
   /**
@@ -170,6 +195,13 @@ public class OptimizerResult {
    */
   public ModelGeneration modelGeneration() {
     return _modelGeneration;
+  }
+
+  /**
+   * @return The cluster model stats before optimization.
+   */
+  public ClusterModelStats clusterModelStatsBeforeOptimization() {
+    return _clusterModelStatsBeforeOptimization;
   }
 
   /**
@@ -292,7 +324,32 @@ public class OptimizerResult {
                          _clusterModelStats.monitoredPartitionsPercentage(), excludedTopics(),
                          excludedBrokersForLeadership(), excludedBrokersForReplicaMove(), _clusterModelStats.toStringCounts(),
                          _onDemandBalancednessScoreBefore, _onDemandBalancednessScoreAfter, _provisionResponse.status(),
-                         recommendation.isEmpty() ? "" : String.format("%nProvision Recommendation: %s", recommendation));
+                         recommendation.isEmpty() ? "" : String.format("%nProvision Recommendation: %s", recommendation))
+           + diskBalanceSummary();
+  }
+
+  /**
+   * @return The disk balance before and after optimization in plaintext format, or an empty string if the cluster model has no
+   * disk information. The number of disks may differ before and after: e.g. the disks removed by remove_disks are only
+   * counted before.
+   */
+  private String diskBalanceSummary() {
+    DiskBalanceStats before = diskBalanceStatsBeforeOptimization();
+    DiskBalanceStats after = _clusterModelStats.diskBalanceStats();
+    if (before == null || after == null) {
+      return "";
+    }
+    DiskBalanceStats.DiskUsageStats usageBefore = before.usage();
+    DiskBalanceStats.DiskUsageStats usageAfter = after.usage();
+    return String.format("%nDisk usage balance (before -> after): unbalanced disks %d of %d -> %d of %d, max utilization %.2f%% -> "
+                         + "%.2f%%, max spread within a broker %.2fpp -> %.2fpp.",
+                         usageBefore.numUnbalancedDisks(), before.numAliveDisks(), usageAfter.numUnbalancedDisks(),
+                         after.numAliveDisks(), usageBefore.max().utilizationPct(), usageAfter.max().utilizationPct(),
+                         usageBefore.maxSpreadWithinBroker().utilizationPct(), usageAfter.maxSpreadWithinBroker().utilizationPct());
+  }
+
+  private DiskBalanceStats diskBalanceStatsBeforeOptimization() {
+    return _clusterModelStatsBeforeOptimization == null ? null : _clusterModelStatsBeforeOptimization.diskBalanceStats();
   }
 
   /**
@@ -315,6 +372,12 @@ public class OptimizerResult {
     ret.put(ON_DEMAND_BALANCEDNESS_SCORE_AFTER, _onDemandBalancednessScoreAfter);
     ret.put(PROVISION_STATUS, _provisionResponse.status());
     ret.put(PROVISION_RECOMMENDATION, _provisionResponse.recommendation());
+    DiskBalanceStats diskBalanceStatsBefore = diskBalanceStatsBeforeOptimization();
+    DiskBalanceStats diskBalanceStatsAfter = _clusterModelStats.diskBalanceStats();
+    if (diskBalanceStatsBefore != null && diskBalanceStatsAfter != null) {
+      ret.put(DISK_STATISTICS_BEFORE, diskBalanceStatsBefore.getJsonStructure());
+      ret.put(DISK_STATISTICS_AFTER, diskBalanceStatsAfter.getJsonStructure());
+    }
     return ret;
   }
 }

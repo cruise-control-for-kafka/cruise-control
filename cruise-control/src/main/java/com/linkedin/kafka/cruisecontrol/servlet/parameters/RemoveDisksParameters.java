@@ -13,12 +13,29 @@ import java.util.Collections;
 import java.util.Set;
 import java.util.Map;
 
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.ALLOW_CAPACITY_ESTIMATION_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.BROKER_ID_AND_LOGDIRS_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.DRY_RUN_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REASON_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.STOP_ONGOING_EXECUTION_PARAM;
-import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.JSON_PARAM;
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.VERBOSE_PARAM;
 
+/**
+ * Parameters for {@link com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint#REMOVE_DISKS}
+ *
+ * <ul>
+ *   <li>Note that "brokerid_and_logdirs" takes comma as delimiter between two broker id and logdir pairs -- i.e. we assume
+ *   a valid logdir name contains no comma.</li>
+ * </ul>
+ *
+ * <pre>
+ * Remove disks
+ *    POST /kafkacruisecontrol/remove_disks?brokerid_and_logdirs=[broker_id1-logdir1,broker_id2-logdir2]
+ *    &amp;dryrun=[true/false]&amp;stop_ongoing_execution=[true/false]&amp;reason=[reason-for-request]
+ *    &amp;allow_capacity_estimation=[true/false]&amp;verbose=[true/false]&amp;json=[true/false]
+ *    &amp;get_response_schema=[true/false]&amp;doAs=[user]
+ * </pre>
+ */
 public class RemoveDisksParameters extends GoalBasedOptimizationParameters {
     protected static final SortedSet<String> CASE_INSENSITIVE_PARAMETER_NAMES;
     static {
@@ -27,7 +44,9 @@ public class RemoveDisksParameters extends GoalBasedOptimizationParameters {
         validParameterNames.add(DRY_RUN_PARAM);
         validParameterNames.add(REASON_PARAM);
         validParameterNames.add(STOP_ONGOING_EXECUTION_PARAM);
-        validParameterNames.add(JSON_PARAM);
+        validParameterNames.add(ALLOW_CAPACITY_ESTIMATION_PARAM);
+        validParameterNames.add(VERBOSE_PARAM);
+        validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
         CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
     }
     private boolean _dryRun;
@@ -43,6 +62,10 @@ public class RemoveDisksParameters extends GoalBasedOptimizationParameters {
     protected void initParameters() throws UnsupportedEncodingException {
         super.initParameters();
         _logdirByBrokerId = ParameterUtils.brokerIdAndLogdirs(_requestContext);
+        if (_logdirByBrokerId.isEmpty()) {
+            throw new UserRequestException(String.format("%s is required to specify the disks to remove (e.g. %s=101-/tmp/kafka-logs-1).",
+                                                         BROKER_ID_AND_LOGDIRS_PARAM, BROKER_ID_AND_LOGDIRS_PARAM));
+        }
         _dryRun = ParameterUtils.getDryRun(_requestContext);
         boolean requestReasonRequired = _config.getBoolean(ExecutorConfig.REQUEST_REASON_REQUIRED_CONFIG);
         _reason = ParameterUtils.reason(_requestContext, requestReasonRequired && !_dryRun);

@@ -96,6 +96,12 @@ PartitionLoadEndpoint:
             type: integer
             format: int32
           example: [1, 2, 3]
+      - name: populate_disk_info
+        in: query
+        description: Whether to show the logdir of the leader and of each follower of the partitions (requires a JBOD Kafka deployment).
+        schema:
+          type: boolean
+          default: false
       - name: json
         in: query
         description: Whether to return in JSON format or not.

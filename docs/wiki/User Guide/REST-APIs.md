@@ -159,9 +159,20 @@ If the number of workload snapshots for the given timestamp is not sufficient to
 
 Timestamp for `start`/`end`/`time` is in milliseconds since the epoch; what `System.currentTimeMillis()` returns.  The time zone is the time zone of the Cruise Control server.
 
-If `allow_capacity_estimation` is set to `true`, for brokers missing capacity information Cruise Control will make estimations based on other brokers in the cluster; otherwise an `IllegalStateException` will be thrown and shown in response.
+If `allow_capacity_estimation` is set to `true`, for brokers missing capacity information Cruise Control will make estimations (with the default `BrokerCapacityConfigFileResolver`, from the default broker capacity given for broker id `-1`); otherwise a `BrokerCapacityResolutionException` will be thrown and shown in response.
 
 The response contains both load-per-broker and load-per-host information. This is specifically useful when multiple brokers are hosted by the same machine.
+
+If `populate_disk_info` is set to `true`, the response also shows the load of each disk (log directory) of the brokers:
+its disk usage, the number of leader replicas and replicas on it, and the network traffic of the replicas on it
+(`LEADER_NW_IN`, `FOLLOWER_NW_IN`, `NW_OUT` and `PNW_OUT` in plaintext; `LeaderNwInRate`, `FollowerNwInRate`, `NwOutRate`
+and `PnwOutRate` in JSON). The network traffic of a disk is the produce and consume traffic of the replicas hosted on it,
+derived from the partition metrics collected by Cruise Control -- not the measured I/O of the disk. `PNW_OUT` is the
+outbound traffic the disk would serve if all its replicas were leaders. For the alive disks of a broker, these values add
+up to the values of the broker. Disk capacity, CPU and network capacities are per broker, hence not shown for disks. The
+load of a dead disk is shown as `DEAD`. Brokers that are down and disks that failed do not prevent the response. A broker whose
+capacity is estimated from the default broker capacity gets the per-logdir disk capacities of that entry, so its log
+directories must be the ones listed there.
 
 NOTE: The load shown is only for the load from the valid partitions. i.e the partitions with enough metric samples. So please always check the `LoadMonitor`'s state(via `State` endpoint) to decide whether the workload is representative enough.
 
@@ -186,6 +197,7 @@ Supported parameters are:
 | partition                 | integer/range | partition number(e.g. 10) range(e.g. 1-10) to filter partition load to report                                     | null                          | yes       |
 | min_valid_partition_ratio | double        | minimal valid partition ratio requirement for cluster model                                                       | null                          | yes       |
 | brokerid                  | int           | broker id to to filter partition load to report                                                                   | null                          | yes       |
+| populate_disk_info        | boolean       | whether to show the logdir of the leader and of each follower of the partitions (JBOD only)                       | false                         | yes       |
 | doAs                      | string        | propagated user by the trusted proxy service                                                                      | null                          | yes       |
 | reason                    | string        | reason for the request                                                                                            | "No reason provided"          | yes       | 
 
@@ -196,6 +208,12 @@ By specifying `topic`,`partition` and/or `brokerid` parameter, client can filter
 The `min_valid_partition_ratio` specifies minimal monitored valid partition percentage needed to calculate the partition load. If this parameter is not set in request, the config value `min.valid.partition.ratio` will be used.
 
 The `max_load` parameter specifies whether report the maximal historical value or not. The `avg_load` parameter specifies whether report the average historical value or not. If both are not specified or specified as `false`, for `DISK` resource, latest value will be reported; for `NW_IN`/`NW_OUT`/`CPU` resource, average value will be reported.
+
+If `populate_disk_info` is set to `true`, the response also shows the logdir (disk) of the leader and of each follower of
+the partitions: `LEADER_LOGDIR` and `FOLLOWER_LOGDIRS` in plaintext, and `leaderLogdir` and `followerLogdirs` (in the
+same order as `followers`) in JSON. The logdir of a replica on a dead broker or a failed disk is not known: it is shown as
+`-` in plaintext, and as `null` in `followerLogdirs` (`leaderLogdir` is left out). As with `load`, this requires a JBOD
+Kafka deployment, i.e. per-logdir disk capacities for the brokers.
 
 ### Query partition and replica state
 The following GET request gives partition healthiness on the cluster:
@@ -239,7 +257,7 @@ Supported parameters are:
 | exclude_recently_demoted_brokers  | boolean   | whether to allow leader replicas to be moved to recently demoted brokers              | false                | yes       |
 | exclude_recently_removed_brokers  | boolean   | whether allow replicas to be moved to recently removed broker                         | false                | yes       |
 | destination_broker_ids            | boolean   | specify brokers to move replicas to                                                   | available brokers    | yes       |
-| rebalance_disk                    | boolean   | whether to balance load between disks within brokers (requires JBOD Kafka deployment) | false                | yes       |
+| rebalance_disk                    | boolean   | whether to balance load between disks within brokers, with the intra-broker goals in `goals` (default: `intra.broker.goals`) (requires JBOD Kafka deployment) | false                | yes       |
 | json                              | boolean   | return in JSON format or not                                                          | false                | yes       | 
 | verbose                           | boolean   | return detailed state information                                                     | false                | yes       |
 | doAs                              | string    | propagated user by the trusted proxy service                                          | null                 | yes       | 
@@ -349,7 +367,7 @@ Supported parameters are:
 | ignore_proposal_cache                         | boolean   | whether to ignore the cached proposal or not                                                                                          | false                 | yes       | 
 | replication_throttle                          | long      | upper bound on the bandwidth used to move replicas (in bytes per second)                                                              | null                  | yes       | 
 | destination_broker_ids                        | list      | specify brokers to move replicas to                                                                                                   | available brokers     | yes       | 
-| rebalance_disk                                | boolean   | whether to balance load between disks within brokers (requires JBOD Kafka deployment)                                                 | false                 | yes       | 
+| rebalance_disk                                | boolean   | whether to balance load between disks within brokers, with the intra-broker goals in `goals` (default: `intra.broker.goals`) (requires JBOD Kafka deployment) | false                 | yes       | 
 | json                                          | boolean   | return in JSON format or not                                                                                                          | false                 | yes       | 
 | verbose                                       | boolean   | return detailed state information                                                                                                     | false                 | yes       | 
 | reason                                        | string    | reason for the request                                                                                                                | "No reason provided"  | yes       | 
@@ -359,6 +377,39 @@ Supported parameters are:
 Similar to the [GET interface for getting proposals](https://github.com/cruise-control-for-kafka/cruise-control/wiki/REST-APIs#get-optimization-proposals), the rebalance can also be based on available valid windows or available valid partitions.
 
 User can specify goals to use for rebalance via `goals` parameter. When `goals` is provided, the cached proposals will be ignored.
+
+With `rebalance_disk=true`, `goals` only accepts intra-broker goals (the goals listed in `intra.broker.goals`); without `goals`, the goals in `intra.broker.goals` are used, in their order.
+
+If the cluster model has disk information (e.g. with `rebalance_disk=true`), the response also shows the balance between the
+disks of each broker, grouped by the metric it is about -- currently the disk usage (`usage` in JSON):
+
+* The stats of each goal include disk-level stats (`diskStatistics` in JSON): the number of alive disks (`DISKS:{alive: ...}`,
+  `numAliveDisks`), and the `DISK USAGE` lines:
+  * `unbalanced` (`numUnbalancedDisks`): the number of disks that `IntraBrokerDiskUsageDistributionGoal` would move replicas to
+    or from, i.e. whose utilization is out of the utilization of their broker times 1 +/- (`disk.balance.threshold` - 1) * 0.9;
+  * `aboveCapacityLimit` (`numDisksAboveCapacityLimit`): the number of disks whose utilization is above `disk.capacity.threshold`;
+  * `maxSpreadWithinBroker`: the largest difference between the utilization of the disks of a broker, and that broker;
+  * `AVG`, `MAX` and `MIN`: the average, highest and lowest utilization of a disk -- `MAX` and `MIN` with the broker and log
+    directory of the disk;
+  * `STD`: the standard deviation of the utilization of each disk from the utilization of its broker, which
+    `IntraBrokerDiskUsageDistributionGoal` reduces.
+
+  Utilizations are percentages of the disk capacity (`%`; `utilizationPct` in JSON). `STD` and `maxSpreadWithinBroker` are
+  differences between such percentages, in percentage points (`pp`): e.g. a broker whose disks are at 17.35% and 0.73% has a
+  spread of 16.62pp. Disks with no capacity, such as disks being removed, are left out.
+* The stats of a goal are the stats of the cluster after that goal is optimized -- i.e. after that goal and all the goals before
+  it -- not what that goal alone changed. For example, with `rebalance_disk=true`, `IntraBrokerDiskCapacityGoal(NO-ACTION)`
+  followed by `unbalanced: 12` means that no disk was above the capacity limit, while 12 disks were unbalanced; then
+  `IntraBrokerDiskUsageDistributionGoal(FIXED)` followed by `unbalanced: 0` shows the balance after both goals.
+* Intra-broker goals only move replicas between the disks of a broker, so their broker-level stats cannot change: the plaintext
+  response only shows their disk-level stats.
+* The summary shows the disk usage balance before and after the optimization, e.g. `Disk usage balance (before -> after):
+  unbalanced disks 12 of 12 -> 0 of 12, max utilization 17.33% -> 6.18%, max spread within a broker 16.62pp -> 2.83pp.`
+  (`diskStatisticsBefore` and `diskStatisticsAfter` in JSON, shaped like `diskStatistics`).
+* With `verbose=true`, a proposal that moves replicas between disks shows each replica as `brokerId-logdir` in plaintext (e.g.
+  `[0-/d1, 1-/d1] -> [0-/d2, 1-/d1]`), and the log directory of each replica before and after in JSON (`oldReplicaLogdirs`
+  and `newReplicaLogdirs`, keyed by broker id). A replica whose log directory is not known, e.g. on a dead broker, is shown
+  without it.
 
 When rebalancing a cluster, all the brokers in the cluster(except recently removed/demoted brokers if `exclude_recently_removed_brokers`/`exclude_recently_demoted_brokers` set to `true`) are eligible to give / receive replicas. All the brokers will be throttled during the partition movement. The throttling can be set in two ways.
 
@@ -521,24 +572,54 @@ For example, to remove two disks from broker `101`:
 
 Supported parameters are:
 
-| PARAMETER                 | TYPE      | DESCRIPTION                                                                                       | DEFAULT               | OPTIONAL  |
-|---------------------------|-----------|---------------------------------------------------------------------------------------------------|-----------------------|-----------|
-| brokerid_and_logdirs      | list      | list of broker id and logdir pairs for disks to remove from the cluster                           | N/A                   | **no**    |
-| dryrun                    | boolean   | whether dry-run the request or not                                                                | true                  | yes       |
-| stop_ongoing_execution    | boolean   | whether to stop the ongoing execution (if any) and start executing the given request              | false                 | yes       |
-| reason                    | string    | reason for the request                                                                            | "No reason provided"  | yes       |
-| json                      | boolean   | return in JSON format or not                                                                      | false                 | yes       |
+| PARAMETER                  | TYPE      | DESCRIPTION                                                                                  | DEFAULT               | OPTIONAL  |
+|----------------------------|-----------|----------------------------------------------------------------------------------------------|-----------------------|-----------|
+| brokerid_and_logdirs       | list      | list of broker id and logdir pairs for disks to remove from the cluster                      | N/A                   | **no**    |
+| dryrun                     | boolean   | whether dry-run the request or not                                                           | true                  | yes       |
+| stop_ongoing_execution     | boolean   | whether to stop the ongoing execution (if any) and start executing the given request        | false                 | yes       |
+| allow_capacity_estimation  | boolean   | whether to allow broker capacity to be estimated                                             | true                  | yes       |
+| json                       | boolean   | return in JSON format or not                                                                 | false                 | yes       |
+| verbose                    | boolean   | return the proposed replica movements and the load before the disk removal                  | false                 | yes       |
+| reason                     | string    | reason for the request                                                                       | "No reason provided"  | yes       |
+| get_response_schema        | boolean   | return JSON schema in response header or not                                                 | false                 | yes       |
+| doAs                       | string    | propagated user by the trusted proxy service                                                 | null                  | yes       |
 
 Note that `brokerid_and_logdirs` takes comma as delimiter between two broker id and logdir pairs — i.e. we assume a valid logdir name contains no comma. Each pair uses a hyphen (`-`) as the delimiter between broker id and logdir name (e.g. `101-/tmp/kafka-logs-1`).
 
-Unlike most other optimization endpoints, `remove_disks` does not accept a `goals` parameter. Proposal generation always uses `IntraBrokerDiskCapacityGoal` with disk-emptying enabled, regardless of the `intra.broker.goals` or `default.goals` configuration. This goal generates intra-broker replica movement proposals to move all replicas off the specified disks while keeping each remaining disk under the configured capacity threshold.
+A request without `brokerid_and_logdirs`, or with a pair that is not a broker id followed by a hyphen and a logdir, is rejected with HTTP 400.
+
+Unlike most other optimization endpoints, `remove_disks` does not accept a `goals` parameter. Proposal generation always uses `IntraBrokerDiskCapacityGoal` with disk-emptying enabled, regardless of the `intra.broker.goals` or `default.goals` configuration. This goal generates intra-broker replica movement proposals to move all replicas off the specified disks while keeping each remaining disk under the configured capacity threshold. It only moves the replicas on the specified disks -- including the replicas of topics excluded from partition movement (`topics.excluded.from.partition.movement`) -- to other disks of the same broker: it neither balances the remaining disks, nor touches other disks above the capacity threshold or other brokers. The other intra-broker goals, such as `IntraBrokerDiskUsageDistributionGoal`, are not used, since they balance the disks of every broker.
 
 Before generating proposals, Cruise Control validates that:
 * Each specified logdir exists on the corresponding broker.
-* At least one logdir remains on each affected broker.
-* The remaining disk capacity on each affected broker is sufficient to absorb the load from the disks being removed (based on the configured disk capacity threshold).
+* No specified logdir is a failed (dead) disk. Replicas cannot be moved off a failed disk to another disk of the broker, and
+  Kafka reports no replica for a failed log dir, so such a disk can be neither emptied nor checked to be empty. The error
+  lists the offline replicas of the broker: move them to other brokers with `fix_offline_replicas`, then take the disk out
+  of the broker's `log.dirs`.
+* At least one alive logdir remains on each affected broker.
+* The remaining capacity of the alive disks on each affected broker is sufficient to absorb the load of its alive disks (based on the configured disk capacity threshold, see `disk.capacity.threshold`).
+
+Offline replicas elsewhere -- on a dead broker, or on a failed disk that is not removed -- do not prevent a disk removal:
+`remove_disks` only moves online replicas between the alive disks of the given brokers.
 
 Replica movements are limited to disks within the same broker — there is no inter-broker replica movement. `stop_ongoing_execution` and `dryrun` cannot both be set to `true`.
+
+`remove_disks` is a one-shot drain: Cruise Control keeps no record of the disks it removed. While a drained log dir is still
+in the broker's `log.dirs`, Kafka keeps using it. It puts each new replica of the broker -- of a new partition, or moved
+from another broker -- on the log dir with the fewest partitions, i.e. the drained one, and a later `rebalance` with
+`rebalance_disk=true` moves replicas back onto it as well. So take the disk out of the broker's `log.dirs` (a broker
+restart) and out of the broker capacity config, from which Cruise Control builds the disks of the broker, right after the
+drain. On Kafka versions that support cordoning log directories (KIP-1066), cordon the drained log dir with the dynamic
+`cordoned.log.dirs` broker config, so that Kafka places no new replica on it until the restart.
+
+If `verbose` is set to `true`, the response also shows the proposed replica movements -- including the log directories
+that each replica moves between (`oldReplicaLogdirs` and `newReplicaLogdirs` in JSON, keyed by broker id) -- and the load
+before the disk removal. The load after the disk removal shows the removed disks as empty, and the disk capacity of the
+brokers without the removed disks.
+
+The summary shows the disk usage balance before and after the disk removal, as for `rebalance` with `rebalance_disk=true`. The
+disks to remove are only counted before the removal: e.g. removing one disk of each of three brokers with four disks each gives
+`unbalanced disks 12 of 12 -> 9 of 9`. The remaining disks are not rebalanced by `remove_disks`.
 
 ### Stop the current proposal execution task
 The following POST request will let Cruise Control stop an ongoing `rebalance`, `add_broker`,  `remove_broker`, `fix_offline_replica`, `topic_configuration`, `demote_broker` or `remove_disks` operation:
