@@ -15,7 +15,9 @@ import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeLargeReplica
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeMinIsrWithOfflineReplicasStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeOneAboveMinIsrWithOfflineReplicasStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeSmallReplicaMovementStrategy;
+import com.linkedin.kafka.cruisecontrol.executor.strategy.ReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.StrategyOptions;
+import com.linkedin.kafka.cruisecontrol.executor.strategy.ThrottleAwareReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.model.ReplicaPlacementInfo;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -42,6 +44,8 @@ import org.junit.Test;
 import static org.apache.kafka.common.KafkaFuture.completedFuture;
 import static org.easymock.EasyMock.anyObject;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC1;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC2;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC3;
@@ -51,6 +55,7 @@ import static org.apache.kafka.clients.admin.DescribeReplicaLogDirsResult.Replic
  * Unit test class for execution task planner
  */
 public class ExecutionTaskPlannerTest {
+  private static final long BYTES_PER_MB = 1024L * 1024L;
   private static final int MAX_BROKER_CONCURRENCY = ExecutorConfig.DEFAULT_MAX_NUM_CLUSTER_MOVEMENTS_CONFIG - 1;
   private static final int MIN_BROKER_CONCURRENCY = 1;
   private final ReplicaPlacementInfo _r0 = new ReplicaPlacementInfo(0);
@@ -413,6 +418,151 @@ public class ExecutionTaskPlannerTest {
   }
 
   @Test
+  public void testNumRemainingInterBrokerReplicaMovementsByBrokerId() {
+    ExecutionProposal p0 = new ExecutionProposal(new TopicPartition(TOPIC1, 0), 10, _r0, List.of(_r0, _r1), List.of(_r0, _r2));
+    ExecutionProposal p1 = new ExecutionProposal(new TopicPartition(TOPIC1, 1), 10, _r0, List.of(_r0, _r1), List.of(_r0, _r2));
+    ExecutionProposal p2 = new ExecutionProposal(new TopicPartition(TOPIC1, 2), 10, _r3, List.of(_r3, _r4), List.of(_r3, _r5));
+    List<ExecutionProposal> proposals = List.of(p0, p1, p2);
+    ExecutionTaskPlanner planner =
+        new ExecutionTaskPlanner(null, new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties()));
+    planner.addExecutionProposals(proposals, strategyOptionsFor(proposals), null);
+
+    // Brokers 0 and 2 are involved in two movements each, brokers 3 and 5 in one movement each.
+    Map<Integer, Integer> numMovementsByBrokerId = planner.numRemainingInterBrokerReplicaMovementsByBrokerId();
+    assertEquals(Map.of(0, 2, 2, 2, 3, 1, 5, 1), numMovementsByBrokerId);
+    assertEquals(List.of(2, 2, 1, 1), new ArrayList<>(numMovementsByBrokerId.values()));
+    assertEquals(List.of(p0, p1, p2), getInterBrokerReplicaMovementsOneByOne(planner, proposals.size()));
+    assertTrue(planner.numRemainingInterBrokerReplicaMovementsByBrokerId().isEmpty());
+  }
+
+  @Test
+  public void testDynamicConfigThrottleAwareStrategy() {
+    ExecutionProposal p0 = new ExecutionProposal(new TopicPartition(TOPIC1, 0), 10, _r0, List.of(_r0, _r1), List.of(_r0, _r2));
+    ExecutionProposal p1 = new ExecutionProposal(new TopicPartition(TOPIC1, 1), 10, _r0, List.of(_r0, _r1), List.of(_r0, _r2));
+    ExecutionProposal p2 = new ExecutionProposal(new TopicPartition(TOPIC1, 2), 10, _r3, List.of(_r3, _r4), List.of(_r3, _r5));
+    List<ExecutionProposal> proposals = List.of(p0, p1, p2);
+    StrategyOptions strategyOptions = strategyOptionsFor(proposals);
+    ExecutionTaskPlanner planner =
+        new ExecutionTaskPlanner(null, new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties()));
+
+    // Throttle-aware strategy chained after another strategy, which still determines the order of tasks.
+    ReplicaMovementStrategy chainedStrategy = new PrioritizeLargeReplicaMovementStrategy().chain(new ThrottleAwareReplicaMovementStrategy());
+    assertTrue(ThrottleAwareReplicaMovementStrategy.isEnabledIn(chainedStrategy.chainBaseReplicaMovementStrategyIfAbsent()));
+    planner.addExecutionProposals(proposals, strategyOptions, chainedStrategy);
+    assertTrue(planner.isThrottleAware());
+    assertEquals(List.of(p0, p1, p2), getInterBrokerReplicaMovementsOneByOne(planner, proposals.size()));
+    planner.clear();
+
+    // Falls back to the default strategy for the next execution.
+    assertFalse(ThrottleAwareReplicaMovementStrategy.isEnabledIn(new PrioritizeLargeReplicaMovementStrategy()));
+    planner.addExecutionProposals(proposals, strategyOptions, null);
+    assertFalse(planner.isThrottleAware());
+    assertEquals(List.of(p0, p1, p2), getInterBrokerReplicaMovementsOneByOne(planner, proposals.size()));
+
+    // Throttle-aware strategy as the default strategy.
+    Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
+    props.setProperty(ExecutorConfig.DEFAULT_REPLICA_MOVEMENT_STRATEGIES_CONFIG, ThrottleAwareReplicaMovementStrategy.class.getName());
+    ExecutionTaskPlanner throttleAwarePlanner = new ExecutionTaskPlanner(null, new KafkaCruiseControlConfig(props));
+    throttleAwarePlanner.addExecutionProposals(proposals, strategyOptions, null);
+    assertTrue(throttleAwarePlanner.isThrottleAware());
+  }
+
+  @Test
+  public void testThrottleAwareStrategyRespectsReplicationThrottle() {
+    long throttle = 50L * BYTES_PER_MB;
+    ReplicaPlacementInfo r6 = new ReplicaPlacementInfo(6);
+    ReplicaPlacementInfo r7 = new ReplicaPlacementInfo(7);
+    // Three hot partitions (p0, p1, p2) and a cool partition (p3) moving to broker 2 from different leaders.
+    ExecutionProposal p0 = new ExecutionProposal(new TopicPartition(TOPIC1, 0), 10, _r0, List.of(_r0, _r1), List.of(_r0, _r2));
+    ExecutionProposal p1 = new ExecutionProposal(new TopicPartition(TOPIC1, 1), 10, _r3, List.of(_r3, _r4), List.of(_r3, _r2));
+    ExecutionProposal p2 = new ExecutionProposal(new TopicPartition(TOPIC1, 2), 10, _r5, List.of(_r5, r6), List.of(_r5, _r2));
+    ExecutionProposal p3 = new ExecutionProposal(new TopicPartition(TOPIC1, 3), 10, r7, List.of(r7, _r1), List.of(r7, _r2));
+    List<ExecutionProposal> proposals = List.of(p0, p1, p2, p3);
+    Map<TopicPartition, Double> writeRateByPartition = Map.of(p0.topicPartition(), 30.0 * BYTES_PER_MB,
+                                                              p1.topicPartition(), 30.0 * BYTES_PER_MB,
+                                                              p2.topicPartition(), 30.0 * BYTES_PER_MB,
+                                                              p3.topicPartition(), 5.0 * BYTES_PER_MB);
+    StrategyOptions strategyOptions = strategyOptionsFor(proposals);
+    int maxInterBrokerPartitionMovements = proposals.size();
+
+    // Only one hot partition starts per call, and the cool partition fills the remaining budget of broker 2.
+    ExecutionTaskPlanner planner =
+        new ExecutionTaskPlanner(null, new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties()));
+    planner.addExecutionProposals(proposals, strategyOptions, new ThrottleAwareReplicaMovementStrategy());
+    List<ExecutionTask> inProgressTasks = planner.getInterBrokerReplicaMovementTasks(
+        readyBrokers(), Collections.emptySet(), maxInterBrokerPartitionMovements,
+        budget(Collections.emptyList(), writeRateByPartition, throttle));
+    assertEquals(Set.of(p0, p3), new HashSet<>(proposalsOf(inProgressTasks)));
+    inProgressTasks.forEach(task -> task.inProgress(0L));
+    // The other hot partitions wait while the movements to broker 2 are in progress.
+    assertTrue(planner.getInterBrokerReplicaMovementTasks(readyBrokers(), Collections.emptySet(), maxInterBrokerPartitionMovements,
+                                                          budget(inProgressTasks, writeRateByPartition, throttle)).isEmpty());
+    // Once these movements are finished, the next hot partition starts.
+    List<ExecutionTask> tasks = planner.getInterBrokerReplicaMovementTasks(
+        readyBrokers(), Collections.emptySet(), maxInterBrokerPartitionMovements,
+        budget(Collections.emptyList(), writeRateByPartition, throttle));
+    assertEquals(1, tasks.size());
+    assertEquals(1, planner.remainingInterBrokerReplicaMovements().size());
+
+    // Without the throttle-aware strategy, the replication throttle budget is ignored.
+    ExecutionTaskPlanner basePlanner =
+        new ExecutionTaskPlanner(null, new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties()));
+    basePlanner.addExecutionProposals(proposals, strategyOptions, null);
+    tasks = basePlanner.getInterBrokerReplicaMovementTasks(readyBrokers(), Collections.emptySet(), maxInterBrokerPartitionMovements,
+                                                           budget(Collections.emptyList(), writeRateByPartition, throttle));
+    assertEquals(Set.copyOf(proposals), new HashSet<>(proposalsOf(tasks)));
+
+    // Without a replication throttle budget, all movements start.
+    planner.clear();
+    planner.addExecutionProposals(proposals, strategyOptions, new ThrottleAwareReplicaMovementStrategy());
+    tasks = planner.getInterBrokerReplicaMovementTasks(readyBrokers(), Collections.emptySet(), maxInterBrokerPartitionMovements, null);
+    assertEquals(Set.copyOf(proposals), new HashSet<>(proposalsOf(tasks)));
+
+    // A partition with a write rate higher than the throttle waits while another movement is in progress on its brokers ...
+    ExecutionProposal hot = new ExecutionProposal(new TopicPartition(TOPIC2, 0), 10, _r3, List.of(_r3, _r4), List.of(_r3, _r5));
+    Map<TopicPartition, Double> hotWriteRateByPartition = Map.of(hot.topicPartition(), 60.0 * BYTES_PER_MB,
+                                                                 p0.topicPartition(), 5.0 * BYTES_PER_MB);
+    ExecutionTask inProgressTask = new ExecutionTask(0L, new ExecutionProposal(p0.topicPartition(), 10, _r0, List.of(_r0, _r1),
+                                                                               List.of(_r0, _r5)),
+                                                     ExecutionTask.TaskType.INTER_BROKER_REPLICA_ACTION, 100L);
+    inProgressTask.inProgress(0L);
+    planner.clear();
+    planner.addExecutionProposals(List.of(hot), strategyOptionsFor(List.of(hot)), new ThrottleAwareReplicaMovementStrategy());
+    assertTrue(planner.getInterBrokerReplicaMovementTasks(readyBrokers(), Collections.emptySet(), maxInterBrokerPartitionMovements,
+                                                          budget(List.of(inProgressTask), hotWriteRateByPartition, throttle)).isEmpty());
+    // ... and starts alone when nothing is in progress on its brokers.
+    tasks = planner.getInterBrokerReplicaMovementTasks(readyBrokers(), Collections.emptySet(), maxInterBrokerPartitionMovements,
+                                                       budget(Collections.emptyList(), hotWriteRateByPartition, throttle));
+    assertEquals(List.of(hot), proposalsOf(tasks));
+  }
+
+  @Test
+  public void testThrottleAwareStrategyStartsMovementsThatFitFirst() {
+    long throttle = 50L * BYTES_PER_MB;
+    // A hot partition (p0), whose write rate exceeds the throttle, and two cool partitions (p1, p2) move to broker 2 from
+    // different leaders, the hot partition first in execution-id order.
+    ExecutionProposal p0 = new ExecutionProposal(new TopicPartition(TOPIC1, 0), 10, _r0, List.of(_r0, _r1), List.of(_r0, _r2));
+    ExecutionProposal p1 = new ExecutionProposal(new TopicPartition(TOPIC1, 1), 10, _r3, List.of(_r3, _r4), List.of(_r3, _r2));
+    ExecutionProposal p2 = new ExecutionProposal(new TopicPartition(TOPIC1, 2), 10, _r5, List.of(_r5, _r4), List.of(_r5, _r2));
+    Map<TopicPartition, Double> writeRateByPartition = Map.of(p0.topicPartition(), 60.0 * BYTES_PER_MB,
+                                                              p1.topicPartition(), 10.0 * BYTES_PER_MB,
+                                                              p2.topicPartition(), 10.0 * BYTES_PER_MB);
+    // The cool partitions start together, and the hot partition starts alone once they are finished.
+    assertThrottleAwareStartOrder(List.of(p0, p1, p2), writeRateByPartition, throttle, Set.of(p1, p2), Set.of(p0));
+
+    // Same if the hot partition (p3) is checked for its source broker 0 before the cool partition (p4) is checked for the
+    // destination broker 2 they share. Broker 0 is checked first as another hot partition (p5) leaves it, too. p5 starts alone
+    // on the brokers left idle by the cool partition.
+    ExecutionProposal p3 = new ExecutionProposal(new TopicPartition(TOPIC2, 0), 10, _r0, List.of(_r0, _r4), List.of(_r0, _r2));
+    ExecutionProposal p4 = new ExecutionProposal(new TopicPartition(TOPIC2, 1), 10, _r1, List.of(_r1, _r4), List.of(_r1, _r2));
+    ExecutionProposal p5 = new ExecutionProposal(new TopicPartition(TOPIC2, 2), 10, _r0, List.of(_r0, _r4), List.of(_r0, _r3));
+    writeRateByPartition = Map.of(p3.topicPartition(), 60.0 * BYTES_PER_MB,
+                                  p4.topicPartition(), 10.0 * BYTES_PER_MB,
+                                  p5.topicPartition(), 60.0 * BYTES_PER_MB);
+    assertThrottleAwareStartOrder(List.of(p3, p4, p5), writeRateByPartition, throttle, Set.of(p4, p5), Set.of(p3));
+  }
+
+  @Test
   public void testGetIntraBrokerPartitionMovementTasks() {
     ReplicaPlacementInfo r0d0 = new ReplicaPlacementInfo(0, "d0");
     ReplicaPlacementInfo r0d1 = new ReplicaPlacementInfo(0, "d1");
@@ -500,6 +650,88 @@ public class ExecutionTaskPlannerTest {
     planner.clear();
     assertEquals(0, planner.remainingLeadershipMovements().size());
     assertEquals(0, planner.remainingInterBrokerReplicaMovements().size());
+  }
+
+  /**
+   * Get the inter-broker replica movements from the given planner one at a time (i.e. max one partition movement per call).
+   *
+   * @param planner The execution task planner to get the inter-broker replica movements from.
+   * @param numMovements The number of inter-broker replica movements to get.
+   * @return The proposals of the inter-broker replica movements in the order they are picked by the planner.
+   */
+  private List<ExecutionProposal> getInterBrokerReplicaMovementsOneByOne(ExecutionTaskPlanner planner, int numMovements) {
+    List<ExecutionProposal> movements = new ArrayList<>();
+    Map<Integer, Integer> readyBrokers = readyBrokers();
+    for (int i = 0; i < numMovements; i++) {
+      List<ExecutionTask> tasks = planner.getInterBrokerReplicaMovementTasks(readyBrokers, Collections.emptySet(), 1);
+      assertEquals(1, tasks.size());
+      movements.add(tasks.get(0).proposal());
+    }
+    assertEquals(0, planner.remainingInterBrokerReplicaMovements().size());
+    return movements;
+  }
+
+  /**
+   * Assert that with the throttle-aware strategy and the given replication throttle, the given movements start in two steps:
+   * first the given movements, then, once these are finished, the other given movements.
+   *
+   * @param proposals The proposals to execute, in execution-id order.
+   * @param writeRateByPartition The write rate of partitions in bytes per second.
+   * @param throttle The replication throttle of all brokers in bytes per second.
+   * @param startedFirst The proposals expected to start first.
+   * @param startedNext The proposals expected to start once the first ones are finished.
+   */
+  private void assertThrottleAwareStartOrder(List<ExecutionProposal> proposals,
+                                             Map<TopicPartition, Double> writeRateByPartition,
+                                             long throttle,
+                                             Set<ExecutionProposal> startedFirst,
+                                             Set<ExecutionProposal> startedNext) {
+    ExecutionTaskPlanner planner =
+        new ExecutionTaskPlanner(null, new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties()));
+    planner.addExecutionProposals(proposals, strategyOptionsFor(proposals), new ThrottleAwareReplicaMovementStrategy());
+    List<ExecutionTask> inProgressTasks = planner.getInterBrokerReplicaMovementTasks(
+        readyBrokers(), Collections.emptySet(), proposals.size(), budget(Collections.emptyList(), writeRateByPartition, throttle));
+    assertEquals(startedFirst, new HashSet<>(proposalsOf(inProgressTasks)));
+    inProgressTasks.forEach(task -> task.inProgress(0L));
+    assertTrue(planner.getInterBrokerReplicaMovementTasks(readyBrokers(), Collections.emptySet(), proposals.size(),
+                                                          budget(inProgressTasks, writeRateByPartition, throttle)).isEmpty());
+    List<ExecutionTask> tasks = planner.getInterBrokerReplicaMovementTasks(
+        readyBrokers(), Collections.emptySet(), proposals.size(), budget(Collections.emptyList(), writeRateByPartition, throttle));
+    assertEquals(startedNext, new HashSet<>(proposalsOf(tasks)));
+    assertEquals(0, planner.remainingInterBrokerReplicaMovements().size());
+  }
+
+  private static ReplicationThrottleBudget budget(List<ExecutionTask> inProgressTasks,
+                                                  Map<TopicPartition, Double> writeRateByPartition,
+                                                  long throttle) {
+    return new ReplicationThrottleBudget(inProgressTasks, writeRateByPartition, task -> null,
+                                         brokerId -> throttle, brokerId -> throttle,
+                                         ExecutorConfig.DEFAULT_REPLICA_MOVEMENT_THROTTLE_WRITE_RATE_MARGIN);
+  }
+
+  private static Map<Integer, Integer> readyBrokers() {
+    Map<Integer, Integer> readyBrokers = new HashMap<>();
+    for (int brokerId = 0; brokerId < 8; brokerId++) {
+      readyBrokers.put(brokerId, MAX_BROKER_CONCURRENCY);
+    }
+    return readyBrokers;
+  }
+
+  private static List<ExecutionProposal> proposalsOf(List<ExecutionTask> tasks) {
+    List<ExecutionProposal> proposals = new ArrayList<>(tasks.size());
+    tasks.forEach(task -> proposals.add(task.proposal()));
+    return proposals;
+  }
+
+  private StrategyOptions strategyOptionsFor(List<ExecutionProposal> proposals) {
+    Set<PartitionInfo> partitions = new HashSet<>();
+    proposals.forEach(proposal -> partitions.add(generatePartitionInfo(proposal, false)));
+    List<Node> nodes = new ArrayList<>();
+    for (int brokerId = 0; brokerId < 8; brokerId++) {
+      nodes.add(new Node(brokerId, "null", -1));
+    }
+    Cluster cluster = new Cluster(null, nodes, partitions, Collections.emptySet(), Collections.emptySet());
+    return new StrategyOptions.Builder(cluster).build();
   }
 
   private Node[] generateExpectedReplicas(ExecutionProposal proposal) {
