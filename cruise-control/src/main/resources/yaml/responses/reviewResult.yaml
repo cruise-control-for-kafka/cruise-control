@@ -1,11 +1,13 @@
 ReviewResult:
   type: object
   required:
-    - vesion
+    - version
     - RequestInfo
   properties:
     RequestInfo:
-      $ref: '#/RequestInfo'
+      type: array
+      items:
+        $ref: '#/RequestInfo'
     version:
       type: integer
       format: int32

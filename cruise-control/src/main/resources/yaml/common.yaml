@@ -1,0 +1,21 @@
+UserTaskIdParameter:
+  name: User-Task-ID
+  in: header
+  required: false
+  description: >-
+    UUID returned by an earlier request. Send it when polling or retrieving the same
+    operation with the same HTTP method, endpoint, and query parameters. Unknown,
+    expired, or mismatched task identifiers cause an HTTP 400 response.
+  schema:
+    type: string
+    format: uuid
+
+UserTaskIdHeader:
+  description: >-
+    UUID assigned to this operation. Reuse it as the User-Task-ID request header
+    when polling an HTTP 202 response or retrieving the same task. This header
+    is also returned for completed synchronous requests. It can be absent when
+    a request is placed in the two-step verification review queue.
+  schema:
+    type: string
+    format: uuid

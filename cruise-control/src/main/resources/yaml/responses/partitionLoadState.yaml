@@ -39,17 +39,17 @@ PartitionLoadRecord:
         type: integer
         format: int32
     cpu:
-      type: integer
+      type: number
       format: double
     networkInbound:
-      type: integer
+      type: number
       format: double
     networkOutbound:
-      type: integer
+      type: number
       format: double
     disk:
-      type: integer
+      type: number
       format: double
     msg_in:
-      type: integer
+      type: number
       format: double

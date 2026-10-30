@@ -459,6 +459,9 @@ project(':cruise-control') {
 
   tasks.register("generateOpenApiJson", org.openapitools.generator.gradle.plugin.tasks.GenerateTask) {
     inputSpec = "$rootDir/cruise-control/src/main/resources/yaml/base.yaml"
+    inputs.files(fileTree("$rootDir/cruise-control/src/main/resources/yaml") {
+      include "**/*.yaml"
+    })
     generatorName = "openapi"
     outputDir = "$rootDir/cruise-control/src/main/resources/webroot"
   }

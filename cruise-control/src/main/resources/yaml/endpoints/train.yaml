@@ -3,6 +3,7 @@ TrainEndpoint:
     operationId: train
     summary: Train Cruise Control to better model broker cpu usage.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: start
         in: query
         description: Timestamp in millisecond of earliest metrics sample used to train Cruise Control.
@@ -38,6 +39,9 @@ TrainEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful train response.
         content:
           application/json:

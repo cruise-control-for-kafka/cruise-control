@@ -3,6 +3,7 @@ ResumeSamplingEndpoint:
     operationId: resumeSampling
     summary: Resume metric sampling.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: reason
         in: query
         description: Reason for request.
@@ -34,6 +35,9 @@ ResumeSamplingEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful execution response.
         content:
           application/json:

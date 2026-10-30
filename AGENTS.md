@@ -58,3 +58,18 @@ The full guidelines are in [CONTRIBUTING.md](./CONTRIBUTING.md). Key points for 
 - Reference related issues, prior discussions, or relevant documentation where helpful.
 - Do not copy-paste large blocks of code into the description; use `<details>` tags for lengthy
   log output or stack traces.
+
+## Maintaining the OpenAPI Contract
+
+The API specification is hand-maintained in `cruise-control/src/main/resources/yaml/`.
+The generator bundles this YAML; it does not infer the contract from Java.
+When changing request parsing, response serialization, HTTP status codes, or headers:
+
+1. Update the YAML and its contract regressions in `RequestParameterTest` and `ResponseTest`.
+   Keep header parameters separate from query-parameter allowlists. Check wire serialization
+   against `ParameterUtils` and task headers against `UserTaskManager`.
+2. Run `./gradlew :cruise-control:test --tests '*RequestParameterTest' --tests '*ResponseTest'` and
+   if failures occur, fix them.
+3. Regenerate with `./gradlew :cruise-control:generateOpenApiJson --rerun-tasks`.
+   The output is `cruise-control/src/main/resources/webroot/openapi.json`. Do not edit it by hand.
+4. Review the generated diff.

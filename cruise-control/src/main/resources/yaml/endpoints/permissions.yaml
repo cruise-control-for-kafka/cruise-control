@@ -3,6 +3,7 @@ PermissionsEndpoint:
     operationId: permissions
     summary: Get the permissions of a user specified as a query parameter
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: json
         in: query
         description: Whether to return in JSON format or not.
@@ -27,6 +28,9 @@ PermissionsEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful permissions response.
         content:
           application/json:
@@ -36,6 +40,9 @@ PermissionsEndpoint:
             schema:
               type: string
       '202':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Permissions querying in progress.
         content:
           application/json:

@@ -112,11 +112,11 @@ ClusterStats:
       type: integer
       format: int32
     StdReplicasPerBroker:
-      type: integer
-      format: int32
+      type: number
+      format: double
     StdLeadersPerBroker:
-      type: integer
-      format: int32
+      type: number
+      format: double
 
 ClusterPartitionState:
   type: object

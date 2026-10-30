@@ -3,6 +3,7 @@ StateEndpoint:
     operationId: state
     summary: Get the state of cruise control.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: substates
         in: query
         description: The substates for which to retrieve state from cruise-control.
@@ -51,6 +52,9 @@ StateEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful state response.
         content:
           application/json:
@@ -60,6 +64,9 @@ StateEndpoint:
             schema:
               type: string
       '202':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: State querying in progress.
         content:
           application/json:

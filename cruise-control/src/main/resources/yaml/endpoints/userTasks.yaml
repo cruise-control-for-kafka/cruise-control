@@ -3,6 +3,7 @@ UserTasksEndpoint:
     operationId: userTasks
     summary: Get the recent user tasks from cruise control.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: client_ids
         in: query
         description: Comma separated IP addresses to filter the task results Cruise Control report.
@@ -64,6 +65,9 @@ UserTasksEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: User tasks state response.
         content:
           application/json:

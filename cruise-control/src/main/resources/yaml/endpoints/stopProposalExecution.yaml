@@ -3,6 +3,7 @@ StopProposalExecutionEndpoint:
     operationId: stopProposalExecution
     summary: Stop ongoing execution in Cruise Control.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: force_stop
         in: query
         description: If true, stop execution forcefully.
@@ -47,6 +48,9 @@ StopProposalExecutionEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful admin response.
         content:
           application/json:

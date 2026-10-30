@@ -3,6 +3,7 @@ RemoveDisksEndpoint:
     operationId: removeDisks
     summary: Move all replicas from the specified disk to other disks of the same broker.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: dryrun
         in: query
         description: Whether to dry-run the request or not.
@@ -23,13 +24,14 @@ RemoveDisksEndpoint:
         example: "Balance disk utilization across all brokers in the cluster."
       - name: brokerid_and_logdirs
         in: query
-        description: List of broker id and logdir pair to be demoted in the cluster.
+        description: Comma-separated broker-id and log-directory pairs. Each pair uses the first hyphen as its separator.
+        style: form
+        explode: false
         schema:
-          type: object
-          additionalProperties:
-            type: array
-            items:
-              type: string
+          type: array
+          items:
+            type: string
+            pattern: '^\d+-.+$'
         required: true
         example: 101-/tmp/kafka-logs-1,101-/tmp/kafka-logs-2
       - name: json
@@ -40,6 +42,9 @@ RemoveDisksEndpoint:
           default: false
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful removed disks response.
         content:
           application/json:
@@ -49,6 +54,9 @@ RemoveDisksEndpoint:
             schema:
               type: string
       '202':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Remove disks in progress.
         content:
           application/json:

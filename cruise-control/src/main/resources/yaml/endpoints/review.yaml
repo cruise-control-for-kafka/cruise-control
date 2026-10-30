@@ -3,6 +3,7 @@ ReviewEndpoint:
     operationId: review
     summary: Reivew pending Cruise Control requests.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: approve
         in: query
         description: Approve one or more pending Cruise Control requests.
@@ -46,6 +47,9 @@ ReviewEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful review response.
         content:
           application/json:

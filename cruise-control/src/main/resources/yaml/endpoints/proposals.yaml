@@ -3,6 +3,7 @@ ProposalsEndpoint:
     operationId: proposals
     summary: Get current proposals.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: kafka_assigner
         in: query
         description: Whether to use Kafka assigner mode to generate proposals.
@@ -115,6 +116,9 @@ ProposalsEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful optimization proposals response.
         content:
           application/json:
@@ -124,6 +128,9 @@ ProposalsEndpoint:
             schema:
               type: string
       '202':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Optimization proposals generation in progress.
         content:
           application/json:

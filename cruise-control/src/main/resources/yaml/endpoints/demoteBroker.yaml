@@ -3,15 +3,15 @@ DemoteBrokerEndpoint:
     operationId: demoteBroker
     summary: Demote specified brokers.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: brokerid
         in: query
-        description: List of target broker ids.
+        description: List of target broker ids. Specify brokerid, brokerid_and_logdirs, or both.
         schema:
           type: array
           items:
             type: integer
             format: int32
-        required: true
       - name: dryrun
         in: query
         description: Whether to dry-run the request or not.
@@ -81,14 +81,15 @@ DemoteBrokerEndpoint:
           example: ["PrioritizeLargeReplicaMovementStrategy", "PostponeUrpReplicaMovementStrategy"]
       - name: brokerid_and_logdirs
         in: query
-        description: List of broker id and logdir pair to be demoted in the cluster.
+        description: Comma-separated broker-id and log-directory pairs. Each pair uses the first hyphen as its separator.
+        style: form
+        explode: false
         schema:
-          type: object
-          additionalProperties:
-            type: array
-            items:
-              type: string
-        # default is an empty map
+          type: array
+          items:
+            type: string
+            pattern: '^\d+-.+$'
+        example: 101-/tmp/kafka-logs-1,101-/tmp/kafka-logs-2
       - name: replication_throttle
         in: query
         description: Upper bound on the bandwidth in bytes per second used to move replicas.
@@ -134,6 +135,9 @@ DemoteBrokerEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful demote brokers response.
         content:
           application/json:
@@ -143,6 +147,9 @@ DemoteBrokerEndpoint:
              schema:
                type: string
       '202':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Demote brokers in progress.
         content:
           application/json:

@@ -3,6 +3,7 @@ PartitionLoadEndpoint:
     operationId: partitionload
     summary: Get the resource load for each partition.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: resource
         in: query
         description: The host and broker-level resource by which to sort the cruise-control response.
@@ -120,6 +121,9 @@ PartitionLoadEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful partition load state response.
         content:
           application/json:
@@ -129,6 +133,9 @@ PartitionLoadEndpoint:
             schema:
               type: string
       '202':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Partition load state fetch in progress.
         content:
           application/json:

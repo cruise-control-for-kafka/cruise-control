@@ -3,6 +3,7 @@ RightsizeEndpoint:
     operationId: rightsize
     summary: Manually invoke provisioner rightsizing of the cluster.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: num_brokers_to_add
         in: query
         description: The difference in broker count to rightsize towards.
@@ -48,6 +49,9 @@ RightsizeEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful rightsize response.
         content:
           application/json:

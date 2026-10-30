@@ -15,13 +15,9 @@ ProgressResult:
 OperationProgress:
   type: object
   required:
-    - version
     - operation
     - operationProgress
   properties:
-    version:
-      type: integer
-      format: int32
     operation:
       type: string
     operationProgress:

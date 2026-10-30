@@ -3,6 +3,7 @@ LoadEndpoint:
     operationId: load
     summary: Get the cluster load once Cruise Control Load Monitor is running.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: start
         in: query
         description: Start time of the cluster load. Default is time of earliest valid window.
@@ -67,6 +68,9 @@ LoadEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful load from valid partitions response.
         content:
           application/json:
@@ -75,6 +79,18 @@ LoadEndpoint:
           text/plain:
              schema:
                type: string
+      '202':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
+        description: Cluster load fetch in progress.
+        content:
+          application/json:
+            schema:
+              $ref: '../responses/progressResult.yaml#/ProgressResult'
+          text/plain:
+            schema:
+              type: string
       # Response for all errors.
       default:
         description: Error response.

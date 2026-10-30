@@ -3,6 +3,7 @@ KafkaClusterStateEndpoint:
     operationId: kafkaClusterState
     summary: Retrive the current Kafka cluster state.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: topic
         in: query
         description: Topic regex to filter partition information in response.
@@ -40,6 +41,9 @@ KafkaClusterStateEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Current Kafka cluster state.
         content:
           application/json:

@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import com.linkedin.kafka.cruisecontrol.async.progress.OperationProgress;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ClassInfo;
 import io.github.classgraph.ScanResult;
@@ -98,6 +99,66 @@ public class ResponseTest {
   }
 
   /**
+   * Check that cluster standard deviations retain the fractional values emitted by ClusterStats.
+   */
+  @Test
+  public void checkClusterStatsStandardDeviationTypes() {
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    Schema schema = api.getComponents().getSchemas().get("ClusterStats");
+    for (String field : Arrays.asList("StdReplicasPerBroker", "StdLeadersPerBroker")) {
+      Schema property = (Schema) schema.getProperties().get(field);
+      assertEquals(field, "number", property.getType());
+      assertEquals(field, "double", property.getFormat());
+    }
+    Map<String, Object> stats = new ClusterStats(2, Map.of(1, 3, 2, 3), Map.of(1, 2, 2, 1)).getJsonStructure();
+    assertEquals(0.5, (Double) stats.get("StdLeadersPerBroker"), 0.0);
+  }
+
+  /**
+   * Check that partition-load metrics permit the fractional utilization returned by the load model.
+   */
+  @Test
+  public void checkPartitionLoadNumericTypes() {
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    Schema schema = api.getComponents().getSchemas().get("PartitionLoadRecord");
+    for (String field : Arrays.asList("cpu", "disk", "networkInbound", "networkOutbound", "msg_in")) {
+      Schema property = (Schema) schema.getProperties().get(field);
+      assertEquals(field, "number", property.getType());
+      assertEquals(field, "double", property.getFormat());
+    }
+  }
+
+  /**
+   * Check that cluster-load requests document asynchronous progress as well as completed results.
+   */
+  @Test
+  public void checkClusterLoadProgressResponse() {
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    assertTrue(api.getPaths().get("/load").getGet().getResponses().containsKey("202"));
+  }
+
+  /**
+   * Check that review entries are a list, not a single request object.
+   */
+  @Test
+  public void checkReviewResultShape() {
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    Schema schema = api.getComponents().getSchemas().get("ReviewResult");
+    assertEquals("array", ((Schema) schema.getProperties().get("RequestInfo")).getType());
+    assertTrue(schema.getProperties().keySet().containsAll(schema.getRequired()));
+  }
+
+  /**
+   * Check the nested progress record against the actual serializer rather than an outer response envelope.
+   */
+  @Test
+  public void checkOperationProgressShape() {
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    Schema schema = api.getComponents().getSchemas().get("OperationProgress");
+    assertEquals(new OperationProgress("Getting load").getJsonStructure().keySet(), schema.getProperties().keySet());
+  }
+
+  /**
    * For each endpoint, check all the possible responses defined in OpenAPI spec.
    *
    * @param operation The OpenAPI operation for certain endpoint.
@@ -135,6 +196,9 @@ public class ResponseTest {
     Map<String, Boolean> fields = extractFieldKeys(_schemaToClass.get(className));
 
     Map<String, Schema> properties = schema.getProperties();
+    if (schema.getRequired() != null) {
+      assertTrue(className + " requires an undeclared field.", properties.keySet().containsAll(schema.getRequired()));
+    }
 
     // Check version field.
     // If current schema is the schema for the outermost layer in the response, it must contain version field;

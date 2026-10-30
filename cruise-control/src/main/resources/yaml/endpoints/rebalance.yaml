@@ -3,6 +3,7 @@ RebalanceEndpoint:
     operationId: rebalance
     summary: Rebalance a Kafka cluster based on goals.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: dryrun
         in: query
         description: Whether to dry-run the request or not.
@@ -193,6 +194,9 @@ RebalanceEndpoint:
           default: true
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful rebalance response.
         content:
           application/json:
@@ -202,6 +206,9 @@ RebalanceEndpoint:
             schema:
               type: string
       '202':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Rebalancing in progress.
         content:
           application/json:

@@ -3,6 +3,7 @@ FixOfflineReplicasEndpoint:
     operationId: fixOfflineReplicas
     summary: Fix offline replicas by moving currently offline replicas to healthy brokers.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: dryrun
         in: query
         description: Whether dry-run the request or not.
@@ -160,6 +161,9 @@ FixOfflineReplicasEndpoint:
           default: true
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful rebalance response.
         content:
           application/json:
@@ -169,6 +173,9 @@ FixOfflineReplicasEndpoint:
             schema:
               type: string
       '202':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Fix in progress.
         content:
           application/json:

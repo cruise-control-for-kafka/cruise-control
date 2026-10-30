@@ -3,6 +3,7 @@ TopicConfigurationEndpoint:
     operationId: topicConfiguration
     summary: Change the configuration of a topic
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: dryrun
         in: query
         description: Whether to dry-run the request or not.
@@ -178,6 +179,9 @@ TopicConfigurationEndpoint:
           default: true
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful topic configuration response.
         content:
           application/json:
@@ -187,6 +191,9 @@ TopicConfigurationEndpoint:
             schema:
               type: string
       '202':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Topic configuration in progress.
         content:
           application/json:

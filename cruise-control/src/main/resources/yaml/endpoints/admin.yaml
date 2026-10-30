@@ -3,6 +3,7 @@ AdminEndpoint:
     operationId: admin
     summary: Dynamically change some configs of Cruise Control.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: disable_self_healing_for
         in: query
         description: Disable self-healing for certain anomaly types.
@@ -152,6 +153,9 @@ AdminEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful admin response.
         content:
           application/json:

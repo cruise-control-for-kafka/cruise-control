@@ -3,6 +3,7 @@ ReviewBoardEndpoint:
     operationId: reviewBoard
     summary: Check review status of Cruise Control requests.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: review_ids
         in: query
         description: Ids for selected request to check.
@@ -31,6 +32,9 @@ ReviewBoardEndpoint:
           type: string
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful review response.
         content:
           application/json:

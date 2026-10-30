@@ -3,6 +3,7 @@ AddBrokerEndpoint:
     operationId: addBroker
     summary: Move partitions to the specified brokers, according to the specified goals.
     parameters:
+      - $ref: '../common.yaml#/UserTaskIdParameter'
       - name: brokerid
         in: query
         description: List of target broker ids.
@@ -184,6 +185,9 @@ AddBrokerEndpoint:
           default: true
     responses:
       '200':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Successful add brokers response.
         content:
           application/json:
@@ -193,6 +197,9 @@ AddBrokerEndpoint:
              schema:
                type: string
       '202':
+        headers:
+          User-Task-ID:
+            $ref: '../common.yaml#/UserTaskIdHeader'
         description: Add brokers in progress.
         content:
           application/json:
