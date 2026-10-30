@@ -45,6 +45,8 @@ import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.AlterConfigOp;
 import org.apache.kafka.clients.admin.Config;
 import org.apache.kafka.clients.admin.ConfigEntry;
+import org.apache.kafka.clients.admin.DescribeReplicaLogDirsResult.ReplicaLogDirInfo;
+import org.apache.kafka.clients.admin.LogDirDescription;
 import org.apache.kafka.clients.admin.NewPartitionReassignment;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.producer.Producer;
@@ -55,6 +57,7 @@ import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.TopicPartitionInfo;
+import org.apache.kafka.common.TopicPartitionReplica;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.utils.Time;
 import org.easymock.EasyMock;
@@ -86,6 +89,9 @@ public class ExecutorRecoveryTest extends CCKafkaClientsIntegrationTestHarness {
   private static final String UUID = "recovery-test-uuid";
   private static final String REASON = "recovery test";
   private static final long WAIT_TIME_MS = 60_000L;
+  private static final String LOG_DIR_1 = "/tmp/kafka-logs-1";
+  private static final String LOG_DIR_2 = "/tmp/kafka-logs-2";
+  private static final String ALTER_LOG_DIRS_RATE_CONFIG = "replica.alter.log.dirs.io.max.bytes.per.second";
   private Admin _adminClient;
   private RecordingExecutionStateStore _store;
   private final List<Executor> _executors = new ArrayList<>();
@@ -93,6 +99,14 @@ public class ExecutorRecoveryTest extends CCKafkaClientsIntegrationTestHarness {
   @Override
   public int clusterSize() {
     return 3;
+  }
+
+  @Override
+  public Properties overridingProps() {
+    Properties props = super.overridingProps();
+    // Two logdirs per broker for intra-broker replica movements.
+    props.setProperty("log.dirs", LOG_DIR_1 + "," + LOG_DIR_2);
+    return props;
   }
 
   /**
@@ -322,6 +336,18 @@ public class ExecutorRecoveryTest extends CCKafkaClientsIntegrationTestHarness {
    */
   private ExecutionProposal startThrottledReassignment(long throttle) throws Exception {
     createTopic(Map.of(0, List.of(0, 1)));
+    produceToPartition0();
+    ExecutionProposal proposal = proposal(TP0, List.of(0, 1), List.of(0, 2));
+    new ReplicationThrottleHelper(_adminClient, throttle).setThrottles(List.of(proposal));
+    _adminClient.alterPartitionReassignments(Map.of(TP0, Optional.of(new NewPartitionReassignment(List.of(0, 2))))).all().get();
+    assertTrue(_adminClient.listPartitionReassignments().reassignments().get().containsKey(TP0));
+    return proposal;
+  }
+
+  /**
+   * Produce ~3 MB to {@link #TP0}.
+   */
+  private void produceToPartition0() {
     Properties producerProps = new Properties();
     producerProps.setProperty(ProducerConfig.ACKS_CONFIG, "all");
     char[] chars = new char[10_000];
@@ -333,11 +359,17 @@ public class ExecutorRecoveryTest extends CCKafkaClientsIntegrationTestHarness {
       }
       producer.flush();
     }
-    ExecutionProposal proposal = proposal(TP0, List.of(0, 1), List.of(0, 2));
-    new ReplicationThrottleHelper(_adminClient, throttle).setThrottles(List.of(proposal));
-    _adminClient.alterPartitionReassignments(Map.of(TP0, Optional.of(new NewPartitionReassignment(List.of(0, 2))))).all().get();
-    assertTrue(_adminClient.listPartitionReassignments().reassignments().get().containsKey(TP0));
-    return proposal;
+  }
+
+  private ReplicaLogDirInfo logDirInfo(TopicPartitionReplica replica) throws Exception {
+    return _adminClient.describeReplicaLogDirs(Collections.singleton(replica)).all().get().get(replica);
+  }
+
+  private void setAlterLogDirsRate(int broker, String rate) throws Exception {
+    ConfigResource resource = new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(broker));
+    AlterConfigOp op = rate == null ? new AlterConfigOp(new ConfigEntry(ALTER_LOG_DIRS_RATE_CONFIG, ""), AlterConfigOp.OpType.DELETE)
+                                    : new AlterConfigOp(new ConfigEntry(ALTER_LOG_DIRS_RATE_CONFIG, rate), AlterConfigOp.OpType.SET);
+    _adminClient.incrementalAlterConfigs(Map.of(resource, List.of(op))).all().get();
   }
 
   private static void waitForExecutionToFinish(Executor executor) {
@@ -552,6 +584,60 @@ public class ExecutorRecoveryTest extends CCKafkaClientsIntegrationTestHarness {
     assertNull(_store.state());
     assertFalse(hasThrottles());
     EasyMock.verify(anomalyDetectorManager);
+  }
+
+  @Test
+  public void testResumeMonitorsAdoptedIntraBrokerReplicaMovementUntilItIsDone() throws Exception {
+    createTopic(Map.of(0, List.of(0, 1)));
+    produceToPartition0();
+    TopicPartitionReplica replica = new TopicPartitionReplica(TOPIC, 0, 0);
+    String sourceLogDir = logDirInfo(replica).getCurrentReplicaLogDir();
+    String destinationLogDir = LOG_DIR_1.equals(sourceLogDir) ? LOG_DIR_2 : LOG_DIR_1;
+    // The interrupted execution submitted the intra-broker replica movement before the restart; it is kept in flight by a tiny
+    // logdir movement throttle.
+    setAlterLogDirsRate(0, "1000");
+    _adminClient.alterReplicaLogDirs(Map.of(replica, destinationLogDir)).all().get();
+    waitUntilTrue(() -> {
+      try {
+        return destinationLogDir.equals(logDirInfo(replica).getFutureReplicaLogDir());
+      } catch (Exception e) {
+        return false;
+      }
+    }, "The intra-broker replica movement did not start", WAIT_TIME_MS, 100L);
+
+    ExecutionProposal proposal = new ExecutionProposal(TP0, 0, new ReplicaPlacementInfo(0, sourceLogDir),
+                                                       List.of(new ReplicaPlacementInfo(0, sourceLogDir), new ReplicaPlacementInfo(1)),
+                                                       List.of(new ReplicaPlacementInfo(0, destinationLogDir), new ReplicaPlacementInfo(1)));
+    Map<Integer, Map<String, LogDirDescription>> logDirs = _adminClient.describeLogDirs(Set.of(0)).allDescriptions().get();
+    _store.save(interruptedExecutionState(null, List.of(proposal)).toBuilder()
+        .executorState(ExecutorState.State.INTRA_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS)
+        .logDirFingerprintByBroker(ExecutionRecoveryUtils.logDirFingerprintByBroker(logDirs, Set.of(0), Set.of(TP0)))
+        .tasks(List.of(new PersistedTask(ExecutionTask.TaskType.INTRA_BROKER_REPLICA_ACTION, TP0, 0,
+                                         ExecutionTaskState.IN_PROGRESS, 1L, -1L)))
+        .build());
+    int numSavedStatesBeforeResume = _store.savedStates().size();
+
+    Executor executor = newExecutor(true, null, new RecordingNotifier(), mockAnomalyDetectorManager(null));
+    executor.recoverInterruptedExecution(mockLoadMonitor());
+    // The ongoing intra-broker replica movement is adopted.
+    assertEquals(ExecutionTaskState.IN_PROGRESS, onlyTask(_store.savedStates().get(numSavedStatesBeforeResume)).state());
+
+    // Several progress checks later, the resumed execution still monitors the adopted movement in its intra-broker phase,
+    // as Kafka is still moving the replica.
+    Thread.sleep(3_000L);
+    assertEquals(destinationLogDir, logDirInfo(replica).getFutureReplicaLogDir());
+    assertTrue(executor.hasOngoingExecution());
+    assertEquals(ExecutorState.State.INTRA_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS, executor.state().state());
+    assertEquals(Integer.valueOf(1), executor.state().executionTasksSummary().taskStat()
+                                             .get(ExecutionTask.TaskType.INTRA_BROKER_REPLICA_ACTION).get(ExecutionTaskState.IN_PROGRESS));
+
+    // The execution finishes once the replica is in its destination logdir.
+    setAlterLogDirsRate(0, null);
+    waitForExecutionToFinish(executor);
+    ReplicaLogDirInfo info = logDirInfo(replica);
+    assertEquals(destinationLogDir, info.getCurrentReplicaLogDir());
+    assertNull(info.getFutureReplicaLogDir());
+    assertNull(_store.state());
   }
 
   @Test

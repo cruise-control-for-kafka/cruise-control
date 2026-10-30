@@ -2537,7 +2537,7 @@ public class Executor {
 
       int partitionsToMove = numTotalPartitionMovements;
       // Exhaust all the pending partition movements.
-      while ((partitionsToMove > 0 || !inExecutionTasks().isEmpty()) && _stopSignal.get() == NO_STOP_EXECUTION) {
+      while ((partitionsToMove > 0 || !inExecutionTasksOfType(INTER_BROKER_REPLICA_ACTION).isEmpty()) && _stopSignal.get() == NO_STOP_EXECUTION) {
         // Get tasks to execute.
         List<ExecutionTask> tasksToExecute = _executionTaskManager.getInterBrokerReplicaMovementTasks();
         LOG.info("User task {}: Executor will execute {} task(s)", _uuid, tasksToExecute.size());
@@ -2567,7 +2567,7 @@ public class Executor {
         List<ExecutionTask> inProgressTasks = tasksToExecute.stream()
             .filter(t -> t.state() == ExecutionTaskState.IN_PROGRESS)
             .collect(Collectors.toList());
-        inProgressTasks.addAll(inExecutionTasks());
+        inProgressTasks.addAll(inExecutionTasksOfType(INTER_BROKER_REPLICA_ACTION));
 
         throttleHelper.clearThrottles(completedTasks, inProgressTasks);
       }
@@ -2577,7 +2577,8 @@ public class Executor {
       // have it been safely used in following leadership move tasks.
       resetExecutionProgressCheckIntervalMs();
 
-      // At this point it is guaranteed that there are no in execution tasks to wait -- i.e. all tasks are completed or dead.
+      // At this point it is guaranteed that there are no in execution inter-broker tasks to wait -- i.e. all of them are completed
+      // or dead.
       if (_stopSignal.get() == NO_STOP_EXECUTION) {
         LOG.info("User task {}: Inter-broker partition movements finished", _uuid);
       } else {
@@ -2600,6 +2601,18 @@ public class Executor {
       }
     }
 
+    /**
+     * Each phase of the execution monitors only the tasks of its own type: an execution resumed after a restart starts with the
+     * adopted tasks of every type in execution, and the progress check of one type does not tell whether a task of another type
+     * is done.
+     *
+     * @param type The type of the tasks.
+     * @return The tasks of the given type that are {@link ExecutionTaskState#IN_PROGRESS} or {@link ExecutionTaskState#ABORTING}.
+     */
+    private Set<ExecutionTask> inExecutionTasksOfType(ExecutionTask.TaskType type) {
+      return _executionTaskManager.inExecutionTasks(Collections.singleton(type));
+    }
+
     private void intraBrokerMoveReplicas() {
       // Tasks that are already in execution at this point have been adopted from an execution interrupted by a restart.
       int numTotalPartitionMovements = _executionTaskManager.numRemainingIntraBrokerPartitionMovements()
@@ -2610,7 +2623,7 @@ public class Executor {
 
       int partitionsToMove = numTotalPartitionMovements;
       // Exhaust all the pending partition movements.
-      while ((partitionsToMove > 0 || !inExecutionTasks().isEmpty()) && _stopSignal.get() == NO_STOP_EXECUTION) {
+      while ((partitionsToMove > 0 || !inExecutionTasksOfType(INTRA_BROKER_REPLICA_ACTION).isEmpty()) && _stopSignal.get() == NO_STOP_EXECUTION) {
         // Get tasks to execute.
         List<ExecutionTask> tasksToExecute = _executionTaskManager.getIntraBrokerReplicaMovementTasks();
         LOG.info("User task {}: Executor will execute {} task(s)", _uuid, tasksToExecute.size());
@@ -2635,14 +2648,14 @@ public class Executor {
                  totalDataToMoveInMB == 0 ? 100 : String.format("%.2f", finishedDataToMoveInMB * UNIT_INTERVAL_TO_PERCENTAGE
                                                                         / totalDataToMoveInMB));
       }
-      Set<ExecutionTask> inExecutionTasks = inExecutionTasks();
+      Set<ExecutionTask> inExecutionTasks = inExecutionTasksOfType(INTRA_BROKER_REPLICA_ACTION);
       while (!inExecutionTasks.isEmpty()) {
         LOG.info("User task {}: Waiting for {} tasks moving {} MB to finish", _uuid, inExecutionTasks.size(),
                  _executionTaskManager.inExecutionIntraBrokerDataMovementInMB());
         waitForIntraBrokerReplicaTasksToFinish();
-        inExecutionTasks = inExecutionTasks();
+        inExecutionTasks = inExecutionTasksOfType(INTRA_BROKER_REPLICA_ACTION);
       }
-      if (inExecutionTasks().isEmpty()) {
+      if (inExecutionTasksOfType(INTRA_BROKER_REPLICA_ACTION).isEmpty()) {
         LOG.info("User task {}: Intra-broker partition movements finished.", _uuid);
       } else if (_stopSignal.get() != NO_STOP_EXECUTION) {
         ExecutionTasksSummary executionTasksSummary = _executionTaskManager.getExecutionTasksSummary(Collections.emptySet());
@@ -2676,7 +2689,7 @@ public class Executor {
         LOG.info("User task {}: {}/{} ({}%) leadership movements completed.", _uuid, numFinishedLeadershipMovements,
                  numTotalLeadershipMovements, numFinishedLeadershipMovements * 100 / numTotalLeadershipMovements);
       }
-      if (inExecutionTasks().isEmpty()) {
+      if (inExecutionTasksOfType(LEADER_ACTION).isEmpty()) {
         LOG.info("Leadership movements finished.");
       } else if (_stopSignal.get() != NO_STOP_EXECUTION) {
         Map<ExecutionTaskState, Integer> leadershipMovementTasksByState =
@@ -2705,7 +2718,7 @@ public class Executor {
 
         ElectLeadersResult electLeadersResult = ExecutionUtils.submitPreferredLeaderElection(_adminClient, leadershipMovementTasks);
         LOG.trace("Waiting for leadership movement batch to finish.");
-        while (!inExecutionTasks().isEmpty() && _stopSignal.get() == NO_STOP_EXECUTION) {
+        while (!inExecutionTasksOfType(LEADER_ACTION).isEmpty() && _stopSignal.get() == NO_STOP_EXECUTION) {
           waitForLeadershipTasksToFinish(electLeadersResult);
         }
       }
@@ -2762,7 +2775,7 @@ public class Executor {
         List<ExecutionTask> deadInterBrokerReplicaTasks = new ArrayList<>();
         List<ExecutionTask> stoppedInterBrokerReplicaTasks = new ArrayList<>();
         List<ExecutionTask> slowTasksToReport = new ArrayList<>();
-        final int numInExecutionTasks = inExecutionTasks().size();
+        final int numInExecutionTasks = inExecutionTasksOfType(INTER_BROKER_REPLICA_ACTION).size();
         // numFinishedOrDeletedTasks instead of finishedTasks.size() is used to decide whether to dynamically adjust
         // executionProgressCheckIntervalMs.
         // If the task is completed or the related topic is deleted, numFinishedOrDeletedTasks is increased.
@@ -2770,7 +2783,7 @@ public class Executor {
         // to speed up inter broker replica move with new broker being down.
         int numFinishedOrDeletedTasks = 0;
         boolean shouldReportSlowTasks = _time.milliseconds() - _lastSlowTaskReportingTimeMs > _slowTaskAlertingBackoffTimeMs;
-        for (ExecutionTask task : inExecutionTasks()) {
+        for (ExecutionTask task : inExecutionTasksOfType(INTER_BROKER_REPLICA_ACTION)) {
           TopicPartition tp = task.proposal().topicPartition();
           if (_stopSignal.get() != NO_STOP_EXECUTION) {
             // If the execution is stopped during an ongoing inter-broker replica reassignment, the
@@ -2813,7 +2826,7 @@ public class Executor {
         handleDeadInterBrokerReplicaTasks(deadInterBrokerReplicaTasks, stoppedInterBrokerReplicaTasks);
         updateOngoingExecutionState();
 
-        retry = !inExecutionTasks().isEmpty() && finishedTasks.isEmpty();
+        retry = !inExecutionTasksOfType(INTER_BROKER_REPLICA_ACTION).isEmpty() && finishedTasks.isEmpty();
         // If there is no finished tasks, we need to check if anything is blocked.
         if (retry) {
           maybeReexecuteInterBrokerReplicaTasks(deletedUponSubmission, deadUponSubmission);
@@ -2863,7 +2876,7 @@ public class Executor {
 
         List<ExecutionTask> slowTasksToReport = new ArrayList<>();
         boolean shouldReportSlowTasks = _time.milliseconds() - _lastSlowTaskReportingTimeMs > _slowTaskAlertingBackoffTimeMs;
-        for (ExecutionTask task : inExecutionTasks()) {
+        for (ExecutionTask task : inExecutionTasksOfType(LEADER_ACTION)) {
           TopicPartition tp = task.proposal().topicPartition();
           if (_stopSignal.get() != NO_STOP_EXECUTION) {
             // If the execution is stopped, the executor will mark all in progress tasks as dead
@@ -2888,7 +2901,7 @@ public class Executor {
         sendSlowExecutionAlert(slowTasksToReport);
         updateOngoingExecutionState();
 
-        retry = !inExecutionTasks().isEmpty() && finishedTasks.isEmpty();
+        retry = !inExecutionTasksOfType(LEADER_ACTION).isEmpty() && finishedTasks.isEmpty();
         // If there is no finished tasks, we need to check if anything is blocked.
         if (retry) {
           maybeReexecuteLeadershipTasks(deletedUponSubmission);
@@ -2918,7 +2931,7 @@ public class Executor {
 
         List<ExecutionTask> slowTasksToReport = new ArrayList<>();
         boolean shouldReportSlowTasks = _time.milliseconds() - _lastSlowTaskReportingTimeMs > _slowTaskAlertingBackoffTimeMs;
-        for (ExecutionTask task : inExecutionTasks()) {
+        for (ExecutionTask task : inExecutionTasksOfType(INTRA_BROKER_REPLICA_ACTION)) {
           TopicPartition tp = task.proposal().topicPartition();
           if (cluster.partition(tp) == null) {
             handleProgressWithTopicDeletion(task, finishedTasks, deletedTaskIds);
@@ -2936,7 +2949,7 @@ public class Executor {
         }
         sendSlowExecutionAlert(slowTasksToReport);
         updateOngoingExecutionState();
-      } while (!inExecutionTasks().isEmpty() && finishedTasks.isEmpty());
+      } while (!inExecutionTasksOfType(INTRA_BROKER_REPLICA_ACTION).isEmpty() && finishedTasks.isEmpty());
 
       LOG.info("User task {}: Finished tasks: {}.{}{}", _uuid, finishedTasks,
                deletedTaskIds.isEmpty() ? "" : String.format(". [Deleted: %s]", deletedTaskIds),
