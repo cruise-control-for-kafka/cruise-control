@@ -349,6 +349,21 @@ public class ExecutionTaskManager {
   }
 
   /**
+   * @param type Task type.
+   * @return Number of MBs that have already been moved by the in-progress tasks with the given task type.
+   */
+  public synchronized long inProgressMovedDataInMB(TaskType type) {
+    return _executionTaskTracker.inProgressMovedDataInMB(type);
+  }
+
+  /**
+   * Mark the data movement observed for the in-progress replica movement tasks in the partition data movement rate meter.
+   */
+  public synchronized void markInProgressDataMovement() {
+    _executionTaskTracker.markInProgressDataMovement();
+  }
+
+  /**
    * Clear the cached task manager state.
    */
   public synchronized void clear() {

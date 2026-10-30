@@ -49,6 +49,18 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
   private static final String PROPOSAL = "proposal";
   @JsonResponseField
   private static final String BROKER_ID = "brokerId";
+  @JsonResponseField(required = false)
+  private static final String MOVED_DATA_IN_MB = "movedDataInMB";
+  @JsonResponseField(required = false)
+  private static final String TOTAL_DATA_TO_MOVE_IN_MB = "totalDataToMoveInMB";
+  @JsonResponseField(required = false)
+  private static final String DATA_MOVEMENT_RATE_IN_MB_PER_SEC = "dataMovementRateInMBPerSec";
+  @JsonResponseField(required = false)
+  private static final String DATA_MOVEMENT_PROGRESS_UPDATE_TIME_MS = "dataMovementProgressUpdateTimeMs";
+  public static final long BYTES_IN_MB = 1024L * 1024L;
+  // Indicates that the data movement progress (or rate) of the task is unknown.
+  private static final long UNKNOWN_DATA_MOVEMENT_PROGRESS = -1L;
+  private static final double UNKNOWN_DATA_MOVEMENT_RATE = -1.0;
   private static final Map<ExecutionTaskState, Set<ExecutionTaskState>> VALID_TRANSFER = new HashMap<>();
   private final TaskType _type;
   private final long _executionId;
@@ -60,6 +72,12 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
   private long _endTimeMs;
   private long _alertTimeMs;
   private boolean _slowExecutionReported;
+  // Data movement progress of an in-progress replica action, as observed from the replica sizes reported by the brokers.
+  private volatile long _movedDataInBytes;
+  private volatile long _totalDataToMoveInBytes;
+  // The data movement rate observed between the last two observations of the data movement progress.
+  private volatile double _dataMovementRateInMBPerSec;
+  private volatile long _lastDataMovementProgressObservationMs;
 
   static {
     VALID_TRANSFER.put(ExecutionTaskState.PENDING, new HashSet<>(Collections.singleton(ExecutionTaskState.IN_PROGRESS)));
@@ -98,6 +116,10 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
     _endTimeMs = -1L;
     _alertTimeMs = executionAlertingThresholdMs;
     _slowExecutionReported = false;
+    _movedDataInBytes = UNKNOWN_DATA_MOVEMENT_PROGRESS;
+    _totalDataToMoveInBytes = UNKNOWN_DATA_MOVEMENT_PROGRESS;
+    _dataMovementRateInMBPerSec = UNKNOWN_DATA_MOVEMENT_RATE;
+    _lastDataMovementProgressObservationMs = UNKNOWN_DATA_MOVEMENT_PROGRESS;
   }
 
   public ExecutionTask(long executionId, ExecutionProposal proposal, TaskType type, long executionAlertingThresholdMs) {
@@ -223,6 +245,71 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
   }
 
   /**
+   * Update the data movement progress of this replica action, and the data movement rate since the previous update.
+   *
+   * @param movedDataInBytes Number of bytes that have already been moved, as observed from the replica size(s) at the destination.
+   * @param totalDataToMoveInBytes Total number of bytes to move, as observed from the replica size at the source.
+   * @param nowMs The time of the observation.
+   */
+  public void updateDataMovementProgress(long movedDataInBytes, long totalDataToMoveInBytes, long nowMs) {
+    if (_type == TaskType.LEADER_ACTION) {
+      throw new IllegalStateException("Data movement progress is irrelevant to leadership movement task " + _executionId);
+    }
+    if (_lastDataMovementProgressObservationMs != UNKNOWN_DATA_MOVEMENT_PROGRESS && nowMs > _lastDataMovementProgressObservationMs) {
+      // The moved data may shrink, e.g. due to retention on the destination replica -- this is not counted as progress.
+      double movedDataInMBSinceLastObservation = Math.max(0L, movedDataInBytes - _movedDataInBytes) / (double) BYTES_IN_MB;
+      _dataMovementRateInMBPerSec = movedDataInMBSinceLastObservation * 1000.0 / (nowMs - _lastDataMovementProgressObservationMs);
+    }
+    _movedDataInBytes = movedDataInBytes;
+    _totalDataToMoveInBytes = totalDataToMoveInBytes;
+    _lastDataMovementProgressObservationMs = nowMs;
+  }
+
+  /**
+   * @return {@code true} if the data movement progress of this task is known, {@code false} otherwise.
+   */
+  public boolean hasDataMovementProgress() {
+    return _movedDataInBytes != UNKNOWN_DATA_MOVEMENT_PROGRESS;
+  }
+
+  /**
+   * @return Number of bytes that have already been moved by this task, or {@code -1} if unknown.
+   */
+  public long movedDataInBytes() {
+    return _movedDataInBytes;
+  }
+
+  /**
+   * @return Total number of bytes to move by this task, or {@code -1} if unknown.
+   */
+  public long totalDataToMoveInBytes() {
+    return _totalDataToMoveInBytes;
+  }
+
+  /**
+   * @return The time (in ms) of the last observation of the data movement progress of this task, or {@code -1} if unknown.
+   */
+  public long dataMovementProgressUpdateTimeMs() {
+    return _lastDataMovementProgressObservationMs;
+  }
+
+  /**
+   * @return {@code true} if the data movement rate of this task is known -- i.e. its data movement progress has been
+   * observed at least twice, {@code false} otherwise.
+   */
+  public boolean hasDataMovementRate() {
+    return _dataMovementRateInMBPerSec != UNKNOWN_DATA_MOVEMENT_RATE;
+  }
+
+  /**
+   * @return The data movement rate (in MB/s) observed between the last two observations of the data movement progress of
+   * this task, or {@code -1} if unknown.
+   */
+  public double dataMovementRateInMBPerSec() {
+    return _dataMovementRateInMBPerSec;
+  }
+
+  /**
    * If the task's execution time exceeds alerting threshold, add the task to the group of tasks for which an alert will
    * be sent out.
    * Note to avoid repetitive alerts for the same task, the task will be added to the group only for the first time the
@@ -233,6 +320,35 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
    */
   public void maybeReportExecutionTooSlow(long now, List<ExecutionTask> tasksToReport) {
     if (!_slowExecutionReported && (_state == ExecutionTaskState.IN_PROGRESS || _state == ExecutionTaskState.ABORTING) && now > _alertTimeMs) {
+      tasksToReport.add(this);
+      // Mute the task to prevent sending the same alert repeatedly.
+      _slowExecutionReported = true;
+    }
+  }
+
+  /**
+   * If the data movement rate of this in-progress replica action is known, add the task to the group of tasks for which
+   * an alert will be sent out if (1) its execution time exceeds the given threshold, (2) it has not moved all its data yet,
+   * and (3) its observed data movement rate is lower than the given threshold -- e.g. the data movement is stuck. Otherwise,
+   * fall back to {@link #maybeReportExecutionTooSlow(long, List)}, which relies on the estimated size of the partition.
+   * Note to avoid repetitive alerts for the same task, the task will be added to the group only for the first time the
+   * slow execution is detected.
+   *
+   * @param now Current system time.
+   * @param executionTimeAlertingThresholdMs Minimum execution time of the task to report it as slow.
+   * @param dataMovementRateAlertingThresholdInMBPerSec Data movement rate (in MB/s) below which the task is reported as slow.
+   * @param tasksToReport A list of tasks for which a slow execution alert will be sent out.
+   */
+  public void maybeReportExecutionTooSlow(long now,
+                                          long executionTimeAlertingThresholdMs,
+                                          double dataMovementRateAlertingThresholdInMBPerSec,
+                                          List<ExecutionTask> tasksToReport) {
+    if (_state != ExecutionTaskState.IN_PROGRESS || !hasDataMovementRate()) {
+      maybeReportExecutionTooSlow(now, tasksToReport);
+    } else if (!_slowExecutionReported
+               && now - _startTimeMs > executionTimeAlertingThresholdMs
+               && _movedDataInBytes < _totalDataToMoveInBytes
+               && _dataMovementRateInMBPerSec < dataMovementRateAlertingThresholdInMBPerSec) {
       tasksToReport.add(this);
       // Mute the task to prevent sending the same alert repeatedly.
       _slowExecutionReported = true;
@@ -260,6 +376,16 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
     executionStatsMap.put(PROPOSAL, _proposal.getJsonStructure());
     if (_type == TaskType.INTRA_BROKER_REPLICA_ACTION) {
       executionStatsMap.put(BROKER_ID, _brokerId);
+    }
+    // The last observed progress is only meaningful while the data is still being moved.
+    if (_state == ExecutionTaskState.IN_PROGRESS && hasDataMovementProgress()) {
+      executionStatsMap.put(MOVED_DATA_IN_MB, _movedDataInBytes / BYTES_IN_MB);
+      executionStatsMap.put(TOTAL_DATA_TO_MOVE_IN_MB, _totalDataToMoveInBytes / BYTES_IN_MB);
+      // Lets users tell a stale progress (e.g. a broker failed to respond) from a stuck data movement.
+      executionStatsMap.put(DATA_MOVEMENT_PROGRESS_UPDATE_TIME_MS, _lastDataMovementProgressObservationMs);
+      if (hasDataMovementRate()) {
+        executionStatsMap.put(DATA_MOVEMENT_RATE_IN_MB_PER_SEC, _dataMovementRateInMBPerSec);
+      }
     }
     return executionStatsMap;
   }

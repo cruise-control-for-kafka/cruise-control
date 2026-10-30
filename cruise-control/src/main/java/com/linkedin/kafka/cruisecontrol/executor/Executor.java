@@ -142,6 +142,10 @@ public class Executor {
   private final TopicMinIsrCache _topicMinIsrCache;
   private final long _minExecutionProgressCheckIntervalMs;
   private final long _slowTaskAlertingBackoffTimeMs;
+  private final DataMovementProgressCheckScheduler _dataMovementProgressCheckScheduler;
+  private final long _taskExecutionAlertingThresholdMs;
+  private final double _interBrokerReplicaMovementRateAlertingThreshold;
+  private final double _intraBrokerReplicaMovementRateAlertingThreshold;
   private final KafkaCruiseControlConfig _config;
   private final AtomicDouble _partitionMovementCountPerSec;
   private final AtomicDouble _partitionMovementMbPerSec;
@@ -230,6 +234,14 @@ public class Executor {
     _removalHistoryRetentionTimeMs = config.getLong(ExecutorConfig.REMOVAL_HISTORY_RETENTION_TIME_MS_CONFIG);
     _minExecutionProgressCheckIntervalMs = config.getLong(ExecutorConfig.MIN_EXECUTION_PROGRESS_CHECK_INTERVAL_MS_CONFIG);
     _slowTaskAlertingBackoffTimeMs = config.getLong(ExecutorConfig.SLOW_TASK_ALERTING_BACKOFF_TIME_MS_CONFIG);
+    _dataMovementProgressCheckScheduler = new DataMovementProgressCheckScheduler(
+        config.getBoolean(ExecutorConfig.PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_CONFIG),
+        config.getLong(ExecutorConfig.PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS_CONFIG));
+    _taskExecutionAlertingThresholdMs = config.getLong(ExecutorConfig.TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG);
+    _interBrokerReplicaMovementRateAlertingThreshold =
+        config.getDouble(ExecutorConfig.INTER_BROKER_REPLICA_MOVEMENT_RATE_ALERTING_THRESHOLD_CONFIG);
+    _intraBrokerReplicaMovementRateAlertingThreshold =
+        config.getDouble(ExecutorConfig.INTRA_BROKER_REPLICA_MOVEMENT_RATE_ALERTING_THRESHOLD_CONFIG);
     _concurrencyAdjusterEnabled = new ConcurrentHashMap<>(ConcurrencyType.cachedValues().size());
     _concurrencyAdjusterEnabled.put(ConcurrencyType.INTER_BROKER_REPLICA,
                                     config.getBoolean(ExecutorConfig.CONCURRENCY_ADJUSTER_INTER_BROKER_REPLICA_ENABLED_CONFIG));
@@ -1302,6 +1314,8 @@ public class Executor {
     private Throwable _executionException;
     private final boolean _isTriggeredByUserRequest;
     private long _lastSlowTaskReportingTimeMs;
+    // The start time of the ongoing inter-broker or intra-broker replica movement phase.
+    private long _replicaMovementStartTimeMs;
     private static final boolean FORCE_PAUSE_SAMPLING = true;
     private final Timer _executionTimerInvolveBrokerRemovalOrDemotion;
 
@@ -1609,8 +1623,10 @@ public class Executor {
           currentDeadBrokersWithReplicas);
       int numTotalPartitionMovements = _executionTaskManager.numRemainingInterBrokerPartitionMovements();
       long totalDataToMoveInMB = _executionTaskManager.remainingInterBrokerDataToMoveInMB();
-      long startTime = System.currentTimeMillis();
+      _replicaMovementStartTimeMs = System.currentTimeMillis();
       LOG.info("User task {}: Starting {} inter-broker partition movements.", _uuid, numTotalPartitionMovements);
+      // Check the data movement progress as soon as the first partition movements are in progress.
+      _dataMovementProgressCheckScheduler.reset();
 
       int partitionsToMove = numTotalPartitionMovements;
       // Exhaust all the pending partition movements.
@@ -1631,7 +1647,7 @@ public class Executor {
         partitionsToMove = _executionTaskManager.numRemainingInterBrokerPartitionMovements();
         int numFinishedPartitionMovements = _executionTaskManager.numFinishedInterBrokerPartitionMovements();
         long finishedDataMovementInMB = _executionTaskManager.finishedInterBrokerDataMovementInMB();
-        updatePartitionMovementMetrics(numFinishedPartitionMovements, finishedDataMovementInMB, System.currentTimeMillis() - startTime);
+        updatePartitionMovementMetrics(INTER_BROKER_REPLICA_ACTION);
         LOG.info("User task {}: {}/{} ({}%) inter-broker partition movements completed. {}/{} ({}%) MB have been moved.",
                  _uuid,
                  numFinishedPartitionMovements, numTotalPartitionMovements,
@@ -1678,8 +1694,10 @@ public class Executor {
     private void intraBrokerMoveReplicas() {
       int numTotalPartitionMovements = _executionTaskManager.numRemainingIntraBrokerPartitionMovements();
       long totalDataToMoveInMB = _executionTaskManager.remainingIntraBrokerDataToMoveInMB();
-      long startTime = System.currentTimeMillis();
+      _replicaMovementStartTimeMs = System.currentTimeMillis();
       LOG.info("User task {}: Starting {} intra-broker partition movements.", _uuid, numTotalPartitionMovements);
+      // Check the data movement progress as soon as the first partition movements are in progress.
+      _dataMovementProgressCheckScheduler.reset();
 
       int partitionsToMove = numTotalPartitionMovements;
       // Exhaust all the pending partition movements.
@@ -1698,7 +1716,7 @@ public class Executor {
         partitionsToMove = _executionTaskManager.numRemainingIntraBrokerPartitionMovements();
         int numFinishedPartitionMovements = _executionTaskManager.numFinishedIntraBrokerPartitionMovements();
         long finishedDataToMoveInMB = _executionTaskManager.finishedIntraBrokerDataToMoveInMB();
-        updatePartitionMovementMetrics(numFinishedPartitionMovements, finishedDataToMoveInMB, System.currentTimeMillis() - startTime);
+        updatePartitionMovementMetrics(INTRA_BROKER_REPLICA_ACTION);
         LOG.info("User task {}: {}/{} ({}%) intra-broker partition movements completed. {}/{} ({}%) MB have been moved.",
                  _uuid,
                  numFinishedPartitionMovements, numTotalPartitionMovements,
@@ -1858,7 +1876,8 @@ public class Executor {
             handleProgressWithCompletion(task, finishedTasks);
           } else {
             if (shouldReportSlowTasks) {
-              task.maybeReportExecutionTooSlow(_time.milliseconds(), slowTasksToReport);
+              task.maybeReportExecutionTooSlow(_time.milliseconds(), _taskExecutionAlertingThresholdMs,
+                                               _interBrokerReplicaMovementRateAlertingThreshold, slowTasksToReport);
             }
             if (maybeMarkTaskAsDead(cluster, null, task, deadUponSubmission)) {
               deadTaskIds.add(task.executionId());
@@ -1878,6 +1897,7 @@ public class Executor {
           setExecutionProgressCheckIntervalMs(_executionProgressCheckIntervalMs + EXECUTION_PROGRESS_CHECK_INTERVAL_ADJUSTING_MS);
         }
 
+        maybeUpdateDataMovementProgress(cluster, INTER_BROKER_REPLICA_ACTION);
         sendSlowExecutionAlert(slowTasksToReport);
         handleDeadInterBrokerReplicaTasks(deadInterBrokerReplicaTasks, stoppedInterBrokerReplicaTasks);
         updateOngoingExecutionState();
@@ -1995,7 +2015,8 @@ public class Executor {
             handleProgressWithCompletion(task, finishedTasks);
           } else {
             if (shouldReportSlowTasks) {
-              task.maybeReportExecutionTooSlow(_time.milliseconds(), slowTasksToReport);
+              task.maybeReportExecutionTooSlow(_time.milliseconds(), _taskExecutionAlertingThresholdMs,
+                                               _intraBrokerReplicaMovementRateAlertingThreshold, slowTasksToReport);
             }
             if (maybeMarkTaskAsDead(cluster, logDirInfoByTask, task, null)) {
               deadTaskIds.add(task.executionId());
@@ -2003,6 +2024,7 @@ public class Executor {
             }
           }
         }
+        maybeUpdateDataMovementProgress(cluster, INTRA_BROKER_REPLICA_ACTION);
         sendSlowExecutionAlert(slowTasksToReport);
         updateOngoingExecutionState();
       } while (!inExecutionTasks().isEmpty() && finishedTasks.isEmpty());
@@ -2081,12 +2103,39 @@ public class Executor {
       }
     }
 
+    /**
+     * Update the data movement progress of in-progress replica movement tasks if partition movement progress tracking is
+     * enabled and the partition movement progress check interval has elapsed since the last check, then update the data
+     * movement metrics.
+     *
+     * @param cluster The current cluster metadata.
+     * @param type The type of the ongoing replica movement tasks.
+     */
+    private void maybeUpdateDataMovementProgress(Cluster cluster, ExecutionTask.TaskType type) {
+      long nowMs = _time.milliseconds();
+      List<ExecutionTask> inProgressReplicaTasks = inExecutionTasks().stream()
+                                                                     .filter(ExecutorAdminUtils::shouldTrackDataMovementProgress)
+                                                                     .collect(Collectors.toList());
+      _dataMovementProgressCheckScheduler.maybeCheck(nowMs, inProgressReplicaTasks,
+                                                     tasks -> updateDataMovementProgress(tasks, cluster, _adminClient, _config, nowMs));
+      _executionTaskManager.markInProgressDataMovement();
+      updatePartitionMovementMetrics(type);
+    }
+
     private void sendSlowExecutionAlert(List<ExecutionTask> slowTasksToReport) {
       if (!slowTasksToReport.isEmpty()) {
         StringBuilder sb = new StringBuilder();
         sb.append("Slow tasks are detected:\n");
         for (ExecutionTask task: slowTasksToReport) {
-          sb.append(String.format("\tID: %s\tstart_time:%s\tdetail:%s%n", task.executionId(), utcDateFor(task.startTimeMs()), task));
+          String progress = task.hasDataMovementProgress()
+                            ? String.format("\tmoved_data:%d/%d MB", task.movedDataInBytes() / ExecutionTask.BYTES_IN_MB,
+                                            task.totalDataToMoveInBytes() / ExecutionTask.BYTES_IN_MB)
+                            : "";
+          if (task.hasDataMovementRate()) {
+            progress += String.format("\tdata_movement_rate:%.3f MB/s", task.dataMovementRateInMBPerSec());
+          }
+          sb.append(String.format("\tID: %s\tstart_time:%s%s\tdetail:%s%n", task.executionId(), utcDateFor(task.startTimeMs()),
+                                  progress, task));
         }
         _executorNotifier.sendAlert(sb.toString());
         _lastSlowTaskReportingTimeMs = _time.milliseconds();
@@ -2224,6 +2273,23 @@ public class Executor {
         ElectLeadersResult electLeadersResult = ExecutionUtils.submitPreferredLeaderElection(_adminClient, leaderActionsToReexecute);
         ExecutionUtils.processElectLeadersResult(electLeadersResult, deleted);
       }
+    }
+
+    /**
+     * Update the partition movement metrics of the ongoing replica movement phase, accounting for the data that has
+     * already been moved by the in-progress partition movements.
+     *
+     * @param type The type of the ongoing replica movement tasks.
+     */
+    private void updatePartitionMovementMetrics(ExecutionTask.TaskType type) {
+      boolean isInterBroker = type == INTER_BROKER_REPLICA_ACTION;
+      int numFinishedPartitionMovements = isInterBroker ? _executionTaskManager.numFinishedInterBrokerPartitionMovements()
+                                                        : _executionTaskManager.numFinishedIntraBrokerPartitionMovements();
+      long finishedDataMovementInMB = isInterBroker ? _executionTaskManager.finishedInterBrokerDataMovementInMB()
+                                                    : _executionTaskManager.finishedIntraBrokerDataToMoveInMB();
+      updatePartitionMovementMetrics(numFinishedPartitionMovements,
+                                     finishedDataMovementInMB + _executionTaskManager.inProgressMovedDataInMB(type),
+                                     System.currentTimeMillis() - _replicaMovementStartTimeMs);
     }
 
     private void updatePartitionMovementMetrics(long numTotalPartitionMovements, long totalDataToMoveInMB, long executionTimeMs) {
