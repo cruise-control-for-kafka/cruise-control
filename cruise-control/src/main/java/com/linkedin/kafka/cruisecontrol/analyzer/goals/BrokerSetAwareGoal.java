@@ -7,14 +7,16 @@ package com.linkedin.kafka.cruisecontrol.analyzer.goals;
 
 import com.linkedin.kafka.cruisecontrol.common.Utils;
 import com.linkedin.kafka.cruisecontrol.config.ReplicaToBrokerSetMappingPolicy;
+import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.exception.BrokerSetResolutionException;
 import com.linkedin.kafka.cruisecontrol.exception.ReplicaToBrokerSetMappingException;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.slf4j.Logger;
@@ -66,6 +68,12 @@ import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.replicaS
  * <p>
  * There could also be some topics that do not follow the BrokerSet boundary.
  * Such topics should be excluded from movements using the {topics.excluded.from.partition.movement} property
+ * </p>
+ * <p>
+ * Alternatively, a {@link ReplicaToBrokerSetMappingPolicy} may return {@code null} for a replica, which leaves that replica
+ * unconstrained: this goal does not move it while it is online, does not veto moves of it, and does not check its placement.
+ * An offline unconstrained replica is moved to any alive broker. This lets a policy such as
+ * {@link com.linkedin.kafka.cruisecontrol.config.TopicPatternBrokerSetMappingPolicy} pin only selected topics to broker sets.
  * </p>
  * <p>
  * Supported Optimization Options are:
@@ -156,6 +164,39 @@ public class BrokerSetAwareGoal extends AbstractGoal {
     _brokerSetResolutionHelper = new BrokerSetResolutionHelper(clusterModel, brokerSetResolver);
     _brokersByBrokerSet = _brokerSetResolutionHelper.brokersByBrokerSetId();
     _replicaToBrokerSetMappingPolicy = _balancingConstraint.replicaToBrokerSetMappingPolicy();
+    maybeWarnPinnedTopicsWithMinLeadersPerBroker(clusterModel);
+  }
+
+  /**
+   * Topics that must have a minimum number of leaders per broker are excluded from this goal. Warn once per optimization if
+   * the mapping policy binds any of these topics to a broker set, since that binding is not enforced.
+   *
+   * @param clusterModel The state of the cluster.
+   */
+  private void maybeWarnPinnedTopicsWithMinLeadersPerBroker(ClusterModel clusterModel) {
+    if (_mustHaveTopicLeadersPerBroker.isEmpty()) {
+      return;
+    }
+    Map<String, List<Partition>> partitionsByTopic = clusterModel.getPartitionsByTopic();
+    Set<String> pinnedTopics = new TreeSet<>();
+    for (String topic : _mustHaveTopicLeadersPerBroker) {
+      List<Partition> partitions = partitionsByTopic.get(topic);
+      if (partitions == null || partitions.isEmpty()) {
+        continue;
+      }
+      try {
+        if (_replicaToBrokerSetMappingPolicy.brokerSetIdForReplica(partitions.get(0).replicas().get(0), clusterModel,
+                                                                   _brokerSetResolutionHelper) != null) {
+          pinnedTopics.add(topic);
+        }
+      } catch (BrokerSetResolutionException | ReplicaToBrokerSetMappingException e) {
+        LOG.debug("[{}] Failed to map topic {} to a broker set.", name(), topic, e);
+      }
+    }
+    if (!pinnedTopics.isEmpty()) {
+      LOG.warn("[{}] Topics {} are mapped to a broker set but are excluded from this goal because they match {}.", name(), pinnedTopics,
+               AnalyzerConfig.TOPICS_WITH_MIN_LEADERS_PER_BROKER_CONFIG);
+    }
   }
 
   /**
@@ -177,22 +218,60 @@ public class BrokerSetAwareGoal extends AbstractGoal {
     finish();
   }
 
+  /**
+   * Sanity check to confirm that the final distribution is brokerSet aware. Only replicas that this goal was allowed to move are
+   * checked, i.e. replicas of topics that are not excluded and, if only immigrant replicas can be moved, immigrant replicas.
+   * <ul>
+   *   <li>A topic whose checked replicas are all unconstrained (mapped to no broker set) is skipped.</li>
+   *   <li>A topic whose checked replicas are all constrained must reside on the brokers of a single broker set.</li>
+   *   <li>Each constrained replica must reside on a broker of the broker set that it is mapped to.</li>
+   * </ul>
+   *
+   * @param clusterModel        The state of the cluster.
+   * @param optimizationOptions Options to take into account during optimization.
+   */
   private void ensureBrokerSetAware(ClusterModel clusterModel, OptimizationOptions optimizationOptions)
       throws OptimizationFailureException {
-    // Sanity check to confirm that the final distribution is brokerSet aware.
+    boolean onlyMoveImmigrantReplicas = optimizationOptions.onlyMoveImmigrantReplicas();
     for (Map.Entry<String, List<Partition>> partitionsByTopic : clusterModel.getPartitionsByTopic().entrySet()) {
       String topicName = partitionsByTopic.getKey();
-      if (!_excludedTopics.contains(topicName)) {
-        List<Partition> partitions = partitionsByTopic.getValue();
-        Set<Integer> allBrokersForTopic = partitions.stream()
-                                                    .map(Partition::partitionBrokers)
-                                                    .flatMap(Collection::stream)
-                                                    .map(Broker::id)
-                                                    .collect(Collectors.toSet());
-        // Checks if a topic's brokers do not all live in a single brokerSet
-        if (_brokersByBrokerSet.values().stream().noneMatch(brokerSetBrokers -> brokerSetBrokers.containsAll(allBrokersForTopic))) {
+      if (_excludedTopics.contains(topicName)) {
+        continue;
+      }
+      Map<Replica, String> brokerSetIdByConstrainedReplica = new LinkedHashMap<>();
+      Set<Integer> allBrokersForTopic = new HashSet<>();
+      boolean hasUnconstrainedReplica = false;
+      for (Partition partition : partitionsByTopic.getValue()) {
+        for (Replica replica : partition.replicas()) {
+          if (onlyMoveImmigrantReplicas && !replica.isImmigrant()) {
+            continue;
+          }
+          allBrokersForTopic.add(replica.broker().id());
+          String brokerSetId = _replicaToBrokerSetMappingPolicy.brokerSetIdForReplica(replica, clusterModel, _brokerSetResolutionHelper);
+          if (brokerSetId == null) {
+            hasUnconstrainedReplica = true;
+          } else {
+            brokerSetIdByConstrainedReplica.put(replica, brokerSetId);
+          }
+        }
+      }
+      if (brokerSetIdByConstrainedReplica.isEmpty()) {
+        continue;
+      }
+      // Checks if a topic's brokers do not all live in a single brokerSet
+      if (!hasUnconstrainedReplica
+          && _brokersByBrokerSet.values().stream().noneMatch(brokerSetBrokers -> brokerSetBrokers.containsAll(allBrokersForTopic))) {
+        throw new OptimizationFailureException(
+            String.format("[%s] Topic %s is not brokerSet-aware. brokers (%s).", name(), topicName, allBrokersForTopic));
+      }
+      // Checks if each constrained replica lives in the brokerSet that it is mapped to
+      for (Map.Entry<Replica, String> entry : brokerSetIdByConstrainedReplica.entrySet()) {
+        Replica replica = entry.getKey();
+        Set<Integer> brokerSetBrokers = _brokersByBrokerSet.get(entry.getValue());
+        if (brokerSetBrokers == null || !brokerSetBrokers.contains(replica.broker().id())) {
           throw new OptimizationFailureException(
-              String.format("[%s] Topic %s is not brokerSet-aware. brokers (%s).", name(), topicName, allBrokersForTopic));
+              String.format("[%s] Replica %s of topic %s is not on a broker of its brokerSet %s (%s).", name(), replica, topicName,
+                            entry.getValue(), brokerSetBrokers));
         }
       }
     }
@@ -216,10 +295,25 @@ public class BrokerSetAwareGoal extends AbstractGoal {
     for (Replica replica : broker.trackedSortedReplicas(replicaSortName(this, false, false)).sortedReplicas(true)) {
       String eligibleBrokerSetIdForReplica =
           _replicaToBrokerSetMappingPolicy.brokerSetIdForReplica(replica, clusterModel, _brokerSetResolutionHelper);
+      boolean isOffline = !broker.isAlive() || replica.isCurrentOffline();
+
+      if (eligibleBrokerSetIdForReplica == null) {
+        LOG.trace("Replica {} is not bound to any brokerSet.", replica);
+        // An unconstrained replica is moved only if it is offline, in which case it can move to any alive broker
+        if (isOffline && maybeApplyBalancingAction(clusterModel, replica, clusterModel.aliveBrokers(),
+                                                   ActionType.INTER_BROKER_REPLICA_MOVEMENT, optimizedGoals, optimizationOptions) == null) {
+          ProvisionRecommendation recommendation =
+              new ProvisionRecommendation.Builder(ProvisionStatus.UNDER_PROVISIONED).numBrokers(1).build();
+          throw new OptimizationFailureException(
+              String.format("[%s] Cannot move offline replica %s, which is not bound to any brokerSet, to an alive broker.", name(),
+                            replica), recommendation);
+        }
+        continue;
+      }
 
       // If the re-balancing action is performed within the broker set boundary, we are good
       // Also, if the topics that are configured to have leaders on each broker within the cluster, then those topics won't be rebalanced
-      if (broker.isAlive() && eligibleBrokerSetIdForReplica.equals(currentBrokerSetId)) {
+      if (!isOffline && eligibleBrokerSetIdForReplica.equals(currentBrokerSetId)) {
         continue;
       }
       // If the brokerSet awareness condition is violated. Move replica to an eligible broker
@@ -293,6 +387,10 @@ public class BrokerSetAwareGoal extends AbstractGoal {
     try {
       String expectedBrokerSetId =
           _replicaToBrokerSetMappingPolicy.brokerSetIdForReplica(sourceReplica, clusterModel, _brokerSetResolutionHelper);
+      // A replica that is not bound to any broker set can move anywhere
+      if (expectedBrokerSetId == null) {
+        return false;
+      }
       String destinationBrokerSetId = _brokerSetResolutionHelper.brokerSetId(destinationBroker.id());
 
       return !expectedBrokerSetId.equals(destinationBrokerSetId);

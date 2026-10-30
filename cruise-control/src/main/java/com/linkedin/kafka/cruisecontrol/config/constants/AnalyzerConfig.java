@@ -36,7 +36,9 @@ import com.linkedin.kafka.cruisecontrol.config.BrokerSetFileResolver;
 import com.linkedin.kafka.cruisecontrol.config.BrokerSetResolver;
 import com.linkedin.kafka.cruisecontrol.config.NoOpBrokerSetAssignmentPolicy;
 import com.linkedin.kafka.cruisecontrol.config.ReplicaToBrokerSetMappingPolicy;
+import com.linkedin.kafka.cruisecontrol.config.ReplicaToOriginalBrokerSetMappingPolicy;
 import com.linkedin.kafka.cruisecontrol.config.TopicNameHashBrokerSetMappingPolicy;
+import com.linkedin.kafka.cruisecontrol.config.TopicPatternBrokerSetMappingPolicy;
 import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.common.config.ConfigDef;
@@ -440,7 +442,9 @@ public final class AnalyzerConfig {
    */
   public static final String BROKER_SET_CONFIG_FILE_CONFIG = "broker.set.config.file";
   public static final String DEFAULT_BROKER_SET_CONFIG_FILE = "config/brokerSets.json";
-  public static final String BROKER_SET_CONFIG_FILE_DOC = "The file path that holds broker sets ids to broker ids mapping information.";
+  public static final String BROKER_SET_CONFIG_FILE_DOC = "The file path that holds broker sets ids to broker ids mapping information. "
+      + "A broker set may also have an optional topicPattern field, which TopicPatternBrokerSetMappingPolicy uses to bind the topics "
+      + "that fully match the pattern to that broker set.";
 
   /**
    * <code>broker.set.assignment.policy.class</code>
@@ -457,8 +461,10 @@ public final class AnalyzerConfig {
   public static final String REPLICA_TO_BROKER_SET_MAPPING_POLICY_CLASS_CONFIG = "replica.to.broker.set.mapping.policy.class";
   public static final String DEFAULT_REPLICA_TO_BROKER_SET_MAPPING_POLICY_CLASS = TopicNameHashBrokerSetMappingPolicy.class.getName();
   public static final String REPLICA_TO_BROKER_SET_MAPPING_POLICY_CLASS_DOC =
-      String.format("The class implements %s interface and is used to generate replica to broker set mapping.",
-                    ReplicaToBrokerSetMappingPolicy.class.getName());
+      String.format("The class implements %s interface and is used to generate replica to broker set mapping. Built-in policies are "
+                    + "%s (default), %s and %s. The latter leaves replicas of topics that match no topicPattern unbound to any broker set.",
+                    ReplicaToBrokerSetMappingPolicy.class.getName(), TopicNameHashBrokerSetMappingPolicy.class.getName(),
+                    ReplicaToOriginalBrokerSetMappingPolicy.class.getName(), TopicPatternBrokerSetMappingPolicy.class.getName());
 
   private AnalyzerConfig() {
   }
