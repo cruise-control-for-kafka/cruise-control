@@ -274,6 +274,87 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
   }
 
   @Test
+  public void testDynamicallyUpdatingThrottleRate() throws Exception {
+    createTopics();
+
+    final long initialThrottleRate = 100L;
+    final long updatedThrottleRate = 300L;
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_adminClient, initialThrottleRate);
+    ExecutionProposal proposal = new ExecutionProposal(new TopicPartition(TOPIC0, 0),
+                                                       100,
+                                                       new ReplicaPlacementInfo(0),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(1)),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(2)));
+
+    throttleHelper.setThrottles(Collections.singletonList(proposal));
+
+    assertEquals(Long.valueOf(initialThrottleRate), throttleHelper.throttleRate());
+    assertExpectedThrottledRateForBroker(0, initialThrottleRate);
+    assertExpectedThrottledRateForBroker(1, initialThrottleRate);
+    assertExpectedThrottledRateForBroker(2, initialThrottleRate);
+    assertExpectedThrottledReplicas(TOPIC0, "0:0,0:1,0:2");
+
+    // Dynamically update the throttle rate and re-apply the throttles for the in-progress proposal. The in-progress proposals
+    // must be retrieved while holding the lock of the helper, so that a concurrent clearThrottles cannot be undone.
+    throttleHelper.updateThrottleRate(updatedThrottleRate, () -> {
+      assertTrue(Thread.holdsLock(throttleHelper));
+      return Collections.singletonList(proposal);
+    });
+
+    assertEquals(Long.valueOf(updatedThrottleRate), throttleHelper.throttleRate());
+    assertExpectedThrottledRateForBroker(0, updatedThrottleRate);
+    assertExpectedThrottledRateForBroker(1, updatedThrottleRate);
+    assertExpectedThrottledRateForBroker(2, updatedThrottleRate);
+    // No throttle on broker 3 because it's not involved in any of the execution proposals:
+    assertExpectedThrottledRateForBroker(3, null);
+    // The throttled replicas are unchanged by the throttle rate update.
+    assertExpectedThrottledReplicas(TOPIC0, "0:0,0:1,0:2");
+
+    // We expect all throttles to be cleaned up once the task completes.
+    ExecutionTask task = completedTaskForProposal(0, proposal);
+    throttleHelper.clearThrottles(Collections.singletonList(task), Collections.emptyList());
+
+    for (int i = 0; i < clusterSize(); i++) {
+      assertExpectedThrottledRateForBroker(i, null);
+    }
+    assertExpectedThrottledReplicas(TOPIC0, "");
+  }
+
+  @Test
+  public void testRemovingThrottleOfAnOngoingExecution() throws Exception {
+    createTopics();
+
+    final long initialThrottleRate = 100L;
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_adminClient, initialThrottleRate);
+    ExecutionProposal proposal = new ExecutionProposal(new TopicPartition(TOPIC0, 0),
+                                                       100,
+                                                       new ReplicaPlacementInfo(0),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(1)),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(2)));
+
+    throttleHelper.setThrottles(Collections.singletonList(proposal));
+    assertExpectedThrottledRateForBroker(0, initialThrottleRate);
+    assertExpectedThrottledReplicas(TOPIC0, "0:0,0:1,0:2");
+
+    // Removing the throttle of the ongoing execution clears the rate of the participating brokers and the throttled
+    // replicas of their topics, with the movement still in progress.
+    assertTrue(throttleHelper.removeThrottleRate(() -> {
+      assertTrue(Thread.holdsLock(throttleHelper));
+      return Collections.singletonList(proposal);
+    }));
+    assertNull(throttleHelper.throttleRate());
+    for (int i = 0; i < clusterSize(); i++) {
+      assertExpectedThrottledRateForBroker(i, null);
+    }
+    assertExpectedThrottledReplicas(TOPIC0, "");
+
+    // Upcoming task batches of the same execution are not throttled either, and a second removal is a no-op.
+    throttleHelper.setThrottles(Collections.singletonList(proposal));
+    assertExpectedThrottledRateForBroker(0, null);
+    assertFalse(throttleHelper.removeThrottleRate(Collections::emptyList));
+  }
+
+  @Test
   public void testAddingThrottlesWithPreExistingThrottles() throws Exception {
     createTopics();
 

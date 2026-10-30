@@ -127,6 +127,7 @@ The returned state contains the following information:
   * selfHealingEnabled: Anomaly type for which self healing is enabled
   * selfHealingDisabled: Anomaly type for which self healing is disabled
   * recentGoalViolations: Recently detected goal violations
+  * recentIntraBrokerGoalViolations: Recently detected intra-broker goal violations (i.e. imbalance across the disks of brokers)
   * recentBrokerFailures: Recently detected broker failures
   * recentDiskFailures: Recently detected disk failures
   * recentMetricAnomalies: Recently detected metric anomalies
@@ -348,6 +349,7 @@ Supported parameters are:
 | replica_movement_strategies                   | string    | [replica movement strategy](https://github.com/cruise-control-for-kafka/cruise-control/wiki/Pluggable-Components#replica-movement-strategy) to use    | null                  | yes       | 
 | ignore_proposal_cache                         | boolean   | whether to ignore the cached proposal or not                                                                                          | false                 | yes       | 
 | replication_throttle                          | long      | upper bound on the bandwidth used to move replicas (in bytes per second)                                                              | null                  | yes       | 
+| log_dir_throttle                              | long      | upper bound on the bandwidth used to move replicas between the disks of a broker (in bytes per second)                                | null                  | yes       | 
 | destination_broker_ids                        | list      | specify brokers to move replicas to                                                                                                   | available brokers     | yes       | 
 | rebalance_disk                                | boolean   | whether to balance load between disks within brokers (requires JBOD Kafka deployment)                                                 | false                 | yes       | 
 | json                                          | boolean   | return in JSON format or not                                                                                                          | false                 | yes       | 
@@ -364,6 +366,7 @@ When rebalancing a cluster, all the brokers in the cluster(except recently remov
 
 * By throttling number of replica concurrently moving into a broker. It is gated by the request parameter `concurrent_partition_movements_per_broker` or config value `num.concurrent.partition.movements.per.broker` (if request parameter is not set), `concurrent_intra_partition_movements` or config value `num.concurrent.intra.broker.partition.movements`. Similarly, the number of concurrent partition leadership changes is gated by request parameter `concurrent_leader_movements` or config value `num.concurrent.leader.movements`.
 * By throttling the bandwidth used to move replicas into a broker. It is gated by the request parameter `replication_throttle` or config value `default.replication.throttle` (if request parameter is not set).
+* By throttling the bandwidth used to move replicas between the disks (logdirs) of a broker, which applies to intra-broker replica movements (e.g. with `rebalance_disk=true`). It is gated by the request parameter `log_dir_throttle` or config value `default.log.dir.throttle` (if request parameter is not set). During the execution, it is set as the broker config `replica.alter.log.dirs.io.max.bytes.per.second` on the brokers with intra-broker replica movements, and the original value of this broker config is restored afterwards.
 
 ### Add a list of new brokers to Kafka Cluster
 The following POST request adds the given brokers to the Kafka cluster
@@ -628,6 +631,8 @@ Note sometimes the topic regex can be too long to put at POST request head, in t
 ### Change Cruise Control configuration
 Some Cruise Control configs can be changed dynamically via `admin` endpoint, which includes
 * Dynamically change the partition and leadership concurrency and the interval between checking and updating (if needed) the progress of an ongoing execution.
+* Dynamically change the replication throttle applied to the inter-broker replica movements of an ongoing execution.
+* Dynamically change the log dir throttle applied to the intra-broker replica movements of an ongoing execution.
 * Enable/disable self-healing for the specified anomaly types.
 * Drop selected recently removed/demoted brokers.
 * Enable/disable the specified concurrency adjusters.
@@ -643,6 +648,8 @@ Supported parameters are:
 | max_partition_movements_in_cluster            | integer   | upper bound of max replica movements into/out of brokers across cluster   | N/A                   | yes       |                                                            
 | concurrent_intra_broker_partition_movements   | integer   | upper bound of ongoing replica movements between disks within a broker    | N/A                   | yes       |
 | concurrent_leader_movements                   | integer   | upper bound of ongoing leadership movements                               | N/A                   | yes       |
+| replication_throttle                          | long      | replication throttle (bytes/second) for the ongoing execution, or `null` to remove it | N/A       | yes       |
+| log_dir_throttle                              | long      | log dir throttle (bytes/second) for the ongoing execution, or `null` to remove it | N/A           | yes       |
 | drop_recently_removed_brokers                 | list      | list of id of recently removed brokers to be dropped                      | N/A                   | yes       |
 | drop_recently_demoted_brokers                 | list      | list of id of recently demoted brokers to be dropped                      | N/A                   | yes       |
 | doAs                                          | string    | propagated user by the trusted proxy service                              | null                  | yes       | 
@@ -659,9 +666,35 @@ To Enable/disable self-healing, send POST request like:
 
      POST /kafkacruisecontrol/admin?disable_self_healing_for=[anomaly_type]
 
+Supported anomaly types are `broker_failure`, `goal_violation`, `intra_broker_goal_violation`, `metric_anomaly`, `disk_failure`, `topic_anomaly`, and `maintenance_event`.
+
 To increase/decrease execution concurrency, send POST request like:
 
      POST /kafkacruisecontrol/admin?concurrent_partition_movements_per_broker=[integer]
+
+To change the replication throttle of an ongoing execution, send POST request like:
+
+     POST /kafkacruisecontrol/admin?replication_throttle=[bytes_per_second]
+
+The new throttle rate is applied right away to the brokers participating in the in-progress inter-broker replica movements, and picked up by the upcoming inter-broker replica movements of the ongoing execution. It has no effect if there is no ongoing inter-broker replica movement.
+
+Three things to know about the value:
+
+* `replication_throttle=null` **removes** the throttle: the in-progress inter-broker replica movements stop being throttled and the upcoming ones of this execution run unthrottled. An absent parameter means "no change requested", which is not the same thing.
+* `replication_throttle=0` is **not** "no throttle". Kafka reads it as a quota of zero bytes per second, so the throttled replica movements stop making progress until the throttle is changed again -- which makes it a way to pause an ongoing execution's replica movements, but a surprising one if `null` was meant. There is no timeout on an inter-broker replica movement, so a movement halted this way is waited on indefinitely.
+* The request **returns once the new rate has been verified on every participating broker and topic**, which can take tens of seconds: the throttle configs are written and read back one entity at a time, and a config write is not necessarily visible to the next read.
+
+The throttle in force for the ongoing execution is reported as `ongoingReplicationThrottle` by `GET /kafkacruisecontrol/state?substates=executor`.
+
+To change the log dir throttle of an ongoing execution, send POST request like:
+
+     POST /kafkacruisecontrol/admin?log_dir_throttle=[bytes_per_second]
+
+The new throttle rate (which must be positive) is applied right away to the brokers participating in the in-progress intra-broker replica movements, and picked up by the upcoming intra-broker replica movements of the ongoing execution -- even if the execution started without a log dir throttle. The original value of `replica.alter.log.dirs.io.max.bytes.per.second` on these brokers is still restored once the execution finishes. It has no effect if there is no ongoing intra-broker replica movement.
+
+`log_dir_throttle=null` **removes** the throttle: the original per-broker value of `replica.alter.log.dirs.io.max.bytes.per.second` is restored on every broker this execution throttled, and the upcoming intra-broker replica movements run unthrottled. The throttle of the same execution can be set again afterwards. Unlike the replication throttle, a rate below 1 is rejected, so there is no zero-quota case here.
+
+The throttle in force on each broker is reported as `ongoingLogDirThrottleByBroker` by `GET /kafkacruisecontrol/state?substates=executor`.
 
 To drop recently removed/demoted brokers, send POST request like:
 

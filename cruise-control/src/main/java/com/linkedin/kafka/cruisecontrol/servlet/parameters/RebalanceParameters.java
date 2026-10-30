@@ -26,6 +26,7 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.SKIP_HARD_GOAL_CHECK_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REPLICA_MOVEMENT_STRATEGIES_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REPLICATION_THROTTLE_PARAM;
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.LOG_DIR_THROTTLE_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REVIEW_ID_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REASON_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.STOP_ONGOING_EXECUTION_PARAM;
@@ -50,7 +51,7 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
  *    &amp;exclude_recently_removed_brokers=[true/false]&amp;replica_movement_strategies=[strategy1,strategy2...]
  *    &amp;ignore_proposal_cache=[true/false]&amp;destination_broker_ids=[id1,id2...]&amp;kafka_assigner=[true/false]
  *    &amp;rebalance_disk=[true/false]&amp;review_id=[id]&amp;get_response_schema=[true/false]
- *    &amp;replication_throttle=[bytes_per_second]&amp;reason=[reason-for-request]
+ *    &amp;replication_throttle=[bytes_per_second]&amp;log_dir_throttle=[bytes_per_second]&amp;reason=[reason-for-request]
  *    &amp;execution_progress_check_interval_ms=[interval_in_ms]&amp;stop_ongoing_execution=[true/false]&amp;fast_mode=[true/false]
  *    &amp;doAs=[user]
  * </pre>
@@ -70,6 +71,7 @@ public class RebalanceParameters extends ProposalsParameters {
     validParameterNames.add(SKIP_HARD_GOAL_CHECK_PARAM);
     validParameterNames.add(REPLICA_MOVEMENT_STRATEGIES_PARAM);
     validParameterNames.add(REPLICATION_THROTTLE_PARAM);
+    validParameterNames.add(LOG_DIR_THROTTLE_PARAM);
     validParameterNames.add(REVIEW_ID_PARAM);
     validParameterNames.add(STOP_ONGOING_EXECUTION_PARAM);
     validParameterNames.addAll(ProposalsParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
@@ -85,6 +87,7 @@ public class RebalanceParameters extends ProposalsParameters {
   protected boolean _skipHardGoalCheck;
   protected ReplicaMovementStrategy _replicaMovementStrategy;
   protected Long _replicationThrottle;
+  protected Long _logDirThrottle;
   protected Integer _reviewId;
   protected String _reason;
   protected boolean _stopOngoingExecution;
@@ -109,6 +112,7 @@ public class RebalanceParameters extends ProposalsParameters {
     _destinationBrokerIds = ParameterUtils.destinationBrokerIds(_requestContext);
     boolean twoStepVerificationEnabled = _config.getBoolean(WebServerConfig.TWO_STEP_VERIFICATION_ENABLED_CONFIG);
     _replicationThrottle = ParameterUtils.replicationThrottle(_requestContext, _config);
+    _logDirThrottle = ParameterUtils.logDirThrottle(_requestContext, _config);
     _reviewId = ParameterUtils.reviewId(_requestContext, twoStepVerificationEnabled);
     _isRebalanceDiskMode = ParameterUtils.isRebalanceDiskMode(_requestContext);
     boolean requestReasonRequired = _config.getBoolean(ExecutorConfig.REQUEST_REASON_REQUIRED_CONFIG);
@@ -166,6 +170,10 @@ public class RebalanceParameters extends ProposalsParameters {
 
   public Long replicationThrottle() {
     return _replicationThrottle;
+  }
+
+  public Long logDirThrottle() {
+    return _logDirThrottle;
   }
 
   public String reason() {
