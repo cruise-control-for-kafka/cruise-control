@@ -301,6 +301,18 @@ public class Rack implements Serializable {
   }
 
   /**
+   * Remove specified disk from the broker and update the capacity.
+   *
+   * @param brokerId The id of broker which hosts the disk.
+   * @param logdir Log directory of the disk.
+   */
+  void removeDisk(int brokerId, String logdir) {
+    Broker broker = broker(brokerId);
+    double capacityRemoved = broker.host().removeDisk(brokerId, logdir);
+    _rackCapacity[DISK.id()] -= capacityRemoved;
+  }
+
+  /**
    * @return An object that can be further used to encode into JSON.
    */
   public Map<String, Object> getJsonStructure() {

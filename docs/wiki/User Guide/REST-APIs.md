@@ -165,6 +165,8 @@ The response contains both load-per-broker and load-per-host information. This i
 
 NOTE: The load shown is only for the load from the valid partitions. i.e the partitions with enough metric samples. So please always check the `LoadMonitor`'s state(via `State` endpoint) to decide whether the workload is representative enough.
 
+With disk information (`populate_disk_info=true` here, and `rebalance_disk=true` or `remove_disks` elsewhere), the disk capacity of a broker only counts its alive disks: a disk of the broker capacity config that Kafka does not report as a log directory of the broker is left out, and a failed disk drops its capacity. The disk usage of the broker still includes the offline replicas of a failed disk, so its disk percentage can exceed 100% until `fix_offline_replicas` moves them.
+
 ### Query partition resource utilization
 The following GET request gives the partition load sorted by the utilization of a given resource:
 

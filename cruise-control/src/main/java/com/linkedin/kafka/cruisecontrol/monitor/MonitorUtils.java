@@ -15,6 +15,7 @@ import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.exception.BrokerCapacityResolutionException;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
+import com.linkedin.kafka.cruisecontrol.model.Disk;
 import com.linkedin.kafka.cruisecontrol.model.ModelUtils;
 import com.linkedin.kafka.cruisecontrol.monitor.metricdefinition.KafkaMetricDef;
 import java.util.Arrays;
@@ -22,6 +23,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -40,7 +42,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import static com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig.LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.model.Disk.State.DEAD;
 import static com.linkedin.kafka.cruisecontrol.monitor.metricdefinition.KafkaMetricDef.CPU_USAGE;
 
 
@@ -375,7 +376,10 @@ public final class MonitorUtils {
     for (Map.Entry<Integer, KafkaFuture<Map<String, LogDirDescription>>> entry : logDirsByBrokerId.entrySet()) {
       Integer brokerId = entry.getKey();
       try {
-        entry.getValue().get(config.getLong(LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG), TimeUnit.MILLISECONDS).forEach((logdir, info) -> {
+        Map<String, LogDirDescription> logDirDescriptionByLogDir =
+            entry.getValue().get(config.getLong(LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG), TimeUnit.MILLISECONDS);
+        removeDisksMissingFromKafkaLogDirs(clusterModel, brokerId, logDirDescriptionByLogDir.keySet());
+        logDirDescriptionByLogDir.forEach((logdir, info) -> {
           if (info.error() == null) {
             for (Map.Entry<TopicPartition, ReplicaInfo> e : info.replicaInfos().entrySet()) {
               if (!e.getValue().isFuture()) {
@@ -386,7 +390,15 @@ public final class MonitorUtils {
               }
             }
           } else {
-            clusterModel.broker(brokerId).disk(logdir).setState(DEAD);
+            Broker broker = clusterModel.broker(brokerId);
+            if (broker.disk(logdir) == null) {
+              // The capacity of the failed logdir is not reported (e.g. the logdirs of the broker differ from the ones of the
+              // default capacity it is estimated with), so it is added as a dead disk.
+              broker.addDeadDisk(logdir);
+            } else {
+              // Drop the capacity of the failed disk from its broker, host, rack and cluster. No replica is placed yet.
+              clusterModel.markDiskDead(brokerId, logdir);
+            }
           }
         });
       } catch (TimeoutException te) {
@@ -398,6 +410,33 @@ public final class MonitorUtils {
       }
     }
     return replicaPlacementInfo;
+  }
+
+  /**
+   * Remove the disks that are configured in the broker capacity config, but are not among the logdirs reported by Kafka
+   * for the given broker (e.g. a disk that has been excluded from the broker's log dirs after a failure). Such disks
+   * cannot host replicas, hence their capacity is ignored in the cluster model.
+   *
+   * @param clusterModel The cluster model to remove the disks from.
+   * @param brokerId Id of the broker.
+   * @param kafkaLogDirs Logdirs reported by Kafka for the broker.
+   */
+  private static void removeDisksMissingFromKafkaLogDirs(ClusterModel clusterModel,
+                                                         int brokerId,
+                                                         Set<String> kafkaLogDirs) {
+    Broker broker = clusterModel.broker(brokerId);
+    if (broker == null) {
+      return;
+    }
+    List<String> logDirsToRemove = broker.disks().stream()
+                                         .map(Disk::logDir)
+                                         .filter(logdir -> !kafkaLogDirs.contains(logdir))
+                                         .collect(Collectors.toList());
+    for (String logdir : logDirsToRemove) {
+      LOG.warn("Ignoring disk {} on broker {}, which exists in the broker capacity config but not in Kafka logdirs {}.",
+               logdir, brokerId, kafkaLogDirs);
+      clusterModel.removeDisk(brokerId, logdir);
+    }
   }
 
   /**
