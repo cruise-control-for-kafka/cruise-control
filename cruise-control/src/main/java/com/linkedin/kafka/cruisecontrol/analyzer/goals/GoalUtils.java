@@ -244,6 +244,8 @@ public final class GoalUtils {
    * Get eligible replicas among the given candidate replicas for the proposed swap operation of the source replica.
    * Invariant-1: No replica is eligible if the candidate broker is excluded for leadership and the source replica is the leader.
    * Invariant-2: No replica is eligible if the candidate broker is excluded for replica move.
+   * Invariant-3: If the user explicitly specified the eligible destination brokers, no replica is eligible unless both the
+   * source and the candidate brokers are among the requested destination brokers -- i.e. a swap relocates replicas to both.
    *
    * @param clusterModel The state of the cluster.
    * @param sourceReplica Source replica for intended swap operation.
@@ -269,6 +271,14 @@ public final class GoalUtils {
         && !sourceReplica.isOriginalOffline()) {
       return Collections.emptySortedSet();
     }
+    // A swap relocates replicas to both the source and the destination brokers. Hence, if the user explicitly requested
+    // destination brokers, both brokers must be among them.
+    Broker sourceBroker = sourceReplica.broker();
+    Set<Integer> requestedDestinationBrokerIds = optimizationOptions.requestedDestinationBrokerIds();
+    if (!requestedDestinationBrokerIds.isEmpty()
+        && (!requestedDestinationBrokerIds.contains(sourceBroker.id()) || !requestedDestinationBrokerIds.contains(destinationBroker.id()))) {
+      return Collections.emptySortedSet();
+    }
 
     // CASE#1: All candidate replicas are eligible if any of the following is true:
     // (1) there are no new brokers in the cluster,
@@ -276,8 +286,6 @@ public final class GoalUtils {
     // (3) the intended swap is between replicas of new brokers,
     // (4) the intended swap is between a replica on a new broker, which originally was in the destination broker, and
     // any replica in the destination broker.
-    Broker sourceBroker = sourceReplica.broker();
-
     if (clusterModel.newBrokers().isEmpty()
         || (sourceBroker.isNew() && (destinationBroker.isNew() || sourceReplica.originalBroker() == destinationBroker))) {
       return candidateReplicas;
