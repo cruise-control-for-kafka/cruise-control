@@ -131,6 +131,28 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
   }
 
   @Test
+  public void testIsNoOpForProposalsWithoutDataMovement() throws Exception {
+    Admin mockAdminClient = EasyMock.strictMock(Admin.class);
+    EasyMock.replay(mockAdminClient);
+
+    // Test would fail on any unexpected interactions with the adminClient
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(mockAdminClient, 100L);
+    // A proposal that only removes a replica (e.g. to decrease the replication factor) does not replicate any data.
+    ExecutionProposal proposal = new ExecutionProposal(new TopicPartition("topic", 0),
+                                                       100,
+                                                       new ReplicaPlacementInfo(0),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(1),
+                                                                     new ReplicaPlacementInfo(2)),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(1)));
+
+    ExecutionTask task = completedTaskForProposal(0, proposal);
+
+    throttleHelper.setThrottles(Collections.singletonList(proposal));
+    throttleHelper.clearThrottles(Collections.singletonList(task), Collections.emptyList());
+    EasyMock.verify(mockAdminClient);
+  }
+
+  @Test
   public void testClearThrottleOnNonExistentTopic() throws Exception {
     final long throttleRate = 100L;
     final int brokerId0 = 0;

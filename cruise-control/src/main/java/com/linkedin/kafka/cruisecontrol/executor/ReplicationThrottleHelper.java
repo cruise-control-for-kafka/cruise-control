@@ -71,9 +71,14 @@ class ReplicationThrottleHelper {
     this._deadBrokers = deadBrokers;
   }
 
-  void setThrottles(List<ExecutionProposal> replicaMovementProposals)
+  void setThrottles(List<ExecutionProposal> proposals)
   throws ExecutionException, InterruptedException, TimeoutException {
     if (throttlingEnabled()) {
+      List<ExecutionProposal> replicaMovementProposals = proposalsWithDataMovement(proposals);
+      if (replicaMovementProposals.isEmpty()) {
+        LOG.info("Skip setting a rebalance throttle, because none of the proposals adds a replica to a broker.");
+        return;
+      }
       LOG.info("Setting a rebalance throttle of {} bytes/sec", _throttleRate);
       Set<Integer> participatingBrokers = getParticipatingBrokers(replicaMovementProposals);
       Map<String, Set<String>> throttledReplicas = getThrottledReplicasByTopic(replicaMovementProposals);
@@ -113,6 +118,8 @@ class ReplicationThrottleHelper {
           // Filter for completed tasks related to inter-broker replica movement
           .filter(this::shouldRemoveThrottleForTask)
           .map(ExecutionTask::proposal)
+          // Throttles are not set for proposals without data movement
+          .filter(ReplicationThrottleHelper::hasDataMovement)
           .collect(Collectors.toList());
 
       // These are the brokers which have completed a task with
@@ -124,6 +131,7 @@ class ReplicationThrottleHelper {
           .stream()
           .filter(this::taskIsInProgress)
           .map(ExecutionTask::proposal)
+          .filter(ReplicationThrottleHelper::hasDataMovement)
           .collect(Collectors.toList());
 
       // These are the brokers which currently have in-progress
@@ -149,6 +157,23 @@ class ReplicationThrottleHelper {
 
   private boolean throttlingEnabled() {
     return _throttleRate != null;
+  }
+
+  /**
+   * A proposal has data movement if it adds at least one replica to a broker. Proposals that only remove replicas (e.g. to
+   * decrease the replication factor) or reorder them do not require replicating data, hence they need no throttle. Throttling
+   * such proposals would only slow down the catch-up of their out-of-sync replicas, which delays the completion of the
+   * reassignment -- especially in a cluster under heavy load.
+   *
+   * @param proposal Execution proposal to check.
+   * @return {@code true} if the given proposal adds at least one replica to a broker, {@code false} otherwise.
+   */
+  static boolean hasDataMovement(ExecutionProposal proposal) {
+    return !proposal.replicasToAdd().isEmpty();
+  }
+
+  private static List<ExecutionProposal> proposalsWithDataMovement(List<ExecutionProposal> proposals) {
+    return proposals.stream().filter(ReplicationThrottleHelper::hasDataMovement).collect(Collectors.toList());
   }
 
   private Set<Integer> getParticipatingBrokers(List<ExecutionProposal> replicaMovementProposals) {
