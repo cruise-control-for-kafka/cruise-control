@@ -107,6 +107,9 @@ public class Executor {
 
   private static final int NO_STOP_EXECUTION = 0;
   private static final int STOP_EXECUTION = 1;
+  // Bounds the time that removing leftover replication throttles can block the proposal executor thread if a removal does
+  // not take effect. The removal is retried later.
+  private static final int LEFTOVER_REPLICATION_THROTTLE_REMOVAL_RETRIES = 5;
 
   // Some state for external service to query
   private final AtomicInteger _stopSignal;
@@ -133,6 +136,10 @@ public class Executor {
   private final ConcurrentMap<Integer, Long> _latestDemoteStartTimeMsByBrokerId;
   private final ConcurrentMap<Integer, Long> _latestRemoveStartTimeMsByBrokerId;
   private final ScheduledExecutorService _executionHistoryScannerExecutor;
+  // Replication throttles that executions have set, but not removed yet (see #removeLeftoverReplicationThrottles).
+  private final ReplicationThrottleHelper.AppliedThrottles _appliedReplicationThrottles;
+  private final AtomicBoolean _leftoverReplicationThrottleRemovalQueued;
+  private final ScheduledExecutorService _leftoverReplicationThrottleCleanerExecutor;
   private UserTaskManager _userTaskManager;
   private final AnomalyDetectorManager _anomalyDetectorManager;
   private final ConcurrencyAdjuster _concurrencyAdjuster;
@@ -257,6 +264,16 @@ public class Executor {
                                                          ExecutionUtils.EXECUTION_HISTORY_SCANNER_INITIAL_DELAY_SECONDS,
                                                          ExecutionUtils.EXECUTION_HISTORY_SCANNER_PERIOD_SECONDS,
                                                          TimeUnit.SECONDS);
+    _appliedReplicationThrottles = new ReplicationThrottleHelper.AppliedThrottles();
+    _leftoverReplicationThrottleRemovalQueued = new AtomicBoolean(false);
+    _leftoverReplicationThrottleCleanerExecutor = Executors.newSingleThreadScheduledExecutor(
+        new KafkaCruiseControlThreadFactory(LeftoverReplicationThrottleCleaner.class.getSimpleName()));
+    // Leftover throttles of ongoing partition reassignments are removed once they finish, so check as often as the progress of an execution.
+    long leftoverReplicationThrottleCheckIntervalMs = Math.max(1L, _defaultExecutionProgressCheckIntervalMs);
+    _leftoverReplicationThrottleCleanerExecutor.scheduleAtFixedRate(new LeftoverReplicationThrottleCleaner(),
+                                                                    leftoverReplicationThrottleCheckIntervalMs,
+                                                                    leftoverReplicationThrottleCheckIntervalMs,
+                                                                    TimeUnit.MILLISECONDS);
     dropwizardMetricRegistry.register(MetricRegistry.name(EXECUTOR_SENSOR, PARTITION_MOVEMENT_PER_SEC),
                                       (Gauge<Double>) _partitionMovementCountPerSec::get);
     dropwizardMetricRegistry.register(MetricRegistry.name(EXECUTOR_SENSOR, PARTITION_MOVEMENT_MB_PER_SEC),
@@ -455,6 +472,55 @@ public class Executor {
       } catch (Throwable t) {
         LOG.warn("Received exception when trying to expire execution history.", t);
       }
+    }
+  }
+
+  /**
+   * A runnable class to periodically remove the replication throttles that executions left behind (see
+   * {@link #removeLeftoverReplicationThrottles()}) while there is no ongoing execution.
+   */
+  private class LeftoverReplicationThrottleCleaner implements Runnable {
+    @Override
+    public void run() {
+      if (_hasOngoingExecution || _appliedReplicationThrottles.isEmpty()
+          || !_leftoverReplicationThrottleRemovalQueued.compareAndSet(false, true)) {
+        return;
+      }
+      try {
+        // Remove the throttles in the proposal executor thread, so that the removal does not interfere with an execution.
+        _proposalExecutor.execute(() -> {
+          try {
+            removeLeftoverReplicationThrottles();
+          } finally {
+            _leftoverReplicationThrottleRemovalQueued.set(false);
+          }
+        });
+      } catch (Throwable t) {
+        // E.g. the proposal executor is shut down.
+        _leftoverReplicationThrottleRemovalQueued.set(false);
+        LOG.debug("Failed to schedule the removal of leftover replication throttles.", t);
+      }
+    }
+  }
+
+  /**
+   * Removes the replication throttles that executions set, but could not remove -- e.g. because an execution failed while
+   * replicas were still moving, or a broker was unavailable. The throttles of the partitions that are still being reassigned,
+   * and the throttled rates of unavailable brokers are retained, so that a later call removes them. Must be called from the
+   * proposal executor thread, so that it does not interfere with the throttles of an ongoing execution.
+   */
+  private void removeLeftoverReplicationThrottles() {
+    if (_appliedReplicationThrottles.isEmpty()) {
+      return;
+    }
+    try {
+      new ReplicationThrottleHelper(_adminClient, null, LEFTOVER_REPLICATION_THROTTLE_REMOVAL_RETRIES, Collections.emptySet(),
+                                    _appliedReplicationThrottles)
+          .clearLeftoverThrottles(ExecutionUtils.partitionsBeingReassigned(_adminClient));
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    } catch (ExecutionException | TimeoutException | RuntimeException e) {
+      LOG.warn("Failed to remove leftover replication throttles. Will retry later.", e);
     }
   }
 
@@ -1172,8 +1238,10 @@ public class Executor {
 
   /**
    * Shutdown the executor.
+   * Not synchronized: an ongoing execution calls synchronized methods of the executor until it stops, so holding the lock
+   * while waiting for the execution to stop would deadlock -- leaving its replica movements and throttles behind.
    */
-  public synchronized void shutdown() {
+  public void shutdown() {
     LOG.info("Shutting down executor.");
 
     try {
@@ -1207,6 +1275,7 @@ public class Executor {
     }
     KafkaCruiseControlUtils.closeAdminClientWithTimeout(_adminClient);
     _executionHistoryScannerExecutor.shutdownNow();
+    _leftoverReplicationThrottleCleanerExecutor.shutdownNow();
     _concurrencyAdjusterExecutor.shutdownNow();
     _topicMinIsrCache.shutdown();
     LOG.info("Executor shutdown completed.");
@@ -1495,6 +1564,14 @@ public class Executor {
         LOG.error("User task {}: Executor got exception during execution", _uuid, t);
         _executionException = t;
       } finally {
+        // Remove the replication throttles that the execution could not remove (e.g. upon failure), before the execution
+        // is reported as finished. Throttles of replica movements that Kafka carries on with are removed once they finish.
+        removeLeftoverReplicationThrottles();
+        if (!_appliedReplicationThrottles.isEmpty()) {
+          LOG.warn("User task {}: Retaining the replication throttles of brokers {} and of {} partition movements until the "
+                   + "movements finish and the brokers are available.", _uuid, _appliedReplicationThrottles.brokers(),
+                   _appliedReplicationThrottles.proposals().size());
+        }
         notifyFinishedTask(userTaskInfo);
       }
     }
@@ -1606,17 +1683,20 @@ public class Executor {
     private void interBrokerMoveReplicas() throws InterruptedException, ExecutionException, TimeoutException {
       Set<Integer> currentDeadBrokersWithReplicas = _loadMonitor.deadBrokersWithReplicas(MAX_METADATA_WAIT_MS);
       ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_adminClient, _replicationThrottle,
-          currentDeadBrokersWithReplicas);
+          ReplicationThrottleHelper.RETRIES, currentDeadBrokersWithReplicas, _appliedReplicationThrottles);
       int numTotalPartitionMovements = _executionTaskManager.numRemainingInterBrokerPartitionMovements();
       long totalDataToMoveInMB = _executionTaskManager.remainingInterBrokerDataToMoveInMB();
       long startTime = System.currentTimeMillis();
       LOG.info("User task {}: Starting {} inter-broker partition movements.", _uuid, numTotalPartitionMovements);
 
       int partitionsToMove = numTotalPartitionMovements;
-      // Exhaust all the pending partition movements.
-      while ((partitionsToMove > 0 || !inExecutionTasks().isEmpty()) && _stopSignal.get() == NO_STOP_EXECUTION) {
+      // Exhaust all the pending partition movements. Once the execution is stopped, keep going until the in-progress partition
+      // movements are rolled back, which also removes their throttles.
+      while ((partitionsToMove > 0 && _stopSignal.get() == NO_STOP_EXECUTION) || !inExecutionTasks().isEmpty()) {
         // Get tasks to execute.
-        List<ExecutionTask> tasksToExecute = _executionTaskManager.getInterBrokerReplicaMovementTasks();
+        List<ExecutionTask> tasksToExecute = _stopSignal.get() == NO_STOP_EXECUTION
+                                             ? _executionTaskManager.getInterBrokerReplicaMovementTasks()
+                                             : Collections.emptyList();
         LOG.info("User task {}: Executor will execute {} task(s)", _uuid, tasksToExecute.size());
 
         AlterPartitionReassignmentsResult result = null;
