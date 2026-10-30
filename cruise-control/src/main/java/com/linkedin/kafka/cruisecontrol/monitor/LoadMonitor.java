@@ -345,6 +345,28 @@ public class LoadMonitor {
   }
 
   /**
+   * Check whether the capacity of any broker in the cluster specifies multiple logdirs -- i.e. a JBOD deployment, in which
+   * intra-broker goals can balance the disks of brokers.
+   *
+   * @param allowCapacityEstimation whether allow capacity estimation if the underlying live broker capacity is unavailable.
+   * @return {@code true} if the capacity of at least one broker specifies multiple logdirs, {@code false} otherwise.
+   * @throws TimeoutException If broker capacity resolver is unable to resolve broker capacity in time.
+   * @throws BrokerCapacityResolutionException If broker capacity resolver fails to resolve broker capacity.
+   */
+  public boolean hasBrokerWithMultipleLogDirs(boolean allowCapacityEstimation) throws TimeoutException, BrokerCapacityResolutionException {
+    for (Node node : kafkaCluster().nodes()) {
+      Map<String, Double> diskCapacityByLogDir = _brokerCapacityConfigResolver.capacityForBroker(getRackHandleNull(node), node.host(),
+                                                                                                 node.id(), BROKER_CAPACITY_FETCH_TIMEOUT_MS,
+                                                                                                 allowCapacityEstimation)
+                                                                              .diskCapacityByLogDir();
+      if (diskCapacityByLogDir != null && diskCapacityByLogDir.size() > 1) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Pause all the activities of the load monitor. The load monitor can only be paused when it is in
    * RUNNING state.
    *

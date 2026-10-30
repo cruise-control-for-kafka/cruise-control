@@ -127,6 +127,7 @@ The returned state contains the following information:
   * selfHealingEnabled: Anomaly type for which self healing is enabled
   * selfHealingDisabled: Anomaly type for which self healing is disabled
   * recentGoalViolations: Recently detected goal violations
+  * recentIntraBrokerGoalViolations: Recently detected intra-broker goal violations (i.e. imbalance across the disks of brokers)
   * recentBrokerFailures: Recently detected broker failures
   * recentDiskFailures: Recently detected disk failures
   * recentMetricAnomalies: Recently detected metric anomalies
@@ -348,6 +349,7 @@ Supported parameters are:
 | replica_movement_strategies                   | string    | [replica movement strategy](https://github.com/cruise-control-for-kafka/cruise-control/wiki/Pluggable-Components#replica-movement-strategy) to use    | null                  | yes       | 
 | ignore_proposal_cache                         | boolean   | whether to ignore the cached proposal or not                                                                                          | false                 | yes       | 
 | replication_throttle                          | long      | upper bound on the bandwidth used to move replicas (in bytes per second)                                                              | null                  | yes       | 
+| log_dir_throttle                              | long      | upper bound on the bandwidth used to move replicas between the disks of a broker (in bytes per second)                                | null                  | yes       | 
 | destination_broker_ids                        | list      | specify brokers to move replicas to                                                                                                   | available brokers     | yes       | 
 | rebalance_disk                                | boolean   | whether to balance load between disks within brokers (requires JBOD Kafka deployment)                                                 | false                 | yes       | 
 | json                                          | boolean   | return in JSON format or not                                                                                                          | false                 | yes       | 
@@ -364,6 +366,7 @@ When rebalancing a cluster, all the brokers in the cluster(except recently remov
 
 * By throttling number of replica concurrently moving into a broker. It is gated by the request parameter `concurrent_partition_movements_per_broker` or config value `num.concurrent.partition.movements.per.broker` (if request parameter is not set), `concurrent_intra_partition_movements` or config value `num.concurrent.intra.broker.partition.movements`. Similarly, the number of concurrent partition leadership changes is gated by request parameter `concurrent_leader_movements` or config value `num.concurrent.leader.movements`.
 * By throttling the bandwidth used to move replicas into a broker. It is gated by the request parameter `replication_throttle` or config value `default.replication.throttle` (if request parameter is not set).
+* By throttling the bandwidth used to move replicas between the disks (logdirs) of a broker, which applies to intra-broker replica movements (e.g. with `rebalance_disk=true`). It is gated by the request parameter `log_dir_throttle` or config value `default.log.dir.throttle` (if request parameter is not set). During the execution, it is set as the broker config `replica.alter.log.dirs.io.max.bytes.per.second` on the brokers with intra-broker replica movements, and the original value of this broker config is restored afterwards.
 
 ### Add a list of new brokers to Kafka Cluster
 The following POST request adds the given brokers to the Kafka cluster
@@ -658,6 +661,8 @@ Supported parameters are:
 To Enable/disable self-healing, send POST request like:
 
      POST /kafkacruisecontrol/admin?disable_self_healing_for=[anomaly_type]
+
+Supported anomaly types are `broker_failure`, `goal_violation`, `intra_broker_goal_violation`, `metric_anomaly`, `disk_failure`, `topic_anomaly`, and `maintenance_event`.
 
 To increase/decrease execution concurrency, send POST request like:
 

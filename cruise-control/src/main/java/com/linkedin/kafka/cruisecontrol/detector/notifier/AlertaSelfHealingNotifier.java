@@ -9,7 +9,7 @@ import com.linkedin.cruisecontrol.detector.Anomaly;
 import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.kafka.cruisecontrol.detector.BrokerFailures;
 import com.linkedin.kafka.cruisecontrol.detector.DiskFailures;
-import com.linkedin.kafka.cruisecontrol.detector.GoalViolations;
+import com.linkedin.kafka.cruisecontrol.detector.AbstractGoalViolations;
 import com.linkedin.kafka.cruisecontrol.detector.KafkaMetricAnomaly;
 import com.linkedin.kafka.cruisecontrol.detector.MaintenanceEvent;
 import com.linkedin.kafka.cruisecontrol.detector.TopicAnomaly;
@@ -110,7 +110,8 @@ public class AlertaSelfHealingNotifier extends SelfHealingNotifier {
 
     switch ((KafkaAnomalyType) anomalyType) {
       case GOAL_VIOLATION:
-        GoalViolations goalViolations = (GoalViolations) anomaly;
+      case INTRA_BROKER_GOAL_VIOLATION:
+        AbstractGoalViolations goalViolations = (AbstractGoalViolations) anomaly;
         alertGoalViolation(anomalyType, localHostname, alertaMessages, goalViolations);
         break;
       case BROKER_FAILURE:
@@ -239,7 +240,7 @@ public class AlertaSelfHealingNotifier extends SelfHealingNotifier {
   }
 
   private void alertGoalViolation(AnomalyType anomalyType, final String localHostname,
-                                  List<AlertaMessage> alertaMessages, GoalViolations goalViolations) {
+                                  List<AlertaMessage> alertaMessages, AbstractGoalViolations goalViolations) {
     Map<Boolean, List<String>> violations = goalViolations.violatedGoalsByFixability();
     for (Entry<Boolean, List<String>> entry : violations.entrySet()) {
       entry.getValue().forEach(goal -> {
