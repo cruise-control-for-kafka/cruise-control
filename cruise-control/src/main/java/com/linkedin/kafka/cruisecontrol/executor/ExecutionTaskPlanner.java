@@ -466,6 +466,47 @@ public class ExecutionTaskPlanner {
   }
 
   /**
+   * Remove the inter-broker replica movement tasks of the given partitions from the remaining tasks without executing them.
+   * This is used for adopting tasks that are already being executed by Kafka.
+   *
+   * @param partitions Partitions whose inter-broker replica movement tasks will be removed.
+   * @return The removed tasks.
+   */
+  public List<ExecutionTask> removeInterBrokerReplicaMovementTasks(Set<TopicPartition> partitions) {
+    List<ExecutionTask> removedTasks = new ArrayList<>();
+    for (ExecutionTask task : new ArrayList<>(_remainingInterBrokerReplicaMovements)) {
+      if (partitions.contains(task.proposal().topicPartition())) {
+        removeInterBrokerReplicaActionForExecution(task);
+        removedTasks.add(task);
+      }
+    }
+    return removedTasks;
+  }
+
+  /**
+   * Remove the intra-broker replica movement tasks of the given replicas from the remaining tasks without executing them.
+   * This is used for adopting tasks that are already being executed by Kafka.
+   *
+   * @param replicas Replicas whose intra-broker replica movement tasks will be removed.
+   * @return The removed tasks.
+   */
+  public List<ExecutionTask> removeIntraBrokerReplicaMovementTasks(Set<TopicPartitionReplica> replicas) {
+    List<ExecutionTask> removedTasks = new ArrayList<>();
+    for (ExecutionTask task : new ArrayList<>(_remainingIntraBrokerReplicaMovements)) {
+      TopicPartitionReplica replica = new TopicPartitionReplica(task.proposal().topic(), task.proposal().partitionId(), task.brokerId());
+      if (replicas.contains(replica)) {
+        SortedSet<ExecutionTask> tasksForBroker = _intraPartMoveTasksByBrokerId.get(task.brokerId());
+        if (tasksForBroker != null) {
+          tasksForBroker.remove(task);
+        }
+        _remainingIntraBrokerReplicaMovements.remove(task);
+        removedTasks.add(task);
+      }
+    }
+    return removedTasks;
+  }
+
+  /**
    * Clear all the states.
    */
   public void clear() {

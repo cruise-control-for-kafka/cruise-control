@@ -42,6 +42,7 @@ import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils.CLIENT_RE
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC0;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNotNull;
 
 
@@ -60,6 +61,10 @@ public class KafkaCruiseControlTest extends CruiseControlIntegrationTestHarness 
 
     // For sanityCheckDryRun(false, true) and sanityCheckDryRun(false, false) (see #1 and #2 below).
     EasyMock.expect(executor.hasOngoingExecution()).andReturn(true).times(2);
+    EasyMock.expect(executor.ongoingRecoveryDescription()).andReturn(null).once();
+    // For sanityCheckDryRun(false, false) while recovering an interrupted execution (see #2b below).
+    EasyMock.expect(executor.hasOngoingExecution()).andReturn(true).once();
+    EasyMock.expect(executor.ongoingRecoveryDescription()).andReturn("Cruise Control is cleaning up the execution X").once();
     // For sanityCheckDryRun(false, XXX) (see #3 below)
     EasyMock.expect(executor.hasOngoingExecution()).andReturn(false).once();
     EasyMock.expect(executor.listPartitionsBeingReassigned()).andReturn(DUMMY_ONGOING_PARTITION_REASSIGNMENTS);
@@ -82,6 +87,9 @@ public class KafkaCruiseControlTest extends CruiseControlIntegrationTestHarness 
     kafkaCruiseControl.sanityCheckDryRun(false, true);
     // 2. Expect failure (dryrun = false), if there is ongoing execution started by CC, not requested to stop.
     assertThrows(IllegalStateException.class, () -> kafkaCruiseControl.sanityCheckDryRun(false, false));
+    // 2b. The failure names the recovery of an interrupted execution, if that is what the ongoing execution is.
+    IllegalStateException recovering = assertThrows(IllegalStateException.class, () -> kafkaCruiseControl.sanityCheckDryRun(false, false));
+    assertTrue(recovering.getMessage(), recovering.getMessage().contains("(Cruise Control is cleaning up the execution X)"));
     // 3. Expect no failure (dryrun = false), there is no execution started by CC, but ongoing replica reassignment, request to stop is irrelevant.
     kafkaCruiseControl.sanityCheckDryRun(false, false);
     // 4. Expect no failure (dryrun = false), there is no execution started by CC or other tools, request to stop is irrelevant.
