@@ -79,13 +79,13 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
   /**
    * Initialize the utilization thresholds.
    * To avoid churns, we add a balance margin to the user specified rebalance threshold. e.g. when user sets the
-   * threshold to be resourceBalancePercentage, we use (resourceBalancePercentage-1)*balanceMargin instead.
+   * threshold to be intraBrokerDiskBalancePercentage, we use (intraBrokerDiskBalancePercentage-1)*balanceMargin instead.
    * @param clusterModel The state of the cluster.
    * @param optimizationOptions Options to take into account during optimization.
    */
   @Override
   protected void initGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions) {
-    double balancePercentageWithMargin = (_balancingConstraint.resourceBalancePercentage(RESOURCE) - 1) * BALANCE_MARGIN;
+    double balancePercentageWithMargin = (_balancingConstraint.intraBrokerDiskBalancePercentage() - 1) * BALANCE_MARGIN;
     for (Broker broker : brokersToBalance(clusterModel)) {
       double averageDiskUtilization = averageDiskUtilizationPercentage(broker);
       _balanceUpperThresholdByBroker.put(broker, averageDiskUtilization * (1 + balancePercentageWithMargin));
