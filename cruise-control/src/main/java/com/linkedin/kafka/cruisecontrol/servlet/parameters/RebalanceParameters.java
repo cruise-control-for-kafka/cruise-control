@@ -29,6 +29,7 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REVIEW_ID_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REASON_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.STOP_ONGOING_EXECUTION_PARAM;
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REBALANCE_DISK_BROKER_BY_BROKER_PARAM;
 
 
 /**
@@ -49,7 +50,8 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
  *    &amp;use_ready_default_goals=[true/false]&amp;verbose=[true/false]&amp;exclude_recently_demoted_brokers=[true/false]
  *    &amp;exclude_recently_removed_brokers=[true/false]&amp;replica_movement_strategies=[strategy1,strategy2...]
  *    &amp;ignore_proposal_cache=[true/false]&amp;destination_broker_ids=[id1,id2...]&amp;kafka_assigner=[true/false]
- *    &amp;rebalance_disk=[true/false]&amp;review_id=[id]&amp;get_response_schema=[true/false]
+ *    &amp;rebalance_disk=[true/false]&amp;rebalance_disk_broker_by_broker=[true/false]&amp;review_id=[id]
+ *    &amp;get_response_schema=[true/false]
  *    &amp;replication_throttle=[bytes_per_second]&amp;reason=[reason-for-request]
  *    &amp;execution_progress_check_interval_ms=[interval_in_ms]&amp;stop_ongoing_execution=[true/false]&amp;fast_mode=[true/false]
  *    &amp;doAs=[user]
@@ -72,6 +74,7 @@ public class RebalanceParameters extends ProposalsParameters {
     validParameterNames.add(REPLICATION_THROTTLE_PARAM);
     validParameterNames.add(REVIEW_ID_PARAM);
     validParameterNames.add(STOP_ONGOING_EXECUTION_PARAM);
+    validParameterNames.add(REBALANCE_DISK_BROKER_BY_BROKER_PARAM);
     validParameterNames.addAll(ProposalsParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
     CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
   }
@@ -88,6 +91,7 @@ public class RebalanceParameters extends ProposalsParameters {
   protected Integer _reviewId;
   protected String _reason;
   protected boolean _stopOngoingExecution;
+  protected boolean _isRebalanceDiskBrokerByBroker;
 
   public RebalanceParameters() {
     super();
@@ -111,6 +115,7 @@ public class RebalanceParameters extends ProposalsParameters {
     _replicationThrottle = ParameterUtils.replicationThrottle(_requestContext, _config);
     _reviewId = ParameterUtils.reviewId(_requestContext, twoStepVerificationEnabled);
     _isRebalanceDiskMode = ParameterUtils.isRebalanceDiskMode(_requestContext);
+    _isRebalanceDiskBrokerByBroker = ParameterUtils.isRebalanceDiskBrokerByBroker(_requestContext);
     boolean requestReasonRequired = _config.getBoolean(ExecutorConfig.REQUEST_REASON_REQUIRED_CONFIG);
     _reason = ParameterUtils.reason(_requestContext, requestReasonRequired && !_dryRun);
     _stopOngoingExecution = ParameterUtils.stopOngoingExecution(_requestContext);
@@ -174,6 +179,13 @@ public class RebalanceParameters extends ProposalsParameters {
 
   public boolean stopOngoingExecution() {
     return _stopOngoingExecution;
+  }
+
+  /**
+   * @return {@code true} to execute intra-broker (i.e. disk) replica movements one broker at a time, {@code false} otherwise.
+   */
+  public boolean isRebalanceDiskBrokerByBroker() {
+    return _isRebalanceDiskBrokerByBroker;
   }
 
   @Override

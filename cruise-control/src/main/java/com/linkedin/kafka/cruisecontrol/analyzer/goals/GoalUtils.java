@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.SortedSet;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 
 import static com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig.HARD_GOALS_CONFIG;
@@ -442,6 +443,23 @@ public final class GoalUtils {
     offlineReplicas.retainAll(broker.currentOfflineReplicas());
 
     return offlineReplicas;
+  }
+
+  /**
+   * Get the alive brokers to be balanced by an intra-broker goal. If the given requested broker ids is non-empty (e.g. via
+   * {@link OptimizationOptions#requestedDestinationBrokerIds()}), only the alive brokers among them are returned, which
+   * limits the intra-broker (i.e. disk) rebalance to the requested brokers.
+   *
+   * @param clusterModel The state of the cluster.
+   * @param requestedBrokerIds Ids of brokers to limit the intra-broker rebalance to (if empty, all alive brokers are returned).
+   * @return Alive brokers to be balanced by an intra-broker goal.
+   */
+  public static SortedSet<Broker> aliveBrokersForIntraBrokerGoal(ClusterModel clusterModel, Set<Integer> requestedBrokerIds) {
+    SortedSet<Broker> aliveBrokers = new TreeSet<>(clusterModel.aliveBrokers());
+    if (!requestedBrokerIds.isEmpty()) {
+      aliveBrokers.removeIf(broker -> !requestedBrokerIds.contains(broker.id()));
+    }
+    return aliveBrokers;
   }
 
   /**

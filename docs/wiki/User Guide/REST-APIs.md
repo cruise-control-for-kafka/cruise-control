@@ -350,6 +350,7 @@ Supported parameters are:
 | replication_throttle                          | long      | upper bound on the bandwidth used to move replicas (in bytes per second)                                                              | null                  | yes       | 
 | destination_broker_ids                        | list      | specify brokers to move replicas to                                                                                                   | available brokers     | yes       | 
 | rebalance_disk                                | boolean   | whether to balance load between disks within brokers (requires JBOD Kafka deployment)                                                 | false                 | yes       | 
+| rebalance_disk_broker_by_broker               | boolean   | whether to execute the disk rebalance one broker at a time (requires `rebalance_disk=true`)                                           | false                 | yes       | 
 | json                                          | boolean   | return in JSON format or not                                                                                                          | false                 | yes       | 
 | verbose                                       | boolean   | return detailed state information                                                                                                     | false                 | yes       | 
 | reason                                        | string    | reason for the request                                                                                                                | "No reason provided"  | yes       | 
@@ -362,8 +363,25 @@ User can specify goals to use for rebalance via `goals` parameter. When `goals` 
 
 When rebalancing a cluster, all the brokers in the cluster(except recently removed/demoted brokers if `exclude_recently_removed_brokers`/`exclude_recently_demoted_brokers` set to `true`) are eligible to give / receive replicas. All the brokers will be throttled during the partition movement. The throttling can be set in two ways.
 
-* By throttling number of replica concurrently moving into a broker. It is gated by the request parameter `concurrent_partition_movements_per_broker` or config value `num.concurrent.partition.movements.per.broker` (if request parameter is not set), `concurrent_intra_partition_movements` or config value `num.concurrent.intra.broker.partition.movements`. Similarly, the number of concurrent partition leadership changes is gated by request parameter `concurrent_leader_movements` or config value `num.concurrent.leader.movements`.
+* By throttling number of replica concurrently moving into a broker. It is gated by the request parameter `concurrent_partition_movements_per_broker` or config value `num.concurrent.partition.movements.per.broker` (if request parameter is not set), `concurrent_intra_broker_partition_movements` or config value `num.concurrent.intra.broker.partition.movements`. Similarly, the number of concurrent partition leadership changes is gated by request parameter `concurrent_leader_movements` or config value `num.concurrent.leader.movements`.
 * By throttling the bandwidth used to move replicas into a broker. It is gated by the request parameter `replication_throttle` or config value `default.replication.throttle` (if request parameter is not set).
+
+#### Rebalance disks broker by broker
+When `rebalance_disk=true`, Kafka Cruise Control balances the load between the disks within each broker (requires JBOD Kafka deployment). By default, the disks of all alive brokers are rebalanced and replica movements between disks are executed on all brokers in parallel. To limit the impact on the cluster (e.g. on Kafka versions that do not support throttling replica movements between disks), the disk rebalance can be performed one broker at a time in two ways:
+
+* Limit the disk rebalance to specific brokers via the `destination_broker_ids` parameter. For example, the following request only rebalances the disks of broker 3:
+
+      POST /kafkacruisecontrol/rebalance?rebalance_disk=true&destination_broker_ids=3&dryrun=false
+
+* Rebalance the disks of all (or the specified) brokers, but execute the replica movements between disks one broker at a time via `rebalance_disk_broker_by_broker=true`. Replica movements between the disks of a broker (bounded by `concurrent_intra_broker_partition_movements`) are completed before the replica movements of the next broker start:
+
+      POST /kafkacruisecontrol/rebalance?rebalance_disk=true&rebalance_disk_broker_by_broker=true&dryrun=false
+
+Three things to know when limiting or serializing a disk rebalance:
+
+* **The goal status covers only the requested brokers.** When `destination_broker_ids` limits a disk rebalance, `IntraBrokerDiskUsageDistributionGoal` is reported as `FIXED` once the requested brokers are balanced, even if disks on other brokers are still unbalanced. The status is a single value for the whole request, so a per-broker answer requires one request per broker.
+* **A replica movement whose disk or broker fails mid-flight is counted as finished.** The progress report and the moved-data figure include tasks that ended in `DEAD`, so an execution that lost a replica movement can still report 100%. Check `deadIntraBrokerPartitionMovement` in `GET /kafkacruisecontrol/state?substates=executor&verbose=true` to see whether any movement failed. Note also that Kafka keeps the pending move in the future replica's log directory, so a movement that Cruise Control reports as dead may still be completed by the broker itself after it comes back.
+* **With `rebalance_disk_broker_by_broker=true`, a broker whose movements cannot complete holds up the brokers after it.** Replica movements are handed out for one broker at a time, so a movement that never finishes prevents the remaining brokers from starting. `POST /kafkacruisecontrol/stop_proposal_execution` cancels the execution.
 
 ### Add a list of new brokers to Kafka Cluster
 The following POST request adds the given brokers to the Kafka cluster
