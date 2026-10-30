@@ -171,6 +171,7 @@ The goals in Cruise Control are pluggable with different priorities. The default
  * **KafkaAssignerDiskUsageDistributionGoal** - (Kafka-assigner mode) Attempts to distribute disk usage evenly among brokers based on swap.
  * **IntraBrokerDiskCapacityGoal** - Ensures that Disk space usage of each disk is below a given threshold.
  * **IntraBrokerDiskUsageDistributionGoal** - Attempts to keep the Disk space usage variance among disks within a certain range relative to the average broker Disk utilization.
+ * **IntraBrokerDiskIORateDistributionGoal** - (Rebalance-disk mode, disabled by default) Attempts to keep the estimated Disk I/O rate (i.e. `NW_IN + intra.broker.disk.io.read.weight * NW_OUT` of replicas) of each disk within a certain range relative to the average Disk I/O rate of the disks of the same broker. To enable it, add it to `intra.broker.goals` before `IntraBrokerDiskUsageDistributionGoal`, e.g. in the order `IntraBrokerDiskCapacityGoal`, `IntraBrokerDiskIORateDistributionGoal`, `IntraBrokerDiskUsageDistributionGoal` (placed after it, this goal can do little, since `IntraBrokerDiskUsageDistributionGoal` rejects most of its moves). Disk I/O balance then takes precedence over disk usage balance.
 
 #### Anomaly Notifier ####
 The anomaly notifier allows users to be notified when an anomaly is detected. Anomalies include:
