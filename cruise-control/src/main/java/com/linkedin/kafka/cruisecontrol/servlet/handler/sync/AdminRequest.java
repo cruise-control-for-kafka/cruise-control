@@ -60,11 +60,14 @@ public class AdminRequest extends AbstractSyncRequest {
     // 3. Drop selected recently removed/demoted brokers.
     String dropRecentBrokersRequest = processDropRecentBrokersRequest();
 
-    // 4. Enable/disable (1) the specified concurrency adjusters and/or (2) the MinISR-based concurrency adjustment.
+    // 4. Enable/disable (1) the specified concurrency adjusters, (2) the MinISR-based concurrency adjustment and/or (3) the replication
+    // throttle adjustment.
     Map<ConcurrencyType, Boolean> concurrencyAdjusterBefore = new HashMap<>();
     Map<ConcurrencyType, Boolean> concurrencyAdjusterAfter = new HashMap<>();
     StringBuilder minIsrBasedConcurrencyAdjustmentRequest = new StringBuilder();
-    processUpdateConcurrencyAdjusterRequest(concurrencyAdjusterBefore, concurrencyAdjusterAfter, minIsrBasedConcurrencyAdjustmentRequest);
+    StringBuilder replicationThrottleAdjustmentRequest = new StringBuilder();
+    processUpdateConcurrencyAdjusterRequest(concurrencyAdjusterBefore, concurrencyAdjusterAfter, minIsrBasedConcurrencyAdjustmentRequest,
+                                            replicationThrottleAdjustmentRequest);
 
     return new AdminResult(selfHealingBefore,
                            selfHealingAfter,
@@ -73,12 +76,14 @@ public class AdminRequest extends AbstractSyncRequest {
                            concurrencyAdjusterBefore,
                            concurrencyAdjusterAfter,
                            minIsrBasedConcurrencyAdjustmentRequest.toString(),
+                           replicationThrottleAdjustmentRequest.toString(),
                            _kafkaCruiseControl.config());
   }
 
   protected void processUpdateConcurrencyAdjusterRequest(Map<ConcurrencyType, Boolean> concurrencyAdjusterBefore,
                                                          Map<ConcurrencyType, Boolean> concurrencyAdjusterAfter,
-                                                         StringBuilder minIsrBasedConcurrencyAdjustmentRequest) {
+                                                         StringBuilder minIsrBasedConcurrencyAdjustmentRequest,
+                                                         StringBuilder replicationThrottleAdjustmentRequest) {
     UpdateConcurrencyAdjusterParameters updateConcurrencyAdjusterParameters = _parameters.updateConcurrencyAdjusterParameters();
     if (updateConcurrencyAdjusterParameters != null) {
       Set<ConcurrencyType> disableConcurrencyAdjusterFor = updateConcurrencyAdjusterParameters.disableConcurrencyAdjusterFor();
@@ -89,6 +94,14 @@ public class AdminRequest extends AbstractSyncRequest {
         minIsrBasedConcurrencyAdjustmentRequest.append(String.format("MinISR-based concurrency adjustment is modified (before: %s after: %s).",
                                                                      oldValue, minIsrBasedConcurrencyAdjustment));
         LOG.info("MinISR-based concurrency adjustment is modified by user (before: {} after: {}).", oldValue, minIsrBasedConcurrencyAdjustment);
+      }
+
+      Boolean replicationThrottleAdjustment = updateConcurrencyAdjusterParameters.replicationThrottleAdjustment();
+      if (replicationThrottleAdjustment != null) {
+        boolean oldValue = _kafkaCruiseControl.setReplicationThrottleAdjusterEnabled(replicationThrottleAdjustment);
+        replicationThrottleAdjustmentRequest.append(String.format("Replication throttle adjustment is modified (before: %s after: %s).",
+                                                                  oldValue, replicationThrottleAdjustment));
+        LOG.info("Replication throttle adjustment is modified by user (before: {} after: {}).", oldValue, replicationThrottleAdjustment);
       }
 
       for (ConcurrencyType type : disableConcurrencyAdjusterFor) {

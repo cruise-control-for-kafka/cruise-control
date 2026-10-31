@@ -25,6 +25,8 @@ AdminResult:
         type: boolean
     minIsrBasedConcurrencyAdjustmentRequest:
       type: string
+    replicationThrottleAdjustmentRequest:
+      type: string
     version:
       type: integer
       format: int32

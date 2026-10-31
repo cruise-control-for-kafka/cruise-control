@@ -145,6 +145,13 @@ AdminEndpoint:
         description: Whether to enable (true) or disable (false) MinISR-based concurrency adjustment
         schema:
           type: boolean
+      - name: replication_throttle_adjustment
+        in: query
+        description: Whether to enable (true) or disable (false) replication throttle adjustment by the concurrency adjuster. Disabling it
+          returns once a throttle update in progress (if any) has completed; during an execution, the replication throttles then stay at
+          their last values until the execution ends.
+        schema:
+          type: boolean
       - name: reason
         in: query
         description: Reason for request.

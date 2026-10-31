@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.executor;
 
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 
@@ -25,5 +29,40 @@ public final class ExecutorTestUtils {
   static final long EXECUTION_ALERTING_THRESHOLD_MS = 100L;
 
   private ExecutorTestUtils() {
+  }
+
+  /**
+   * Read a value while another thread holds the monitor of the given object -- e.g. the lock that a throttle helper holds while
+   * it alters and verifies broker configs.
+   *
+   * @param lock The object whose monitor another thread holds during the read.
+   * @param read The read.
+   * @param <T> The type of the value read.
+   * @return The value read.
+   * @throws java.util.concurrent.TimeoutException If the read does not return within 10 seconds, i.e. it waits for the monitor.
+   */
+  static <T> T readWhileLocked(Object lock, Callable<T> read) throws Exception {
+    CountDownLatch locked = new CountDownLatch(1);
+    CountDownLatch release = new CountDownLatch(1);
+    Thread holder = new Thread(() -> {
+      synchronized (lock) {
+        locked.countDown();
+        try {
+          release.await();
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+        }
+      }
+    });
+    holder.start();
+    locked.await();
+    ExecutorService reader = Executors.newSingleThreadExecutor();
+    try {
+      return reader.submit(read).get(10, TimeUnit.SECONDS);
+    } finally {
+      release.countDown();
+      holder.join();
+      reader.shutdownNow();
+    }
   }
 }

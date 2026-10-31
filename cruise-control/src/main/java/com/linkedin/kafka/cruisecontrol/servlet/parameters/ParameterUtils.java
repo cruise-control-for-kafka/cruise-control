@@ -115,6 +115,7 @@ public final class ParameterUtils {
   public static final String DISABLE_CONCURRENCY_ADJUSTER_FOR_PARAM = "disable_concurrency_adjuster_for";
   public static final String ENABLE_CONCURRENCY_ADJUSTER_FOR_PARAM = "enable_concurrency_adjuster_for";
   public static final String MIN_ISR_BASED_CONCURRENCY_ADJUSTMENT_PARAM = "min_isr_based_concurrency_adjustment";
+  public static final String REPLICATION_THROTTLE_ADJUSTMENT_PARAM = "replication_throttle_adjustment";
   public static final String EXCLUDE_RECENTLY_DEMOTED_BROKERS_PARAM = "exclude_recently_demoted_brokers";
   public static final String EXCLUDE_RECENTLY_REMOVED_BROKERS_PARAM = "exclude_recently_removed_brokers";
   public static final String REPLICA_MOVEMENT_STRATEGIES_PARAM = "replica_movement_strategies";
@@ -697,6 +698,20 @@ public final class ParameterUtils {
   @Nullable
   static Boolean minIsrBasedConcurrencyAdjustment(CruiseControlRequestContext requestContext) {
     String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), MIN_ISR_BASED_CONCURRENCY_ADJUSTMENT_PARAM);
+    if (parameterString == null) {
+      return null;
+    }
+    return Boolean.parseBoolean(requestContext.getParameter(parameterString));
+  }
+
+  /**
+   * @param requestContext The http request.
+   * @return {@code true}: enable or {@code false}: disable replication throttle adjustment by the concurrency adjuster, {@code null}
+   * if the request parameter is unset.
+   */
+  @Nullable
+  static Boolean replicationThrottleAdjustment(CruiseControlRequestContext requestContext) {
+    String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), REPLICATION_THROTTLE_ADJUSTMENT_PARAM);
     if (parameterString == null) {
       return null;
     }
