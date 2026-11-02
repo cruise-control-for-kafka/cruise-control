@@ -41,7 +41,8 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.UpdateSelfHeal
  *    &amp;execution_progress_check_interval_ms=[interval_in_ms]&amp;get_response_schema=[true/false]
  *    &amp;disable_concurrency_adjuster_for=[Set-of-{@link ConcurrencyType}]
  *    &amp;enable_concurrency_adjuster_for=[Set-of-{@link ConcurrencyType}]
- *    &amp;min_isr_based_concurrency_adjustment=[true/false]&amp;doAs=[user]&amp;reason=[reason-for-request]
+ *    &amp;min_isr_based_concurrency_adjustment=[true/false]&amp;replication_throttle_adjustment=[true/false]
+ *    &amp;doAs=[user]&amp;reason=[reason-for-request]
  * </pre>
  */
 public class AdminParameters extends AbstractParameters {

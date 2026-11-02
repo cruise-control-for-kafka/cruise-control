@@ -455,6 +455,50 @@ public class ConcurrencyConfigTest {
   }
 
   @Test
+  public void testConcurrencyAdjusterMinReplicationThrottleGreaterThanMaxReplicationThrottle() {
+    KafkaCruiseControlConfig config = EasyMock.partialMockBuilder(KafkaCruiseControlConfig.class)
+                                              .addMockedMethod(GET_INT_METHOD)
+                                              .addMockedMethod(GET_LONG_METHOD)
+                                              .createNiceMock();
+    EasyMock.expect(config.getInt(ExecutorConfig.MAX_NUM_CLUSTER_MOVEMENTS_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_MAX_NUM_CLUSTER_MOVEMENTS_CONFIG);
+    EasyMock.expect(config.getInt(ExecutorConfig.MAX_NUM_CLUSTER_PARTITION_MOVEMENTS_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_MAX_NUM_CLUSTER_PARTITION_MOVEMENTS_CONFIG);
+    EasyMock.expect(config.getInt(ExecutorConfig.NUM_CONCURRENT_PARTITION_MOVEMENTS_PER_BROKER_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_NUM_CONCURRENT_PARTITION_MOVEMENTS_PER_BROKER);
+    EasyMock.expect(config.getInt(ExecutorConfig.NUM_CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_NUM_CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS);
+    EasyMock.expect(config.getInt(ExecutorConfig.NUM_CONCURRENT_LEADER_MOVEMENTS_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_NUM_CONCURRENT_LEADER_MOVEMENTS);
+    EasyMock.expect(config.getInt(ExecutorConfig.NUM_CONCURRENT_LEADER_MOVEMENTS_PER_BROKER_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_NUM_CONCURRENT_LEADER_MOVEMENTS_PER_BROKER);
+    EasyMock.expect(config.getInt(ExecutorConfig.CONCURRENCY_ADJUSTER_MAX_PARTITION_MOVEMENTS_PER_BROKER_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_CONCURRENCY_ADJUSTER_MAX_PARTITION_MOVEMENTS_PER_BROKER);
+    EasyMock.expect(config.getInt(ExecutorConfig.CONCURRENCY_ADJUSTER_MIN_PARTITION_MOVEMENTS_PER_BROKER_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_CONCURRENCY_ADJUSTER_MIN_PARTITION_MOVEMENTS_PER_BROKER);
+    EasyMock.expect(config.getInt(ExecutorConfig.CONCURRENCY_ADJUSTER_MIN_LEADERSHIP_MOVEMENTS_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_CONCURRENCY_ADJUSTER_MIN_LEADERSHIP_MOVEMENTS);
+    EasyMock.expect(config.getInt(ExecutorConfig.CONCURRENCY_ADJUSTER_MAX_LEADERSHIP_MOVEMENTS_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_CONCURRENCY_ADJUSTER_MAX_LEADERSHIP_MOVEMENTS);
+    EasyMock.expect(config.getInt(ExecutorConfig.CONCURRENCY_ADJUSTER_MIN_LEADERSHIP_MOVEMENTS_PER_BROKER_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_CONCURRENCY_ADJUSTER_MIN_LEADERSHIP_MOVEMENTS_PER_BROKER);
+    EasyMock.expect(config.getInt(ExecutorConfig.CONCURRENCY_ADJUSTER_MAX_LEADERSHIP_MOVEMENTS_PER_BROKER_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_CONCURRENCY_ADJUSTER_MAX_LEADERSHIP_MOVEMENTS_PER_BROKER);
+    EasyMock.expect(config.getLong(ExecutorConfig.MIN_EXECUTION_PROGRESS_CHECK_INTERVAL_MS_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_MIN_EXECUTION_PROGRESS_CHECK_INTERVAL_MS);
+    EasyMock.expect(config.getLong(ExecutorConfig.EXECUTION_PROGRESS_CHECK_INTERVAL_MS_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_EXECUTION_PROGRESS_CHECK_INTERVAL_MS);
+    EasyMock.expect(config.getLong(ExecutorConfig.CONCURRENCY_ADJUSTER_MIN_REPLICATION_THROTTLE_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_CONCURRENCY_ADJUSTER_MAX_REPLICATION_THROTTLE + 1);
+    EasyMock.expect(config.getLong(ExecutorConfig.CONCURRENCY_ADJUSTER_MAX_REPLICATION_THROTTLE_CONFIG))
+            .andReturn(ExecutorConfig.DEFAULT_CONCURRENCY_ADJUSTER_MAX_REPLICATION_THROTTLE);
+
+    EasyMock.replay(config);
+    assertThrows(ConfigException.class, config::sanityCheckConcurrency);
+    EasyMock.verify(config);
+  }
+
+  @Test
   public void testConcurrencyAdjusterMaxPartitionMovementsGreaterThanMaxNumClusterMovements() {
     KafkaCruiseControlConfig config =
         EasyMock.partialMockBuilder(KafkaCruiseControlConfig.class).addMockedMethod(GET_INT_METHOD).createNiceMock();

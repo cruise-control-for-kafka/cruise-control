@@ -10,6 +10,7 @@ import com.linkedin.kafka.cruisecontrol.executor.concurrency.ExecutionConcurrenc
 import com.linkedin.kafka.cruisecontrol.executor.strategy.ReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.StrategyOptions;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -72,8 +73,17 @@ public class ExecutionTaskManager {
    * @return A list of execution tasks that move the replicas cross brokers.
    */
   public synchronized List<ExecutionTask> getInterBrokerReplicaMovementTasks() {
+    return getInterBrokerReplicaMovementTasks(Collections.emptySet());
+  }
+
+  /**
+   * @param brokersToHoldBack Brokers to or from which no new replica movement is to start, e.g. because their replicas fall behind.
+   * @return A list of execution tasks that move the replicas cross brokers, none of which moves a replica to or from the given brokers.
+   */
+  public synchronized List<ExecutionTask> getInterBrokerReplicaMovementTasks(Set<Integer> brokersToHoldBack) {
     Map<Integer, Integer> brokersReadyForReplicaMovement = brokersReadyForReplicaMovement(_inProgressInterBrokerReplicaMovementsByBrokerId,
                                                                                           ConcurrencyType.INTER_BROKER_REPLICA);
+    brokersToHoldBack.forEach(brokerId -> brokersReadyForReplicaMovement.replace(brokerId, 0));
     return _executionTaskPlanner.getInterBrokerReplicaMovementTasks(
         brokersReadyForReplicaMovement, _inProgressPartitionsForInterBrokerMovement,
         _executionConcurrencyManager.maxClusterInterBrokerPartitionMovements());

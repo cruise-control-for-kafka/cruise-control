@@ -17,6 +17,7 @@ import org.apache.kafka.common.config.ConfigDef;
 
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REASON_PARAM;
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
+import static org.apache.kafka.common.config.ConfigDef.Range.between;
 
 
 /**
@@ -311,7 +312,9 @@ public final class ExecutorConfig {
   public static final double DEFAULT_CONCURRENCY_ADJUSTER_LIMIT_LOG_FLUSH_TIME_MS = TimeUnit.SECONDS.toMillis(2);
   public static final String CONCURRENCY_ADJUSTER_LIMIT_LOG_FLUSH_TIME_MS_DOC = "The limit on the 99.9th percentile broker metric"
       + " value of log flush time. If any broker exceeds this limit during an ongoing reassignment, the relevant concurrency "
-      + "adjuster (if enabled) attempts to decrease the number of allowed concurrent movements.";
+      + "adjuster (if enabled) attempts to decrease the number of allowed concurrent movements. For replication throttle "
+      + "adjustment, it counts only when it rises over the limit since the previous metric-based check: the 99.9th percentile is in "
+      + "effect the slowest of the recent log flushes, so a single slow flush keeps it over the limit for hours at an unchanged value.";
 
   /**
    * <code>concurrency.adjuster.limit.follower.fetch.local.time.ms</code>
@@ -471,6 +474,136 @@ public final class ExecutorConfig {
   public static final String CONCURRENCY_ADJUSTER_MIN_ISR_CHECK_ENABLED_DOC = "Enable concurrency adjustment based on (At/Under)MinISR status"
       + " of partitions. This check is in addition to the metric-based concurrency adjustment and is relevant only if concurrency adjuster "
       + "itself is enabled.";
+
+  /**
+   * <code>concurrency.adjuster.replication.throttle.enabled</code>
+   */
+  public static final String CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_ENABLED_CONFIG = "concurrency.adjuster.replication.throttle.enabled";
+  public static final boolean DEFAULT_CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_ENABLED = false;
+  public static final String CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_ENABLED_DOC = "Enable the concurrency adjuster to dynamically "
+      + "adjust the replication throttle (leader and follower throttled rates) of each broker during inter-broker replica movements. "
+      + "While replicas are being moved to (from) a broker, its follower (leader) throttle follows the replication traffic measured "
+      + "through it, from the progress of the replicas catching up, at each metric-based check: it is raised towards its network "
+      + "headroom (see concurrency.adjuster.replication.throttle.target.network.utilization) only while that traffic fills it -- "
+      + "doubled during slow start, i.e. until its first decrease or concurrency adjuster limit violation, and by steps after that -- "
+      + "and lowered to the traffic plus a step if it is far above it at consecutive checks. It is reduced at once when the headroom "
+      + "shrinks, checked at each adjuster run, and divided if the broker hosts (At/Under)MinISR partitions with an out-of-sync "
+      + "replica (see concurrency.adjuster.replication.throttle.min.isr.check.enabled; the follower throttle of a broker whose "
+      + "replica of such a partition is out of sync is kept, as that replica fetches through it) or violates a concurrency adjuster "
+      + "limit at two consecutive metric-based checks. It is never below the throttle needed by the write rate of the partitions "
+      + "being moved, for each of their replicas out of the ISR -- also an old replica that fell behind (see "
+      + "concurrency.adjuster.replication.throttle.write.rate.margin), even above the network headroom -- a throttle below it stalls "
+      + "the movements -- and that need is doubled for a movement whose replicas make no progress through a throttle at its need that "
+      + "they use; only concurrency.adjuster.max.replication.throttle bounds it. A change smaller than 5% of the current throttle is "
+      + "ignored, so traffic fluctuations do not cause config updates. A broker without metrics in the current metrics window uses "
+      + "its last valid metrics from within one broker metrics window; without either, only the needed throttle is enforced. An "
+      + "execution started without a replication throttle (neither replication_throttle nor default.replication.throttle) starts each "
+      + "broker at a fraction of its network headroom (see concurrency.adjuster.replication.throttle.initial.headroom.fraction). It "
+      + "can be enabled or disabled at runtime with the replication_throttle_adjustment parameter of the admin endpoint; disabling it "
+      + "during an execution leaves the replication throttles at their last values until the execution ends.";
+
+  /**
+   * <code>concurrency.adjuster.min.replication.throttle</code>
+   */
+  public static final String CONCURRENCY_ADJUSTER_MIN_REPLICATION_THROTTLE_CONFIG = "concurrency.adjuster.min.replication.throttle";
+  public static final long DEFAULT_CONCURRENCY_ADJUSTER_MIN_REPLICATION_THROTTLE = 1024L * 1024L;
+  public static final String CONCURRENCY_ADJUSTER_MIN_REPLICATION_THROTTLE_DOC = "The minimum replication throttle in bytes/second "
+      + "that the concurrency adjuster (if enabled for replication throttle) decreases the throttle of a broker to. The throttle "
+      + "needed by the in-progress movements of the broker is a higher floor (see "
+      + "concurrency.adjuster.replication.throttle.write.rate.margin).";
+
+  /**
+   * <code>concurrency.adjuster.max.replication.throttle</code>
+   */
+  public static final String CONCURRENCY_ADJUSTER_MAX_REPLICATION_THROTTLE_CONFIG = "concurrency.adjuster.max.replication.throttle";
+  public static final long DEFAULT_CONCURRENCY_ADJUSTER_MAX_REPLICATION_THROTTLE = 1024L * 1024L * 1024L;
+  public static final String CONCURRENCY_ADJUSTER_MAX_REPLICATION_THROTTLE_DOC = "The maximum replication throttle in bytes/second "
+      + "that the concurrency adjuster (if enabled for replication throttle) can set on a broker, including the throttle needed by "
+      + "the in-progress movements. The default (1 GB/second) effectively does not cap the throttle; set it to the highest "
+      + "replication throttle that is acceptable for the cluster, even at peak traffic, since broker metrics react to traffic changes "
+      + "with a delay.";
+
+  /**
+   * <code>concurrency.adjuster.additive.increase.replication.throttle</code>
+   */
+  public static final String CONCURRENCY_ADJUSTER_ADDITIVE_INCREASE_REPLICATION_THROTTLE_CONFIG
+      = "concurrency.adjuster.additive.increase.replication.throttle";
+  public static final long DEFAULT_CONCURRENCY_ADJUSTER_ADDITIVE_INCREASE_REPLICATION_THROTTLE = 10L * 1024L * 1024L;
+  public static final String CONCURRENCY_ADJUSTER_ADDITIVE_INCREASE_REPLICATION_THROTTLE_DOC = "The amount in bytes/second by which "
+      + "the concurrency adjuster (if enabled for replication throttle) increases the replication throttle of a broker at a "
+      + "metric-based check while the movements fill it, once its slow start is over, or 5% of the broker's network capacity in that "
+      + "direction if larger -- so brokers with larger network capacity converge to their network headroom in a similar time. "
+      + "Decreases towards the network headroom are applied at once.";
+
+  /**
+   * <code>concurrency.adjuster.multiplicative.decrease.replication.throttle</code>
+   */
+  public static final String CONCURRENCY_ADJUSTER_MULTIPLICATIVE_DECREASE_REPLICATION_THROTTLE_CONFIG
+      = "concurrency.adjuster.multiplicative.decrease.replication.throttle";
+  public static final int DEFAULT_CONCURRENCY_ADJUSTER_MULTIPLICATIVE_DECREASE_REPLICATION_THROTTLE = 2;
+  public static final String CONCURRENCY_ADJUSTER_MULTIPLICATIVE_DECREASE_REPLICATION_THROTTLE_DOC = "The fixed number by which the "
+      + "replication throttle of a broker will be divided by the concurrency adjuster (if enabled for replication throttle) when the "
+      + "broker is behind on (At/Under)MinISR partitions, i.e. its replica of one is out of sync (see "
+      + "concurrency.adjuster.replication.throttle.min.isr.check.enabled), or violates any concurrency adjuster limit at two "
+      + "consecutive metric-based checks. It is never divided below the throttle needed by the in-progress movements of the broker.";
+
+  /**
+   * <code>concurrency.adjuster.replication.throttle.target.network.utilization</code>
+   */
+  public static final String CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_TARGET_NETWORK_UTILIZATION_CONFIG
+      = "concurrency.adjuster.replication.throttle.target.network.utilization";
+  public static final double DEFAULT_CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_TARGET_NETWORK_UTILIZATION = 0.8;
+  public static final String CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_TARGET_NETWORK_UTILIZATION_DOC = "The target network "
+      + "utilization (in (0, 1]) of each broker that the concurrency adjuster (if enabled for replication throttle) aims for. The "
+      + "follower (leader) throttled rate of a broker is moved towards this fraction of the broker's inbound (outbound) network "
+      + "capacity minus its inbound (outbound) traffic that the throttle does not limit, i.e. its leader traffic and the replication "
+      + "traffic of in-sync followers -- but never below the throttle needed by its in-progress movements.";
+
+  /**
+   * <code>concurrency.adjuster.replication.throttle.initial.headroom.fraction</code>
+   */
+  public static final String CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_INITIAL_HEADROOM_FRACTION_CONFIG
+      = "concurrency.adjuster.replication.throttle.initial.headroom.fraction";
+  public static final double DEFAULT_CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_INITIAL_HEADROOM_FRACTION = 0.2;
+  public static final String CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_INITIAL_HEADROOM_FRACTION_DOC = "The fraction (in (0, 1]) of "
+      + "its network headroom (see concurrency.adjuster.replication.throttle.target.network.utilization) that each broker starts at "
+      + "in an execution started without a replication throttle (neither replication_throttle nor default.replication.throttle) while "
+      + "the concurrency adjuster adjusts the replication throttle. From there, the throttle of a broker is doubled at each "
+      + "metric-based check while the replicas catching up through it fill it (slow start), until its first decrease or concurrency "
+      + "adjuster limit violation, and raised step by step after that. A broker whose headroom is unknown starts at this fraction of "
+      + "concurrency.adjuster.max.replication.throttle.";
+
+  /**
+   * <code>concurrency.adjuster.replication.throttle.min.isr.check.enabled</code>
+   */
+  public static final String CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_MIN_ISR_CHECK_ENABLED_CONFIG
+      = "concurrency.adjuster.replication.throttle.min.isr.check.enabled";
+  public static final boolean DEFAULT_CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_MIN_ISR_CHECK_ENABLED = true;
+  public static final String CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_MIN_ISR_CHECK_ENABLED_DOC = "Enable the concurrency adjuster "
+      + "(if enabled for replication throttle) to slow down the brokers that are behind: a broker whose replica of an "
+      + "(At/Under)MinISR partition without offline replicas is out of sync gets its replication throttles divided by "
+      + "concurrency.adjuster.multiplicative.decrease.replication.throttle at each check, i.e. every concurrency.adjuster.interval.ms "
+      + "/ concurrency.adjuster.num.min.isr.check (never below what its movements need), and no new inter-broker replica movement "
+      + "to or from it starts, until it is back in sync. The other brokers hosting such a partition are not slowed down for it. The "
+      + "replicas being added by the execution are ignored. It never stops the execution, and is independent of "
+      + "concurrency.adjuster.min.isr.check.enabled.";
+
+  /**
+   * <code>concurrency.adjuster.replication.throttle.write.rate.margin</code>
+   */
+  public static final String CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_WRITE_RATE_MARGIN_CONFIG
+      = "concurrency.adjuster.replication.throttle.write.rate.margin";
+  public static final double DEFAULT_CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_WRITE_RATE_MARGIN = 1.0;
+  public static final String CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_WRITE_RATE_MARGIN_DOC = "The margin above the write rate of the "
+      + "partitions being moved that the concurrency adjuster (if enabled for replication throttle) keeps in the replication throttle "
+      + "of a broker, so that the new replicas can catch up. The follower (leader) throttled rate of a broker is never below (1 + "
+      + "margin) times the total write rate of the partitions being moved to (from) the broker, even above its network headroom, "
+      + "bounded only by concurrency.adjuster.max.replication.throttle: a throttle below the write rate stalls the movements, and a "
+      + "stalled movement keeps using its throttle without making progress. A new replica of a partition at its retention limit can "
+      + "need several times the write rate, since retention truncates a replica that falls behind the log start of the leader; so a "
+      + "movement whose replicas make no progress over six adjuster runs, through a throttle at its need that is in use, has that "
+      + "need doubled; one that makes no progress through throttles that are mostly idle is reported instead (something else holds it "
+      + "back).";
 
   /**
    * <code>concurrency.adjuster.min.isr.cache.size</code>
@@ -781,6 +914,58 @@ public final class ExecutorConfig {
                             DEFAULT_CONCURRENCY_ADJUSTER_MIN_ISR_CHECK_ENABLED,
                             ConfigDef.Importance.HIGH,
                             CONCURRENCY_ADJUSTER_MIN_ISR_CHECK_ENABLED_DOC)
+                    .define(CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_ENABLED_CONFIG,
+                            ConfigDef.Type.BOOLEAN,
+                            DEFAULT_CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_ENABLED,
+                            ConfigDef.Importance.HIGH,
+                            CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_ENABLED_DOC)
+                    .define(CONCURRENCY_ADJUSTER_MIN_REPLICATION_THROTTLE_CONFIG,
+                            ConfigDef.Type.LONG,
+                            DEFAULT_CONCURRENCY_ADJUSTER_MIN_REPLICATION_THROTTLE,
+                            atLeast(1),
+                            ConfigDef.Importance.MEDIUM,
+                            CONCURRENCY_ADJUSTER_MIN_REPLICATION_THROTTLE_DOC)
+                    .define(CONCURRENCY_ADJUSTER_MAX_REPLICATION_THROTTLE_CONFIG,
+                            ConfigDef.Type.LONG,
+                            DEFAULT_CONCURRENCY_ADJUSTER_MAX_REPLICATION_THROTTLE,
+                            atLeast(1),
+                            ConfigDef.Importance.MEDIUM,
+                            CONCURRENCY_ADJUSTER_MAX_REPLICATION_THROTTLE_DOC)
+                    .define(CONCURRENCY_ADJUSTER_ADDITIVE_INCREASE_REPLICATION_THROTTLE_CONFIG,
+                            ConfigDef.Type.LONG,
+                            DEFAULT_CONCURRENCY_ADJUSTER_ADDITIVE_INCREASE_REPLICATION_THROTTLE,
+                            atLeast(1),
+                            ConfigDef.Importance.LOW,
+                            CONCURRENCY_ADJUSTER_ADDITIVE_INCREASE_REPLICATION_THROTTLE_DOC)
+                    .define(CONCURRENCY_ADJUSTER_MULTIPLICATIVE_DECREASE_REPLICATION_THROTTLE_CONFIG,
+                            ConfigDef.Type.INT,
+                            DEFAULT_CONCURRENCY_ADJUSTER_MULTIPLICATIVE_DECREASE_REPLICATION_THROTTLE,
+                            atLeast(2),
+                            ConfigDef.Importance.LOW,
+                            CONCURRENCY_ADJUSTER_MULTIPLICATIVE_DECREASE_REPLICATION_THROTTLE_DOC)
+                    .define(CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_TARGET_NETWORK_UTILIZATION_CONFIG,
+                            ConfigDef.Type.DOUBLE,
+                            DEFAULT_CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_TARGET_NETWORK_UTILIZATION,
+                            between(Double.MIN_VALUE, 1.0),
+                            ConfigDef.Importance.MEDIUM,
+                            CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_TARGET_NETWORK_UTILIZATION_DOC)
+                    .define(CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_INITIAL_HEADROOM_FRACTION_CONFIG,
+                            ConfigDef.Type.DOUBLE,
+                            DEFAULT_CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_INITIAL_HEADROOM_FRACTION,
+                            between(Double.MIN_VALUE, 1.0),
+                            ConfigDef.Importance.MEDIUM,
+                            CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_INITIAL_HEADROOM_FRACTION_DOC)
+                    .define(CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_MIN_ISR_CHECK_ENABLED_CONFIG,
+                            ConfigDef.Type.BOOLEAN,
+                            DEFAULT_CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_MIN_ISR_CHECK_ENABLED,
+                            ConfigDef.Importance.MEDIUM,
+                            CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_MIN_ISR_CHECK_ENABLED_DOC)
+                    .define(CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_WRITE_RATE_MARGIN_CONFIG,
+                            ConfigDef.Type.DOUBLE,
+                            DEFAULT_CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_WRITE_RATE_MARGIN,
+                            atLeast(0),
+                            ConfigDef.Importance.LOW,
+                            CONCURRENCY_ADJUSTER_REPLICATION_THROTTLE_WRITE_RATE_MARGIN_DOC)
                     .define(CONCURRENCY_ADJUSTER_MIN_ISR_CACHE_SIZE_CONFIG,
                             ConfigDef.Type.INT,
                             DEFAULT_CONCURRENCY_ADJUSTER_MIN_ISR_CACHE_SIZE,

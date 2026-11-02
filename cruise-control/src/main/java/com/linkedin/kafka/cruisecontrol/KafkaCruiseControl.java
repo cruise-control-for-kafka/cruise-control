@@ -450,6 +450,18 @@ public class KafkaCruiseControl {
   }
 
   /**
+   * Enable or disable replication throttle adjustment by the concurrency adjuster. Disabling it waits for the throttle update of a
+   * broker that is already in progress (if any) to complete; during an execution, the replication throttles then stay at their last
+   * values until the execution ends.
+   *
+   * @param isReplicationThrottleAdjustmentEnabled {@code true} to enable replication throttle adjustment, {@code false} otherwise.
+   * @return {@code true} if replication throttle adjustment was enabled before, {@code false} otherwise.
+   */
+  public boolean setReplicationThrottleAdjusterEnabled(boolean isReplicationThrottleAdjustmentEnabled) {
+    return _executor.setReplicationThrottleAdjusterEnabled(isReplicationThrottleAdjustmentEnabled);
+  }
+
+  /**
    * Drop the given brokers from the recently removed/demoted brokers.
    *
    * @param brokersToDrop Brokers to drop from the recently removed or demoted brokers.
