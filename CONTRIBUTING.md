@@ -5,7 +5,10 @@ As a contributor, you represent that the code you submit is your
 original work or that of your employer (in which case you represent you
 have the right to bind your employer). By submitting code, you (and, if
 applicable, your employer) are licensing the submitted code to
-the open source community subject to the Apache 2.0 license. 
+the open source community subject to the Apache 2.0 license.
+These representations and this license grant stand even if you used
+generative AI tools to prepare any part of the change. See
+[Use of Generative AI Tools](#use-of-generative-ai-tools). 
 
 File Headers
 =============
@@ -64,11 +67,15 @@ Before you contribute AI-generated output:
   applicable license terms.
 - Follow your employer's policies when they are stricter.
 
-If an AI tool prepared any part of a commit, add a `Co-Authored-By` (or
-`Generated-by` / `Assisted-by`) trailer that names the tool and its version:
+If an AI tool prepared any part of the change, check the generative AI
+disclosure box in the [pull request template](./.github/pull_request_template.md).
+Leave the box unchecked when no AI tool was used.
+
+If an AI tool prepared any part of a commit, add a `Assisted-by` trailer that names 
+the tool and its version:
 
 ```
-Co-Authored-By: <AI tool name and version>
+Assisted-by: <AI tool name and version>
 ```
 
 Example:
@@ -79,7 +86,7 @@ Ensure tests wait for metadata propagation
 Executor tests fail when the broker has not yet propagated topic
 metadata after topic creation.
 
-Co-Authored-By: Cursor Grok 4.6
+Assisted-by: Claude Opus 5.5
 Signed-off-by: Jane Developer <jane@example.com>
 ```
 
