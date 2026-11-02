@@ -127,7 +127,21 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
 
     throttleHelper.setThrottles(Collections.singletonList(proposal));
     throttleHelper.clearThrottles(Collections.singletonList(task), Collections.emptyList());
+    assertFalse(throttleHelper.throttlingEnabled());
+    assertTrue(throttleHelper.throttledBrokers().isEmpty());
+    assertTrue(throttleHelper.throttleRateByBroker().isEmpty());
+    assertNull(throttleHelper.leaderThrottleRate(0));
+    assertNull(throttleHelper.followerThrottleRate(0));
+    assertThrows(IllegalStateException.class, () -> throttleHelper.updateThrottleRates(0, 100L, 100L));
     EasyMock.verify(mockAdminClient);
+  }
+
+  @Test
+  public void testThrottleRateByBrokerDoesNotWaitForTheLockOfTheHelper() throws Exception {
+    // The executor state reads the rates while setting, clearing or updating the throttles holds the lock of the helper for as
+    // long as it takes to alter and verify the configs.
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(EasyMock.mock(Admin.class), 100L);
+    assertTrue(readWhileLocked(throttleHelper, throttleHelper::throttleRateByBroker).isEmpty());
   }
 
   @Test
@@ -271,6 +285,105 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
       assertExpectedThrottledRateForBroker(i, null);
     }
     assertExpectedThrottledReplicas(TOPIC0, "");
+  }
+
+  @Test
+  public void testUpdateThrottleRates() throws Exception {
+    createTopics();
+
+    final long throttleRate = 100L;
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_adminClient, throttleRate);
+    ExecutionProposal proposal = new ExecutionProposal(new TopicPartition(TOPIC0, 0),
+                                                       100,
+                                                       new ReplicaPlacementInfo(0),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(1)),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(2)));
+
+    // Updating the throttle rates of a broker that is currently throttled applies the new rates right away.
+    throttleHelper.setThrottles(Collections.singletonList(proposal));
+    assertEquals(Set.of(0, 1, 2), throttleHelper.throttledBrokers());
+    throttleHelper.updateThrottleRates(1, 200L, 300L);
+    assertEquals(200L, throttleHelper.leaderThrottleRate(1).longValue());
+    assertEquals(300L, throttleHelper.followerThrottleRate(1).longValue());
+    assertEquals(throttleRate, throttleHelper.leaderThrottleRate(0).longValue());
+    assertExpectedThrottledRateForBroker(0, throttleRate);
+    assertExpectedThrottledRatesForBroker(1, 200L, 300L);
+    assertExpectedThrottledRateForBroker(2, throttleRate);
+    assertExpectedThrottledRateForBroker(3, null);
+
+    // Updating the throttle rates of a broker whose throttle has been removed must not throttle the broker again.
+    throttleHelper.clearThrottles(Collections.singletonList(completedTaskForProposal(0, proposal)), Collections.emptyList());
+    assertTrue(throttleHelper.throttledBrokers().isEmpty());
+    throttleHelper.updateThrottleRates(1, 400L, 500L);
+    for (int i = 0; i < clusterSize(); i++) {
+      assertExpectedThrottledRateForBroker(i, null);
+    }
+
+    // The updated throttle rates are applied once the broker participates in subsequent throttled replica movements.
+    throttleHelper.setThrottles(Collections.singletonList(proposal));
+    assertExpectedThrottledRateForBroker(0, throttleRate);
+    assertExpectedThrottledRatesForBroker(1, 400L, 500L);
+    assertExpectedThrottledRateForBroker(2, throttleRate);
+    assertExpectedThrottledRateForBroker(3, null);
+
+    throttleHelper.clearThrottles(Collections.singletonList(completedTaskForProposal(1, proposal)), Collections.emptyList());
+    for (int i = 0; i < clusterSize(); i++) {
+      assertExpectedThrottledRateForBroker(i, null);
+    }
+    assertExpectedThrottledReplicas(TOPIC0, "");
+  }
+
+  @Test
+  public void testUpdateThrottleRatesInBatch() throws Exception {
+    createTopics();
+
+    final long throttleRate = 100L;
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_adminClient, throttleRate);
+    ExecutionProposal proposal = new ExecutionProposal(new TopicPartition(TOPIC0, 0),
+                                                       100,
+                                                       new ReplicaPlacementInfo(0),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(1)),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(2)));
+
+    // Rates set before any broker is throttled are only remembered -- e.g. the initial rates of an execution without a throttle.
+    throttleHelper.updateThrottleRates(Map.of(0, 150L, 3, 160L), Map.of(0, 250L, 3, 260L));
+    for (int i = 0; i < clusterSize(); i++) {
+      assertExpectedThrottledRateForBroker(i, null);
+    }
+    // ... so the executor state reports no broker yet.
+    assertTrue(throttleHelper.throttleRateByBroker().isEmpty());
+    throttleHelper.setThrottles(Collections.singletonList(proposal));
+    assertExpectedThrottledRatesForBroker(0, 150L, 250L);
+    assertExpectedThrottledRateForBroker(1, throttleRate);
+    assertExpectedThrottledRateForBroker(2, throttleRate);
+    assertExpectedThrottledRateForBroker(3, null);
+    assertEquals(Map.of(0, List.of(150L, 250L), 1, List.of(throttleRate, throttleRate), 2, List.of(throttleRate, throttleRate)),
+                 leaderAndFollowerRateByBroker(throttleHelper));
+
+    // Several throttled brokers are updated in one batch; broker 3 is not throttled, so its rates are only remembered.
+    throttleHelper.updateThrottleRates(Map.of(1, 200L, 2, 210L, 3, 220L), Map.of(1, 300L, 2, 310L, 3, 320L));
+    assertExpectedThrottledRatesForBroker(0, 150L, 250L);
+    assertExpectedThrottledRatesForBroker(1, 200L, 300L);
+    assertExpectedThrottledRatesForBroker(2, 210L, 310L);
+    assertExpectedThrottledRateForBroker(3, null);
+    assertEquals(220L, throttleHelper.leaderThrottleRate(3).longValue());
+    // The executor state reports the throttled brokers only, at their current rates.
+    assertEquals(Map.of(0, List.of(150L, 250L), 1, List.of(200L, 300L), 2, List.of(210L, 310L)),
+                 leaderAndFollowerRateByBroker(throttleHelper));
+
+    throttleHelper.clearThrottles(Collections.singletonList(completedTaskForProposal(0, proposal)), Collections.emptyList());
+    for (int i = 0; i < clusterSize(); i++) {
+      assertExpectedThrottledRateForBroker(i, null);
+    }
+    assertExpectedThrottledReplicas(TOPIC0, "");
+    assertTrue(throttleHelper.throttleRateByBroker().isEmpty());
+  }
+
+  private static Map<Integer, List<Long>> leaderAndFollowerRateByBroker(ReplicationThrottleHelper throttleHelper) {
+    Map<Integer, List<Long>> leaderAndFollowerRateByBroker = new HashMap<>();
+    throttleHelper.throttleRateByBroker()
+                  .forEach((brokerId, throttle) -> leaderAndFollowerRateByBroker.put(brokerId, List.of(throttle.leader(), throttle.follower())));
+    return leaderAndFollowerRateByBroker;
   }
 
   @Test
@@ -637,6 +750,17 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
       EasyMock.expect(adminClient.incrementalAlterConfigs(Collections.singletonMap(cf, EasyMock.anyObject()))).andReturn(mockAlterConfigsResult);
       EasyMock.replay(mockAlterConfigsResult, mockFuture);
     }
+  }
+
+  private void assertExpectedThrottledRatesForBroker(int brokerId, long expectedLeaderRate, long expectedFollowerRate)
+      throws ExecutionException, InterruptedException {
+    ConfigResource cf = new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(brokerId));
+    Map<ConfigResource, Config> brokerConfig = _adminClient.describeConfigs(Collections.singletonList(cf)).all().get();
+    assertNotNull(brokerConfig.get(cf));
+    assertEquals(String.valueOf(expectedLeaderRate),
+                 brokerConfig.get(cf).get(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_RATE_CONFIG).value());
+    assertEquals(String.valueOf(expectedFollowerRate),
+                 brokerConfig.get(cf).get(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_RATE_CONFIG).value());
   }
 
   private void assertExpectedThrottledRateForBroker(int brokerId, Long expectedRate) throws ExecutionException, InterruptedException {

@@ -123,6 +123,28 @@ public class ExecutionTaskManagerTest {
         taskManager.getExecutionConcurrencyManager().getExecutionClusterLeadershipConcurrency());
   }
 
+  @Test
+  public void testInterBrokerReplicaMovementTasksHoldBackBrokers() {
+    TopicPartition tp = new TopicPartition("topic", 0);
+    ReplicaPlacementInfo r0 = new ReplicaPlacementInfo(0);
+    ReplicaPlacementInfo r1 = new ReplicaPlacementInfo(1);
+    ReplicaPlacementInfo r2 = new ReplicaPlacementInfo(2);
+    // Broker 2 (the leader) hands the replica of broker 0 over to broker 1.
+    ExecutionProposal proposal = new ExecutionProposal(tp, 10, r2, Arrays.asList(r0, r2), Arrays.asList(r2, r1));
+    StrategyOptions strategyOptions = new StrategyOptions.Builder(generateExpectedCluster(proposal)).build();
+    // No movement starts from (broker 2) or to (broker 1) a broker held back; a broker that only loses a replica (broker 0) is not
+    // involved in the copy.
+    for (Map.Entry<Set<Integer>, Integer> entry : Map.of(Set.<Integer>of(), 1, Set.of(0), 1, Set.of(1), 0, Set.of(2), 0).entrySet()) {
+      taskManager.clear();
+      taskManager.setExecutionModeForTaskTracker(false);
+      taskManager.addExecutionProposals(Collections.singletonList(proposal), Collections.emptySet(), strategyOptions, null);
+      taskManager.getExecutionConcurrencyManager().setExecutionConcurrencyForAllBrokersOrCluster(null, ConcurrencyType.INTER_BROKER_REPLICA);
+      assertEquals("held back: " + entry.getKey(), entry.getValue().intValue(),
+                   taskManager.getInterBrokerReplicaMovementTasks(entry.getKey()).size());
+    }
+    taskManager.clear();
+  }
+
   private void verifyStateChangeSequence(List<ExecutionTaskState> stateSequence,
                                          ExecutionTask task,
                                          ExecutionTaskManager taskManager) {

@@ -230,6 +230,8 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
    *     {@link ExecutorConfig#CONCURRENCY_ADJUSTER_MAX_LEADERSHIP_MOVEMENTS_CONFIG}</li>
    *   <li>{@link ExecutorConfig#MIN_EXECUTION_PROGRESS_CHECK_INTERVAL_MS_CONFIG} <=
    *     {@link ExecutorConfig#EXECUTION_PROGRESS_CHECK_INTERVAL_MS_CONFIG}</li>
+   *   <li>{@link ExecutorConfig#CONCURRENCY_ADJUSTER_MIN_REPLICATION_THROTTLE_CONFIG} <=
+   *     {@link ExecutorConfig#CONCURRENCY_ADJUSTER_MAX_REPLICATION_THROTTLE_CONFIG}</li>
    * </ul>
    */
   void sanityCheckConcurrency() {
@@ -336,6 +338,14 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
       throw new ConfigException(String.format("Minimum execution progress check interval [%d] cannot be greater than the "
                                               + "default execution progress check interval [%d].",
                                               minExecutionProgressCheckIntervalMs, defaultExecutionProgressCheckIntervalMs));
+    }
+
+    long concurrencyAdjusterMinReplicationThrottle = getLong(ExecutorConfig.CONCURRENCY_ADJUSTER_MIN_REPLICATION_THROTTLE_CONFIG);
+    long concurrencyAdjusterMaxReplicationThrottle = getLong(ExecutorConfig.CONCURRENCY_ADJUSTER_MAX_REPLICATION_THROTTLE_CONFIG);
+    if (concurrencyAdjusterMinReplicationThrottle > concurrencyAdjusterMaxReplicationThrottle) {
+      throw new ConfigException(String.format("Minimum replication throttle of concurrency adjuster [%d] cannot be greater than the "
+                                              + "maximum replication throttle of concurrency adjuster [%d].",
+                                              concurrencyAdjusterMinReplicationThrottle, concurrencyAdjusterMaxReplicationThrottle));
     }
   }
 
