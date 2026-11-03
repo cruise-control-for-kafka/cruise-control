@@ -32,6 +32,7 @@ import java.util.Objects;
 import java.util.PriorityQueue;
 import java.util.Set;
 import java.util.SortedSet;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -48,15 +49,37 @@ import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.replicaS
  * is not excluded for replica leadership moves has at least the minimum number (specified by
  * {@link AnalyzerConfig#MIN_TOPIC_LEADERS_PER_BROKER_CONFIG}) of leader replica of each topic in a configured set of topics
  * (specified by {@link AnalyzerConfig#TOPICS_WITH_MIN_LEADERS_PER_BROKER_CONFIG}).
+ *
+ * <p>
+ * Topics that the optimization cannot move are held rather than enforced: topics excluded from partition movement, and,
+ * when only immigrant replicas may move (e.g. a replication factor change), topics without immigrant replicas. A held topic
+ * does not fail the optimization, and this goal does not move its replicas, but it still rejects any action that would take a
+ * leader of the topic away from a broker at or below the minimum.
+ * </p>
+ *
+ * <p>
+ * Likewise, a broker that the optimization may not move replicas to (it is not among the requested destination brokers) is
+ * brought to the minimum only by leadership movements. If that is not enough, the broker is held at its current number of leaders.
+ * </p>
+ *
+ * <p>
+ * Neither fails the optimization nor marks this goal as violated: the shortfalls this goal cannot reach are only logged, the
+ * same way {@link RackAwareGoal} does not check excluded topics.
+ * </p>
  */
 public class MinTopicLeadersPerBrokerGoal extends AbstractGoal {
   private static final Logger LOG = LoggerFactory.getLogger(MinTopicLeadersPerBrokerGoal.class);
+  private static final int MAX_TOPICS_TO_LOG = 20;
   private final String _replicaSortName = replicaSortName(this, true, false);
   // Map holding the number of min leaders per broker for each topic
   // When {@link AnalyzerConfig#MIN_TOPIC_LEADERS_PER_BROKER_CONFIG} is set to 0 the number
   // of leaders are computed dynamically as no-of-topic-leaders / no-of-brokers-available.
   // When set to a positive value, this is used instead
   private Map<String, Integer> _mustHaveTopicMinLeadersPerBroker;
+  // Topics with a minimum, whose minimum is enforced in this optimization.
+  private Set<String> _topicsToEnforce;
+  // Topics with a minimum, which this optimization cannot move: not enforced, but never made worse.
+  private Set<String> _topicsToHold;
 
   public MinTopicLeadersPerBrokerGoal() {
 
@@ -167,6 +190,8 @@ public class MinTopicLeadersPerBrokerGoal extends AbstractGoal {
         Utils.getTopicNamesMatchedWithPattern(_balancingConstraint.topicsWithMinLeadersPerBrokerPattern(), clusterModel::topics));
     // populate min leaders per broker for each topic
     _mustHaveTopicMinLeadersPerBroker = new HashMap<>();
+    _topicsToEnforce = Collections.emptySet();
+    _topicsToHold = Collections.emptySet();
     if (mustHaveTopicLeadersPerBroker.isEmpty()) {
       return;
     }
@@ -180,13 +205,23 @@ public class MinTopicLeadersPerBrokerGoal extends AbstractGoal {
                       ? eligibleBrokersForLeadership.isEmpty() ? 0 : topicNumLeaders / eligibleBrokersForLeadership.size()
                       : _balancingConstraint.minTopicLeadersPerBroker());
     }
+    _topicsToHold = Collections.unmodifiableSet(topicsToHold(mustHaveTopicLeadersPerBroker, clusterModel, optimizationOptions));
+    Set<String> topicsToEnforce = new HashSet<>(mustHaveTopicLeadersPerBroker);
+    topicsToEnforce.removeAll(_topicsToHold);
+    _topicsToEnforce = Collections.unmodifiableSet(topicsToEnforce);
+    if (!_topicsToHold.isEmpty()) {
+      LOG.info("[{}] Holding {} topic(s) that this optimization cannot move: their minimum leaders per broker is not enforced, but"
+               + " not made worse either.", name(), _topicsToHold.size());
+      LOG.debug("[{}] Held topics: {}.", name(), _topicsToHold);
+    }
     // Sanity checks
-    validateTopicsWithMinLeaderIsNotExcluded(optimizationOptions);
-    validateEnoughLeaderToDistribute(numLeadersByTopicNames, eligibleBrokersForLeadership);
+    Map<String, Integer> numLeadersByTopicToEnforce = new HashMap<>(numLeadersByTopicNames);
+    numLeadersByTopicToEnforce.keySet().retainAll(_topicsToEnforce);
+    validateEnoughLeaderToDistribute(numLeadersByTopicToEnforce, eligibleBrokersForLeadership);
     validateBrokersAllowedReplicaMoveExist(clusterModel, optimizationOptions);
     boolean onlyMoveImmigrantReplicas = optimizationOptions.onlyMoveImmigrantReplicas();
     new SortedReplicasHelper().maybeAddSelectionFunc(ReplicaSortFunctionFactory.selectImmigrants(), onlyMoveImmigrantReplicas)
-                              .addSelectionFunc(ReplicaSortFunctionFactory.selectReplicasBasedOnIncludedTopics(mustHaveTopicLeadersPerBroker))
+                              .addSelectionFunc(ReplicaSortFunctionFactory.selectReplicasBasedOnIncludedTopics(_topicsToEnforce))
                               .maybeAddPriorityFunc(ReplicaSortFunctionFactory.prioritizeImmigrants(), !onlyMoveImmigrantReplicas)
                               .trackSortedReplicasFor(_replicaSortName, clusterModel);
   }
@@ -195,23 +230,38 @@ public class MinTopicLeadersPerBrokerGoal extends AbstractGoal {
     return _mustHaveTopicMinLeadersPerBroker.get(topic);
   }
 
-  private void validateTopicsWithMinLeaderIsNotExcluded(OptimizationOptions optimizationOptions)
-      throws OptimizationFailureException {
-    if (optimizationOptions.excludedTopics().isEmpty()) {
-      return;
-    }
-    Set<String> shouldNotBeExcludedTopics = new HashSet<>();
-    _mustHaveTopicMinLeadersPerBroker.keySet().forEach(topicName -> {
-      if (optimizationOptions.excludedTopics().contains(topicName)) {
-        shouldNotBeExcludedTopics.add(topicName);
+  /**
+   * Get the topics with a minimum that this optimization cannot move. These are held: their minimum is not enforced, but an
+   * action that would take a leader of such a topic away from a broker at or below the minimum is still rejected.
+   * <ul>
+   *   <li>Topics excluded from partition movement (by the request or by
+   *   {@link AnalyzerConfig#TOPICS_EXCLUDED_FROM_PARTITION_MOVEMENT_CONFIG}).</li>
+   *   <li>If only immigrant replicas can be moved, topics without an immigrant replica: e.g. topics whose replication factor a
+   *   topic configuration request does not change.</li>
+   * </ul>
+   *
+   * @param mustHaveTopics Topics that must have a minimum number of leaders per broker.
+   * @param clusterModel The state of the cluster.
+   * @param optimizationOptions Options to take into account during optimization.
+   * @return Topics to hold.
+   */
+  private static Set<String> topicsToHold(Set<String> mustHaveTopics, ClusterModel clusterModel, OptimizationOptions optimizationOptions) {
+    Set<String> topicsToHold = new TreeSet<>();
+    for (String topic : mustHaveTopics) {
+      if (optimizationOptions.excludedTopics().contains(topic)) {
+        topicsToHold.add(topic);
       }
-    });
-    if (!shouldNotBeExcludedTopics.isEmpty()) {
-      throw new OptimizationFailureException(String.format("[%s] Topics that must have a minimum number of leaders per broker cannot be excluded."
-                                                           + " This error implies a config error. Topics should not be excluded=[%s] (see %s).",
-                                                           name(), String.join(", ", shouldNotBeExcludedTopics),
-                                                           AnalyzerConfig.TOPICS_WITH_MIN_LEADERS_PER_BROKER_CONFIG));
     }
+    if (optimizationOptions.onlyMoveImmigrantReplicas()) {
+      Set<String> topicsWithImmigrants = new HashSet<>();
+      clusterModel.brokers().forEach(broker -> broker.immigrantReplicas().forEach(r -> topicsWithImmigrants.add(r.topicPartition().topic())));
+      for (String topic : mustHaveTopics) {
+        if (!topicsWithImmigrants.contains(topic)) {
+          topicsToHold.add(topic);
+        }
+      }
+    }
+    return topicsToHold;
   }
 
   private void validateEnoughLeaderToDistribute(Map<String, Integer> numLeadersByTopicNames, Set<Broker> eligibleBrokersForLeadership)
@@ -284,20 +334,52 @@ public class MinTopicLeadersPerBrokerGoal extends AbstractGoal {
     // Sanity check: No replica should be moved to a broker, which used to host any replica of the same partition on its broken disk.
     GoalUtils.ensureReplicasMoveOffBrokersWithBadDisks(clusterModel, name());
     ensureBrokersAllHaveEnoughLeaderOfTopics(clusterModel, optimizationOptions);
+    logMinimumsOutOfReach(clusterModel, optimizationOptions);
     finish();
+  }
+
+  /**
+   * Log the brokers that stay below the minimum of a topic because this optimization cannot bring them to it: a held topic on an
+   * eligible broker, or any topic on an eligible broker that may not receive replicas. This neither fails the optimization nor
+   * marks this goal as violated.
+   *
+   * @param clusterModel The state of the cluster.
+   * @param optimizationOptions Options to take into account during optimization.
+   */
+  private void logMinimumsOutOfReach(ClusterModel clusterModel, OptimizationOptions optimizationOptions) {
+    Map<String, SortedSet<Integer>> brokersBelowMinimumByTopic = new TreeMap<>();
+    for (String topic : _mustHaveTopicMinLeadersPerBroker.keySet()) {
+      boolean isHeld = _topicsToHold.contains(topic);
+      for (Broker broker : clusterModel.aliveBrokers()) {
+        if (isEligibleToHaveLeaders(broker, optimizationOptions)
+            && (isHeld || !canReceiveReplicas(broker, optimizationOptions))
+            && broker.numLeadersFor(topic) < minTopicLeadersPerBroker(topic)) {
+          brokersBelowMinimumByTopic.computeIfAbsent(topic, t -> new TreeSet<>()).add(broker.id());
+        }
+      }
+    }
+    if (!brokersBelowMinimumByTopic.isEmpty()) {
+      LOG.info("[{}] {} topic(s) stay below their minimum leaders per broker, because this optimization cannot move them or cannot"
+               + " move replicas to these brokers (not a violation of this goal). Brokers below the minimum by topic{}: {}.", name(),
+               brokersBelowMinimumByTopic.size(),
+               brokersBelowMinimumByTopic.size() > MAX_TOPICS_TO_LOG ? String.format(" (first %d)", MAX_TOPICS_TO_LOG) : "",
+               brokersBelowMinimumByTopic.entrySet().stream().limit(MAX_TOPICS_TO_LOG).map(Object::toString)
+                                         .collect(Collectors.joining(", ")));
+    }
   }
 
   private void ensureBrokersAllHaveEnoughLeaderOfTopics(ClusterModel clusterModel, OptimizationOptions optimizationOptions)
       throws OptimizationFailureException {
-    if (_mustHaveTopicMinLeadersPerBroker.isEmpty()) {
+    if (_topicsToEnforce.isEmpty()) {
       // Early termination to avoid some unnecessary computation
       return;
     }
     for (Broker broker : clusterModel.aliveBrokers()) {
-      if (!isEligibleToHaveLeaders(broker, optimizationOptions)) {
+      if (!isEligibleToHaveLeaders(broker, optimizationOptions) || !canReceiveReplicas(broker, optimizationOptions)) {
+        // A broker that may not receive replicas is held, not enforced (see logMinimumsOutOfReach).
         continue;
       }
-      for (String mustHaveLeaderPerBrokerTopicName : _mustHaveTopicMinLeadersPerBroker.keySet()) {
+      for (String mustHaveLeaderPerBrokerTopicName : _topicsToEnforce) {
         int leaderCount = broker.numLeadersFor(mustHaveLeaderPerBrokerTopicName);
         if (leaderCount < minTopicLeadersPerBroker(mustHaveLeaderPerBrokerTopicName)) {
           throw new OptimizationFailureException(String.format("[%s] Broker %d has insufficient per-broker leaders for topic %s (required: %d "
@@ -322,14 +404,14 @@ public class MinTopicLeadersPerBrokerGoal extends AbstractGoal {
                                     OptimizationOptions optimizationOptions) throws OptimizationFailureException {
     LOG.debug("balancing broker {}, optimized goals = {}", broker, optimizedGoals);
     moveAwayOfflineReplicas(broker, clusterModel, optimizedGoals, optimizationOptions);
-    if (_mustHaveTopicMinLeadersPerBroker.isEmpty()) {
+    if (_topicsToEnforce.isEmpty()) {
       // Early termination to avoid some unnecessary computation
       return;
     }
     if (!(broker.isAlive() && isEligibleToHaveLeaders(broker, optimizationOptions))) {
       return;
     }
-    for (String topicMustHaveLeaderPerBroker : _mustHaveTopicMinLeadersPerBroker.keySet()) {
+    for (String topicMustHaveLeaderPerBroker : _topicsToEnforce) {
       maybeMoveLeaderOfTopicToBroker(topicMustHaveLeaderPerBroker, broker, clusterModel, optimizedGoals, optimizationOptions);
     }
   }
@@ -362,6 +444,11 @@ public class MinTopicLeadersPerBrokerGoal extends AbstractGoal {
           }
         }
       }
+    }
+
+    if (!canReceiveReplicas(broker, optimizationOptions)) {
+      // This broker may not receive replicas, so it is held with the leaders it has (see logMinimumsOutOfReach).
+      return;
     }
 
     // Try to move leader replica(s) of the interested topic from other brokers to this broker
@@ -438,6 +525,19 @@ public class MinTopicLeadersPerBrokerGoal extends AbstractGoal {
   private static boolean isEligibleToHaveLeaders(Broker broker, OptimizationOptions optimizationOptions) {
     return !optimizationOptions.excludedBrokersForLeadership().contains(broker.id())
            && !optimizationOptions.excludedBrokersForReplicaMove().contains(broker.id());
+  }
+
+  /**
+   * A broker that is eligible to have leaders but is not among the requested destination brokers (if any) may receive leadership,
+   * but no replica.
+   *
+   * @param broker Broker to check.
+   * @param optimizationOptions Options to take into account during optimization.
+   * @return {@code true} if the optimization may move replicas to the given broker, {@code false} otherwise.
+   */
+  private static boolean canReceiveReplicas(Broker broker, OptimizationOptions optimizationOptions) {
+    Set<Integer> requestedDestinationBrokerIds = optimizationOptions.requestedDestinationBrokerIds();
+    return requestedDestinationBrokerIds.isEmpty() || requestedDestinationBrokerIds.contains(broker.id());
   }
 
   private void moveAwayOfflineReplicas(Broker srcBroker,
