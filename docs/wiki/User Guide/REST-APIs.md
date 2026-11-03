@@ -350,6 +350,7 @@ Supported parameters are:
 | replication_throttle                          | long      | upper bound on the bandwidth used to move replicas (in bytes per second)                                                              | null                  | yes       | 
 | destination_broker_ids                        | list      | specify brokers to move replicas to                                                                                                   | available brokers     | yes       | 
 | rebalance_disk                                | boolean   | whether to balance load between disks within brokers (requires JBOD Kafka deployment)                                                 | false                 | yes       | 
+| queue_rebalance_disk                          | boolean   | whether to rebalance the disks within brokers once the execution of this rebalance completes (requires `dryrun=false`)                | false                 | yes       | 
 | json                                          | boolean   | return in JSON format or not                                                                                                          | false                 | yes       | 
 | verbose                                       | boolean   | return detailed state information                                                                                                     | false                 | yes       | 
 | reason                                        | string    | reason for the request                                                                                                                | "No reason provided"  | yes       | 
@@ -364,6 +365,18 @@ When rebalancing a cluster, all the brokers in the cluster(except recently remov
 
 * By throttling number of replica concurrently moving into a broker. It is gated by the request parameter `concurrent_partition_movements_per_broker` or config value `num.concurrent.partition.movements.per.broker` (if request parameter is not set), `concurrent_intra_partition_movements` or config value `num.concurrent.intra.broker.partition.movements`. Similarly, the number of concurrent partition leadership changes is gated by request parameter `concurrent_leader_movements` or config value `num.concurrent.leader.movements`.
 * By throttling the bandwidth used to move replicas into a broker. It is gated by the request parameter `replication_throttle` or config value `default.replication.throttle` (if request parameter is not set).
+
+#### Queue a disk rebalance after a rebalance
+With `queue_rebalance_disk=true`, a rebalance balances the disks within the brokers (as `rebalance_disk=true` does) once its own execution completes, under the same user task:
+
+    POST /kafkacruisecontrol/rebalance?queue_rebalance_disk=true&dryrun=false
+
+* The disk rebalance is computed only after the rebalance's replica movements have finished, from a fresh cluster model, so it balances the disks as they are then, including where the moved replicas landed. If the rebalance has nothing to move between brokers, the disk rebalance starts right away.
+* Between the two, the executor stays reserved for the same user task (`GENERATING_PROPOSALS_FOR_EXECUTION`), so no other execution, including a self-healing one, can start in between. Partition metrics are not sampled during an execution, so the disk rebalance first waits until the load monitor meets its model completeness requirements, for at most two `partition.metrics.window.ms`.
+* The disk rebalance inherits the request's `excluded_topics`, `destination_broker_ids`, `concurrent_intra_broker_partition_movements`, `execution_progress_check_interval_ms` and `reason`, and uses the disk rebalance goals, as `rebalance_disk=true` does.
+* The executor state (`GET /kafkacruisecontrol/state?substates=executor`) reports `queuedExecution: REBALANCE_DISK` while the disk rebalance is queued, and the reason of the user task, suffixed with `(queued REBALANCE_DISK)`, while it is prepared and executed.
+* The disk rebalance is dropped if the rebalance's execution is stopped or fails, and `POST /kafkacruisecontrol/stop_proposal_execution` also cancels it before it starts. A dropped disk rebalance, or one that cannot start (e.g. the load monitor is not ready in time), finishes the user task with an error, and the executor notifier reports why. If the disks are already balanced, the user task completes without a second execution.
+* `queue_rebalance_disk` requires `dryrun=false`, and cannot be combined with `rebalance_disk=true`.
 
 ### Add a list of new brokers to Kafka Cluster
 The following POST request adds the given brokers to the Kafka cluster

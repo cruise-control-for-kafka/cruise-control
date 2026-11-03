@@ -147,6 +147,13 @@ RebalanceEndpoint:
         schema:
           type: boolean
           default: false
+      - name: queue_rebalance_disk
+        in: query
+        description: Whether to rebalance the disks within brokers (as rebalance_disk=true does) once the execution of this rebalance
+          completes, under the same user task (requires dryrun=false; cannot be combined with rebalance_disk=true).
+        schema:
+          type: boolean
+          default: false
       - name: review_id
         in: query
         description: Review id for 2-step verification.
