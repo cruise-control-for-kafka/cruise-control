@@ -129,7 +129,8 @@ public class AddBrokersRunnable extends GoalBasedOperationRunnable {
                                            _replicationThrottle,
                                            _isTriggeredByUserRequest,
                                            _uuid,
-                                           SKIP_AUTO_REFRESHING_CONCURRENCY);
+                                           SKIP_AUTO_REFRESHING_CONCURRENCY,
+                                           false);
     }
     return result;
   }

@@ -210,7 +210,8 @@ public class UpdateTopicConfigurationRunnable extends GoalBasedOperationRunnable
           _maxInterBrokerPartitionMovements,
           0, _clusterLeaderMovementConcurrency, _brokerLeaderMovementConcurrency,
           _executionProgressCheckIntervalMs, _replicaMovementStrategy, _replicationThrottle, _isTriggeredByUserRequest, _uuid,
-          SKIP_AUTO_REFRESHING_CONCURRENCY);
+          SKIP_AUTO_REFRESHING_CONCURRENCY,
+          false);
     }
     return result;
   }

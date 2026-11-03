@@ -129,7 +129,8 @@ RebalanceEndpoint:
           default: false
       - name: destination_broker_ids
         in: query
-        description: Specify the destination brokers for partitions to move replicas to.
+        description: Specify the destination brokers for partitions to move replicas to. If rebalance_disk is true,
+          limits the disk rebalance to the specified brokers.
         schema:
           type: array
           items:
@@ -144,6 +145,13 @@ RebalanceEndpoint:
       - name: rebalance_disk
         in: query
         description: Whether to balance load between disks within brokers (requires JBOD Kafka deployment).
+        schema:
+          type: boolean
+          default: false
+      - name: rebalance_disk_broker_by_broker
+        in: query
+        description: Whether to execute the disk rebalance one broker at a time, i.e. finish moving replicas between the
+          disks of a broker before starting on the next broker (requires rebalance_disk to be true).
         schema:
           type: boolean
           default: false
