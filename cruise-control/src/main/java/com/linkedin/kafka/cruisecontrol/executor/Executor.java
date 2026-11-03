@@ -887,6 +887,7 @@ public class Executor {
     _skipInterBrokerReplicaConcurrencyAdjustment = skipInterBrokerReplicaConcurrencyAdjustment;
     _executionTaskManager.setIntraBrokerMovementsBrokerByBroker(intraBrokerMovementsBrokerByBroker);
     try {
+      sanityCheckNoOfflineLogDirs(proposals);
       initProposalExecution(proposals, unthrottledBrokers, requestedInterBrokerPartitionMovementConcurrency, requestedMaxClusterPartitionMovements,
                             requestedIntraBrokerPartitionMovementConcurrency, requestedClusterLeadershipMovementConcurrency,
                             requestedBrokerLeadershipMovementConcurrency, requestedExecutionProgressCheckIntervalMs, replicaMovementStrategy,
@@ -917,6 +918,37 @@ public class Executor {
     if (uuid == null || !uuid.equals(_uuid)) {
       throw new IllegalStateException(String.format("Attempt to initialize proposal execution with a UUID %s that differs from"
                                                     + " the UUID used for generating proposals for execution %s.", uuid, _uuid));
+    }
+  }
+
+  /**
+   * Refuse to execute replica movements between the disks of a broker that has an offline logdir. Kafka refuses every
+   * such movement (KafkaStorageException), so these tasks would only end up dead. Only the brokers that the proposals
+   * move replicas between disks on are checked, and their logdirs are read from Kafka, not from the cluster model.
+   *
+   * @param proposals Proposals to be executed.
+   */
+  private void sanityCheckNoOfflineLogDirs(Collection<ExecutionProposal> proposals) {
+    Set<Integer> brokersWithIntraBrokerMovements = proposals.stream()
+                                                            .flatMap(p -> p.replicasToMoveBetweenDisksByBroker().keySet().stream())
+                                                            .collect(Collectors.toSet());
+    if (brokersWithIntraBrokerMovements.isEmpty()) {
+      return;
+    }
+    Map<Integer, Set<String>> offlineLogDirs;
+    try {
+      offlineLogDirs = offlineLogDirsByBroker(brokersWithIntraBrokerMovements, _adminClient, _config);
+    } catch (TimeoutException | InterruptedException | ExecutionException e) {
+      // This may indicate transient (e.g. network) issues.
+      throw new IllegalStateException(String.format("Failed to retrieve the logdirs of brokers %s, which have replica movements"
+                                                    + " between their disks.", brokersWithIntraBrokerMovements), e);
+    }
+    if (!offlineLogDirs.isEmpty()) {
+      throw new IllegalStateException(String.format(
+          "Cannot move replicas between the disks of brokers %s: they have offline logdirs %s. Kafka refuses every replica"
+          + " movement between the disks of a broker with an offline logdir. Replace the failed disk, or remove it from the"
+          + " broker's log.dirs and restart the broker, then retry. To rebalance the disks of the other brokers now, leave"
+          + " these brokers out via destination_broker_ids.", offlineLogDirs.keySet(), offlineLogDirs));
     }
   }
 

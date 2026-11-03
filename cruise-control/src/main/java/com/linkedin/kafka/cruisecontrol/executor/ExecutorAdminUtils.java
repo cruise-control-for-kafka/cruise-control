@@ -24,6 +24,8 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -111,6 +113,32 @@ public final class ExecutorAdminUtils {
         executionTaskManager.markTaskDead(replicaToTask.get(entry.getKey()));
       }
     }
+  }
+
+  /**
+   * Get the offline logdirs of the given brokers, i.e. the logdirs that the brokers report with an error.
+   * Kafka refuses to move any replica between the disks of a broker that has an offline logdir.
+   *
+   * @param brokersToCheck Brokers whose logdirs to check.
+   * @param adminClient The adminClient to send describeLogDirs request.
+   * @param config The config object that holds all the Cruise Control related configs
+   * @return Offline logdirs by broker id, only for brokers that have at least one offline logdir.
+   */
+  static Map<Integer, Set<String>> offlineLogDirsByBroker(Collection<Integer> brokersToCheck,
+                                                          Admin adminClient,
+                                                          KafkaCruiseControlConfig config)
+      throws InterruptedException, ExecutionException, TimeoutException {
+    Map<Integer, Set<String>> offlineLogDirsByBroker = new TreeMap<>();
+    Map<Integer, KafkaFuture<Map<String, LogDirDescription>>> logDirsByBrokerId = adminClient.describeLogDirs(brokersToCheck).descriptions();
+    for (Map.Entry<Integer, KafkaFuture<Map<String, LogDirDescription>>> entry : logDirsByBrokerId.entrySet()) {
+      Map<String, LogDirDescription> logInfos = entry.getValue().get(config.getLong(LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG), TimeUnit.MILLISECONDS);
+      for (Map.Entry<String, LogDirDescription> logInfo : logInfos.entrySet()) {
+        if (logInfo.getValue().error() != null) {
+          offlineLogDirsByBroker.computeIfAbsent(entry.getKey(), b -> new TreeSet<>()).add(logInfo.getKey());
+        }
+      }
+    }
+    return offlineLogDirsByBroker;
   }
 
   /**
