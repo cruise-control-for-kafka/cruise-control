@@ -121,6 +121,7 @@ public final class ParameterUtils {
   public static final String APPROVE_PARAM = "approve";
   public static final String DISCARD_PARAM = "discard";
   public static final String REBALANCE_DISK_MODE_PARAM = "rebalance_disk";
+  public static final String QUEUE_REBALANCE_DISK_PARAM = "queue_rebalance_disk";
   public static final String POPULATE_DISK_INFO_PARAM = "populate_disk_info";
   public static final String CAPACITY_ONLY_PARAM = "capacity_only";
   public static final String BROKER_ID_AND_LOGDIRS_PARAM = "brokerid_and_logdirs";
@@ -378,6 +379,17 @@ public final class ParameterUtils {
 
   static boolean isRebalanceDiskMode(CruiseControlRequestContext requestContext) {
     return getBooleanParam(requestContext, REBALANCE_DISK_MODE_PARAM, false);
+  }
+
+  static boolean queueRebalanceDisk(CruiseControlRequestContext requestContext) {
+    return getBooleanParam(requestContext, QUEUE_REBALANCE_DISK_PARAM, false);
+  }
+
+  /**
+   * @return The goals of a disk rebalance, i.e. of a request with {@link #REBALANCE_DISK_MODE_PARAM}.
+   */
+  public static List<String> rebalanceDiskModeGoals() {
+    return List.of(IntraBrokerDiskCapacityGoal.class.getSimpleName(), IntraBrokerDiskUsageDistributionGoal.class.getSimpleName());
   }
 
   static boolean populateDiskInfo(CruiseControlRequestContext requestContext) {
@@ -767,7 +779,7 @@ public final class ParameterUtils {
       if (!goals.isEmpty()) {
         throw new UserRequestException("Rebalance disk mode does not support explicitly specifying goals in request.");
       }
-      return List.of(IntraBrokerDiskCapacityGoal.class.getSimpleName(), IntraBrokerDiskUsageDistributionGoal.class.getSimpleName());
+      return rebalanceDiskModeGoals();
     }
     return goals;
   }
