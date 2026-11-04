@@ -5,10 +5,7 @@ As a contributor, you represent that the code you submit is your
 original work or that of your employer (in which case you represent you
 have the right to bind your employer). By submitting code, you (and, if
 applicable, your employer) are licensing the submitted code to
-the open source community subject to the Apache 2.0 license.
-These representations and this license grant stand even if you used
-generative AI tools to prepare any part of the change. See
-[Use of Generative AI Tools](#use-of-generative-ai-tools). 
+the open source community subject to the Apache 2.0 license. 
 
 File Headers
 =============
@@ -52,49 +49,14 @@ Make sure the name and email match your Git configuration (`user.name` and `user
 Use of Generative AI Tools
 ==========================
 
-Code and other content generated in whole or in part using AI tools may be
-contributed. Follow the Linux Foundation
+You may use AI tools to prepare a contribution. You must still follow the
+contribution agreement, the DCO, and the Linux Foundation
 [guidance on generative AI tools](https://www.linuxfoundation.org/legal/generative-ai).
+AI output must not reproduce third-party code.
 
-Before you contribute AI-generated output:
-
-- Confirm that the tool's terms of use do not restrict the output in a way that
-  conflicts with this project's Apache 2.0 license, its intellectual property
-  policies, or the [Open Source Definition](https://opensource.org/osd).
-- If the output includes pre-existing third-party copyrighted material, confirm
-  you have permission to contribute it under a license that complies with this
-  project's licensing policies, and include notice, attribution, and the
-  applicable license terms.
-- Follow your employer's policies when they are stricter.
-
-If an AI tool prepared any part of the change, check the generative AI
-disclosure box in the [pull request template](./.github/pull_request_template.md).
-Leave the box unchecked when no AI tool was used.
-
-If an AI tool prepared any part of a commit, add a `Assisted-by` trailer that names 
-the tool and its version:
-
-```
-Assisted-by: <AI tool name and version>
-```
-
-Example:
-
-```
-Ensure tests wait for metadata propagation
-
-Executor tests fail when the broker has not yet propagated topic
-metadata after topic creation.
-
-Assisted-by: Claude Opus 5.5
-Signed-off-by: Jane Developer <jane@example.com>
-```
-
-The `Signed-off-by` line from the Developer Certificate of Origin is still
-required. The human author remains responsible for the change.
-
-Do not attribute a commit to an AI tool when a human wrote the change
-without one.
+Check the generative AI disclosure box in the
+[pull request template](./.github/pull_request_template.md) when AI tools
+prepared any part of the change.
 
 Coding agents should also follow [AGENTS.md](./AGENTS.md).
 
