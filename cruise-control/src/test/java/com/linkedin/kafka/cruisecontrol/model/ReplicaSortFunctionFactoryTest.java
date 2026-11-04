@@ -63,8 +63,37 @@ public class ReplicaSortFunctionFactoryTest {
     assertFalse(selection.apply(excludedReplica));
   }
 
+  @Test
+  public void testSelectReplicasOfDisksToRemove() {
+    ClusterModel clusterModel = new ClusterModel(new ModelGeneration(0, 0L), 1.0);
+    clusterModel.createRack(RACK);
+    clusterModel.createBroker(RACK, Integer.toString(BROKER_ID), BROKER_ID,
+                              new BrokerCapacityInfo(TestConstants.BROKER_CAPACITY, TestConstants.DISK_CAPACITY), true);
+    Replica replicaOfDiskToRemove = createReplica(clusterModel, INCLUDED_TP, LOGDIR0);
+    Replica replicaOfOtherDisk = createReplica(clusterModel, new TopicPartition(INCLUDED_TP.topic(), 1), LOGDIR1);
+    Function<Replica, Boolean> selection = ReplicaSortFunctionFactory.selectReplicasOfDisksToRemove();
+
+    // No disk is marked for removal: no replica is selected.
+    assertFalse(selection.apply(replicaOfDiskToRemove));
+    assertFalse(selection.apply(replicaOfOtherDisk));
+
+    clusterModel.markDiskForRemoval(BROKER_ID, LOGDIR0);
+    assertTrue(selection.apply(replicaOfDiskToRemove));
+    assertFalse(selection.apply(replicaOfOtherDisk));
+
+    // Once moved off the disk to remove, its replica is still selected, so that the other intra-broker goals can place it on the
+    // remaining disks; the replica that was on a remaining disk all along is still not selected.
+    clusterModel.relocateReplica(INCLUDED_TP, BROKER_ID, LOGDIR1);
+    assertTrue(selection.apply(replicaOfDiskToRemove));
+    assertFalse(selection.apply(replicaOfOtherDisk));
+  }
+
   private static Replica createReplica(ClusterModel clusterModel, TopicPartition tp) {
-    Replica replica = clusterModel.createReplica(RACK, BROKER_ID, tp, 0, true, false, LOGDIR0, false);
+    return createReplica(clusterModel, tp, LOGDIR0);
+  }
+
+  private static Replica createReplica(ClusterModel clusterModel, TopicPartition tp, String logdir) {
+    Replica replica = clusterModel.createReplica(RACK, BROKER_ID, tp, 0, true, false, logdir, false);
     clusterModel.setReplicaLoad(RACK, BROKER_ID, tp, getAggregatedMetricValues(1.0, 10.0, 10.0, 100.0), Collections.singletonList(1L));
     return replica;
   }

@@ -588,7 +588,11 @@ Note that `brokerid_and_logdirs` takes comma as delimiter between two broker id 
 
 A request without `brokerid_and_logdirs`, or with a pair that is not a broker id followed by a hyphen and a logdir, is rejected with HTTP 400.
 
-Unlike most other optimization endpoints, `remove_disks` does not accept a `goals` parameter. Proposal generation always uses `IntraBrokerDiskCapacityGoal` with disk-emptying enabled, regardless of the `intra.broker.goals` or `default.goals` configuration. This goal generates intra-broker replica movement proposals to move all replicas off the specified disks while keeping each remaining disk under the configured capacity threshold. It only moves the replicas on the specified disks -- including the replicas of topics excluded from partition movement (`topics.excluded.from.partition.movement`) -- to other disks of the same broker: it neither balances the remaining disks, nor touches other disks above the capacity threshold or other brokers. The other intra-broker goals, such as `IntraBrokerDiskUsageDistributionGoal`, are not used, since they balance the disks of every broker.
+Unlike most other optimization endpoints, `remove_disks` does not accept a `goals` parameter. Proposal generation first runs `IntraBrokerDiskCapacityGoal` with disk-emptying enabled -- whether or not `intra.broker.goals` lists it -- then the other goals of `intra.broker.goals`, in their configured order (`default.goals` is not used):
+* `IntraBrokerDiskCapacityGoal` moves all replicas off the specified disks -- including the replicas of topics excluded from partition movement (`topics.excluded.from.partition.movement`) -- to the other disks of the same broker, keeping each remaining disk under the configured capacity threshold. Each replica goes to the disk with the most room left at that point.
+* The other intra-broker goals, such as `IntraBrokerDiskUsageDistributionGoal`, then choose where these replicas go: they may move them again among the remaining disks of their broker, to balance those disks. They move no other replica, and only act on the brokers of the specified disks.
+
+Only the final disk of each replica becomes a proposal, so each replica of a removed disk is moved once, and no other replica is moved. `remove_disks` touches neither other disks above the capacity threshold nor other brokers. If the remaining disks of a broker were unbalanced before the removal, placing the replicas of the removed disks may not be enough to balance them: the intra-broker goals that are not met are then reported as violated, and `rebalance` with `rebalance_disk=true` balances these brokers fully. The cluster model must meet the completeness requirements of all these goals, as for `rebalance` with `rebalance_disk=true`.
 
 Before generating proposals, Cruise Control validates that:
 * Each specified logdir exists on the corresponding broker.
@@ -618,8 +622,8 @@ before the disk removal. The load after the disk removal shows the removed disks
 brokers without the removed disks.
 
 The summary shows the disk usage balance before and after the disk removal, as for `rebalance` with `rebalance_disk=true`. The
-disks to remove are only counted before the removal: e.g. removing one disk of each of three brokers with four disks each gives
-`unbalanced disks 12 of 12 -> 9 of 9`. The remaining disks are not rebalanced by `remove_disks`.
+disks to remove are only counted before the removal: e.g. removing one disk of each of three brokers with four disks each counts
+12 disks before and 9 after (`unbalanced disks <N> of 12 -> <M> of 9`).
 
 ### Stop the current proposal execution task
 The following POST request will let Cruise Control stop an ongoing `rebalance`, `add_broker`,  `remove_broker`, `fix_offline_replica`, `topic_configuration`, `demote_broker` or `remove_disks` operation:

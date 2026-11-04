@@ -10,8 +10,11 @@ import com.linkedin.kafka.cruisecontrol.analyzer.BalancingConstraint;
 import com.linkedin.kafka.cruisecontrol.analyzer.OptimizationOptions;
 import com.linkedin.kafka.cruisecontrol.analyzer.OptimizerResult;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskCapacityGoal;
 import com.linkedin.kafka.cruisecontrol.common.Resource;
+import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
 import com.linkedin.kafka.cruisecontrol.exception.KafkaCruiseControlException;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
@@ -19,6 +22,7 @@ import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModelStats;
 import com.linkedin.kafka.cruisecontrol.model.Disk;
 import com.linkedin.kafka.cruisecontrol.model.Replica;
+import com.linkedin.kafka.cruisecontrol.monitor.MonitorUtils;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.RemoveDisksParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.response.OptimizationResult;
 import com.linkedin.kafka.cruisecontrol.servlet.response.stats.BrokerStats;
@@ -68,15 +72,34 @@ public class RemoveDisksRunnable extends GoalBasedOperationRunnable {
     @Override
     protected void init() {
         _kafkaCruiseControl.sanityCheckDryRun(_dryRun, _stopOngoingExecution);
-        Goal intraBrokerDiskCapacityGoal = new IntraBrokerDiskCapacityGoal(true);
-        intraBrokerDiskCapacityGoal.configure(_kafkaCruiseControl.config().mergedConfigValues());
-        _goalsByPriority = new ArrayList<>(Collections.singletonList(intraBrokerDiskCapacityGoal));
+        _goalsByPriority = goalsByPriority(_kafkaCruiseControl.config());
 
         _operationProgress = _future.operationProgress();
         if (_stopOngoingExecution) {
             maybeStopOngoingExecutionToModifyAndWait(_kafkaCruiseControl, _operationProgress);
         }
-        _combinedCompletenessRequirements = _goalsByPriority.get(0).clusterModelCompletenessRequirements();
+        _combinedCompletenessRequirements = MonitorUtils.combineLoadRequirementOptions(_goalsByPriority);
+    }
+
+    /**
+     * The goals of a disk removal, by priority: an {@link IntraBrokerDiskCapacityGoal} that empties the disks to remove, followed by
+     * the other intra-broker goals ({@link AnalyzerConfig#INTRA_BROKER_GOALS_CONFIG}) in their configured order. The latter only move
+     * the replicas of the disks to remove again, to place them on the remaining disks of their brokers (see
+     * {@link GoalUtils#isRemovingDisks(ClusterModel)}).
+     *
+     * @param config The configurations for Cruise Control.
+     * @return The goals of a disk removal, by priority.
+     */
+    static List<Goal> goalsByPriority(KafkaCruiseControlConfig config) {
+        Goal intraBrokerDiskCapacityGoal = new IntraBrokerDiskCapacityGoal(true);
+        intraBrokerDiskCapacityGoal.configure(config.mergedConfigValues());
+        List<Goal> goalsByPriority = new ArrayList<>(Collections.singletonList(intraBrokerDiskCapacityGoal));
+        for (Goal goal : config.getConfiguredInstances(AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG, Goal.class)) {
+            if (!(goal instanceof IntraBrokerDiskCapacityGoal)) {
+                goalsByPriority.add(goal);
+            }
+        }
+        return goalsByPriority;
     }
 
     @Override

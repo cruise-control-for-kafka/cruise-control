@@ -11,6 +11,8 @@ import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils;
 import com.linkedin.kafka.cruisecontrol.analyzer.GoalOptimizer;
 import com.linkedin.kafka.cruisecontrol.analyzer.OptimizerResult;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskCapacityGoal;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.common.TestConstants;
@@ -30,6 +32,7 @@ import com.linkedin.kafka.cruisecontrol.servlet.parameters.RemoveDisksParameters
 import com.linkedin.kafka.cruisecontrol.servlet.response.OptimizationResult;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -148,15 +151,116 @@ public class RemoveDisksRunnableTest {
   }
 
   @Test
+  public void testPlacesTheReplicasOfTheRemovedDisksWithTheIntraBrokerGoals() throws Exception {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
+    // Broker 0 has three disks: the one to remove, with six replicas of 10% of its capacity each, LOGDIR1 -- twice as large -- with a
+    // replica that stays, and an empty LOGDIR2. Broker 1 has unbalanced disks.
+    ClusterModel clusterModel = new ClusterModel(new ModelGeneration(0, 0L), 1.0);
+    createBroker(clusterModel, 0, brokerCapacity(Map.of(LOGDIR0, DISK_CAPACITY, LOGDIR1, 2 * DISK_CAPACITY, LOGDIR2, DISK_CAPACITY)));
+    createBroker(clusterModel, 1, new BrokerCapacityInfo(TestConstants.BROKER_CAPACITY, TestConstants.DISK_CAPACITY));
+    Set<TopicPartition> replicasOfDiskToRemove = new HashSet<>();
+    for (int partition = 0; partition < 6; partition++) {
+      TopicPartition tp = new TopicPartition("topic", partition);
+      createReplica(clusterModel, 0, tp, LOGDIR0, 0.1 * DISK_CAPACITY);
+      replicasOfDiskToRemove.add(tp);
+    }
+    createReplica(clusterModel, 0, new TopicPartition("kept", 0), LOGDIR1, 0.3 * DISK_CAPACITY);
+    createReplica(clusterModel, 1, new TopicPartition("kept", 1), LOGDIR0, 0.6 * DISK_CAPACITY);
+
+    OptimizerResult result = removeDisks(config, clusterModel, Collections.singletonMap(0, Collections.singleton(LOGDIR0)),
+                                         Collections.emptySet());
+
+    // IntraBrokerDiskCapacityGoal puts the six replicas on LOGDIR1, which has the most room, then IntraBrokerDiskUsageDistributionGoal
+    // moves three of them on to LOGDIR2: the remaining disks hold 30% of their capacity each. Only the replicas of the removed disk
+    // move -- each to its final disk -- and broker 1 is left alone.
+    Map<String, Integer> numReplicasByLogdir = new HashMap<>();
+    for (ExecutionProposal proposal : result.goalProposals()) {
+      assertTrue(proposal.toString(), replicasOfDiskToRemove.contains(proposal.topicPartition()));
+      assertEquals(Collections.singleton(0), proposal.replicasToMoveBetweenDisksByBroker().keySet());
+      numReplicasByLogdir.merge(proposal.replicasToMoveBetweenDisksByBroker().get(0).logdir(), 1, Integer::sum);
+    }
+    assertEquals(Map.of(LOGDIR1, 3, LOGDIR2, 3), numReplicasByLogdir);
+    // Neither the removed disk -- which has no capacity -- nor the unbalanced disks of broker 1 count as unbalanced disks.
+    assertEquals(Collections.emptySet(), result.violatedGoalsAfterOptimization());
+  }
+
+  @Test
+  public void testReportsTheIntraBrokerGoalsThatTheReplicasOfTheRemovedDisksCannotMeet() throws Exception {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
+    // The removed disk has two small replicas, too little to balance LOGDIR1 (at 35% with replicas that stay) and the empty LOGDIR2.
+    ClusterModel clusterModel = new ClusterModel(new ModelGeneration(0, 0L), 1.0);
+    createBroker(clusterModel, 0, brokerCapacity(Map.of(LOGDIR0, DISK_CAPACITY, LOGDIR1, 2 * DISK_CAPACITY, LOGDIR2, DISK_CAPACITY)));
+    Set<TopicPartition> replicasOfDiskToRemove = Set.of(new TopicPartition("topic", 0), new TopicPartition("topic", 1));
+    replicasOfDiskToRemove.forEach(tp -> createReplica(clusterModel, 0, tp, LOGDIR0, 0.05 * DISK_CAPACITY));
+    createReplica(clusterModel, 0, new TopicPartition("kept", 0), LOGDIR1, 0.35 * DISK_CAPACITY);
+    createReplica(clusterModel, 0, new TopicPartition("kept", 1), LOGDIR1, 0.35 * DISK_CAPACITY);
+
+    OptimizerResult result = removeDisks(config, clusterModel, Collections.singletonMap(0, Collections.singleton(LOGDIR0)),
+                                         Collections.emptySet());
+
+    // The replicas of the removed disk go to the emptier disk, the other replicas stay, and the disk removal goes ahead with
+    // IntraBrokerDiskUsageDistributionGoal reported as violated.
+    assertEquals(2, result.goalProposals().size());
+    for (ExecutionProposal proposal : result.goalProposals()) {
+      assertTrue(proposal.toString(), replicasOfDiskToRemove.contains(proposal.topicPartition()));
+      assertEquals(LOGDIR2, proposal.replicasToMoveBetweenDisksByBroker().get(0).logdir());
+    }
+    assertEquals(Collections.singleton(IntraBrokerDiskUsageDistributionGoal.class.getSimpleName()),
+                 result.violatedGoalsAfterOptimization());
+  }
+
+  @Test
+  public void testSpreadsTheReplicasOfTheRemovedDisksOverTheDisksWithTheMostRoom() throws Exception {
+    // With IntraBrokerDiskCapacityGoal alone, each replica goes to the disk with the most room left after the previous moves.
+    Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
+    props.setProperty(AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG, IntraBrokerDiskCapacityGoal.class.getName());
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(props);
+    ClusterModel clusterModel = new ClusterModel(new ModelGeneration(0, 0L), 1.0);
+    createBroker(clusterModel, 0, brokerCapacity(Map.of(LOGDIR0, DISK_CAPACITY, LOGDIR1, DISK_CAPACITY, LOGDIR2, DISK_CAPACITY)));
+    TopicPartition largest = new TopicPartition("topic", 0);
+    TopicPartition medium = new TopicPartition("topic", 1);
+    TopicPartition smallest = new TopicPartition("topic", 2);
+    createReplica(clusterModel, 0, largest, LOGDIR0, 0.3 * DISK_CAPACITY);
+    createReplica(clusterModel, 0, medium, LOGDIR0, 0.2 * DISK_CAPACITY);
+    createReplica(clusterModel, 0, smallest, LOGDIR0, 0.1 * DISK_CAPACITY);
+    createReplica(clusterModel, 0, new TopicPartition("kept", 0), LOGDIR1, 0.05 * DISK_CAPACITY);
+
+    OptimizerResult result = removeDisks(config, clusterModel, Collections.singletonMap(0, Collections.singleton(LOGDIR0)),
+                                         Collections.emptySet());
+
+    // The largest replica goes to the empty LOGDIR2, which then has less room left than LOGDIR1: the other two go to LOGDIR1.
+    Map<TopicPartition, String> logdirByReplica = new HashMap<>();
+    result.goalProposals().forEach(proposal -> logdirByReplica.put(proposal.topicPartition(),
+                                                                   proposal.replicasToMoveBetweenDisksByBroker().get(0).logdir()));
+    assertEquals(Map.of(largest, LOGDIR2, medium, LOGDIR1, smallest, LOGDIR1), logdirByReplica);
+  }
+
+  @Test
+  public void testRunsTheCapacityGoalFirstThenTheOtherIntraBrokerGoals() {
+    // The IntraBrokerDiskCapacityGoal that empties the disks to remove comes first, whether intra.broker.goals lists it after the
+    // other goals or not at all.
+    for (String intraBrokerGoals : List.of(IntraBrokerDiskUsageDistributionGoal.class.getName() + ","
+                                           + IntraBrokerDiskCapacityGoal.class.getName(),
+                                           IntraBrokerDiskUsageDistributionGoal.class.getName())) {
+      Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
+      props.setProperty(AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG, intraBrokerGoals);
+      List<String> goalNames = RemoveDisksRunnable.goalsByPriority(new KafkaCruiseControlConfig(props)).stream().map(Goal::name).toList();
+      assertEquals(intraBrokerGoals, List.of(IntraBrokerDiskCapacityGoal.class.getSimpleName(),
+                                             IntraBrokerDiskUsageDistributionGoal.class.getSimpleName()), goalNames);
+    }
+  }
+
+  @Test
   public void testOnlyDiskStatsWhateverTheIntraBrokerGoalsConfig() throws Exception {
-    // remove_disks runs its own IntraBrokerDiskCapacityGoal, even when intra.broker.goals does not list it: the goal itself says
-    // that it is an intra-broker goal, so its result shows disk-level stats only.
+    // remove_disks runs its own IntraBrokerDiskCapacityGoal, even when intra.broker.goals does not list it, followed by the configured
+    // intra-broker goals: these goals say that they are intra-broker goals, so the result shows disk-level stats only.
     Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
     props.setProperty(AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG, IntraBrokerDiskUsageDistributionGoal.class.getName());
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(props);
     String response = response(removeDisk(config), config, false);
 
     assertTrue(response, response.contains("Stats for IntraBrokerDiskCapacityGoal"));
+    assertTrue(response, response.contains("Stats for IntraBrokerDiskUsageDistributionGoal"));
     assertFalse(response, response.contains("AVG:{cpu"));
   }
 
@@ -368,6 +472,16 @@ public class RemoveDisksRunnableTest {
     OptimizationResult response = new OptimizationResult(optimizerResult, config);
     response.discardIrrelevantResponse(parameters);
     return response.cachedResponse();
+  }
+
+  /**
+   * @param diskCapacityByLogdir The capacity of each disk of the broker.
+   * @return The capacity of a broker with the given disks.
+   */
+  private static BrokerCapacityInfo brokerCapacity(Map<String, Double> diskCapacityByLogdir) {
+    Map<Resource, Double> brokerCapacity = new HashMap<>(TestConstants.BROKER_CAPACITY);
+    brokerCapacity.put(Resource.DISK, diskCapacityByLogdir.values().stream().mapToDouble(Double::doubleValue).sum());
+    return new BrokerCapacityInfo(brokerCapacity, diskCapacityByLogdir);
   }
 
   private static void createBroker(ClusterModel clusterModel, int brokerId, BrokerCapacityInfo capacity) {

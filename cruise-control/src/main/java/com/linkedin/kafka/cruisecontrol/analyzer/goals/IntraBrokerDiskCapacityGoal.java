@@ -21,6 +21,7 @@ import com.linkedin.kafka.cruisecontrol.model.ReplicaSortFunctionFactory;
 import com.linkedin.kafka.cruisecontrol.model.SortedReplicasHelper;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.SortedSet;
@@ -212,14 +213,17 @@ public class IntraBrokerDiskCapacityGoal extends AbstractGoal {
     }
     List<Disk> candidateDisks = new ArrayList<>(broker.disks());
     candidateDisks.removeAll(disksOverUtilized);
-    candidateDisks.sort((disk1, disk2) -> {
+    Comparator<Disk> mostAllowanceFirst = (disk1, disk2) -> {
       double allowanceForDisk1 = disk1.capacity() * _balancingConstraint.capacityThreshold(RESOURCE) - disk1.utilization();
       double allowanceForDisk2 = disk2.capacity() * _balancingConstraint.capacityThreshold(RESOURCE) - disk2.utilization();
       return Double.compare(allowanceForDisk2, allowanceForDisk1);
-    });
+    };
 
     for (Disk disk : disksOverUtilized) {
       for (Replica replica : disk.trackedSortedReplicas(replicaSortName(this, true, false)).sortedReplicas(true)) {
+        // Each move takes room from its destination disk: the candidate disks are sorted again before each move, so that the
+        // replicas are spread over the disks with the most room, rather than piled up on the disk that had the most room at first.
+        candidateDisks.sort(mostAllowanceFirst);
         Disk d = maybeMoveReplicaBetweenDisks(clusterModel, replica, candidateDisks, optimizedGoals);
         if (d == null) {
           LOG.debug("Failed to move replica {} to any disk {} in broker {}", replica, candidateDisks, replica.broker());

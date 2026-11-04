@@ -35,7 +35,10 @@ import org.slf4j.LoggerFactory;
 import static com.linkedin.kafka.cruisecontrol.analyzer.ActionAcceptance.ACCEPT;
 import static com.linkedin.kafka.cruisecontrol.analyzer.ActionAcceptance.REPLICA_REJECT;
 import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.averageDiskUtilizationPercentage;
+import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.brokersWithDisksToRemove;
 import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.diskUtilizationPercentage;
+import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.isAliveAndNotMarkedForRemoval;
+import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.isRemovingDisks;
 import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.replicaSortName;
 import static java.lang.Math.abs;
 
@@ -52,6 +55,8 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
   private static final Resource RESOURCE = Resource.DISK;
   private final Map<Broker, Double> _balanceUpperThresholdByBroker;
   private final Map<Broker, Double> _balanceLowerThresholdByBroker;
+  // Whether the optimization is a disk removal (see GoalUtils#isRemovingDisks).
+  private boolean _isRemovingDisks;
 
   /**
    * Constructor for Resource Distribution Goal.
@@ -96,11 +101,16 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
 
   /**
    * Initialize the utilization thresholds (see {@link #balancePercentageWithMargin(BalancingConstraint)}).
+   * For a disk removal (see {@link GoalUtils#isRemovingDisks(ClusterModel)}), which empties the disks to remove before this goal
+   * runs, this goal only places the replicas of those disks on the remaining disks of their brokers: it only moves these replicas,
+   * and only balances their brokers. Since these replicas leave the disks to remove anyway, they are moved whatever their topic.
+   *
    * @param clusterModel The state of the cluster.
    * @param optimizationOptions Options to take into account during optimization.
    */
   @Override
   protected void initGoalState(ClusterModel clusterModel, OptimizationOptions optimizationOptions) {
+    _isRemovingDisks = isRemovingDisks(clusterModel);
     double balancePercentageWithMargin = balancePercentageWithMargin(_balancingConstraint);
     for (Broker broker : brokersToBalance(clusterModel)) {
       double averageDiskUtilization = averageDiskUtilizationPercentage(broker);
@@ -109,14 +119,16 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
     }
 
     // Sort all the replicas for each disk based on disk utilization.
-    Set<String> excludedTopics = optimizationOptions.excludedTopics();
+    Set<String> excludedTopics = _isRemovingDisks ? Collections.emptySet() : optimizationOptions.excludedTopics();
     new SortedReplicasHelper().addSelectionFunc(ReplicaSortFunctionFactory.selectOnlineReplicas())
+                              .maybeAddSelectionFunc(ReplicaSortFunctionFactory.selectReplicasOfDisksToRemove(), _isRemovingDisks)
                               .maybeAddSelectionFunc(ReplicaSortFunctionFactory.selectReplicasBasedOnExcludedTopics(excludedTopics),
                                                      !excludedTopics.isEmpty())
                               .addPriorityFunc(ReplicaSortFunctionFactory.prioritizeDiskImmigrants())
                               .setScoreFunc(ReplicaSortFunctionFactory.reverseSortByMetricGroupValue(RESOURCE.name()))
                               .trackSortedReplicasFor(replicaSortName(this, true, false), clusterModel);
     new SortedReplicasHelper().addSelectionFunc(ReplicaSortFunctionFactory.selectOnlineReplicas())
+                              .maybeAddSelectionFunc(ReplicaSortFunctionFactory.selectReplicasOfDisksToRemove(), _isRemovingDisks)
                               .maybeAddSelectionFunc(ReplicaSortFunctionFactory.selectReplicasBasedOnExcludedTopics(excludedTopics),
                                                      !excludedTopics.isEmpty())
                               .addPriorityFunc(ReplicaSortFunctionFactory.prioritizeDiskImmigrants())
@@ -140,7 +152,7 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
       double upperLimit = _balanceUpperThresholdByBroker.get(broker);
       double lowerLimit = _balanceLowerThresholdByBroker.get(broker);
       for (Disk disk : broker.disks()) {
-        if (disk.isAlive()) {
+        if (isAliveAndNotMarkedForRemoval(disk)) {
           if (diskUtilizationPercentage(disk) > upperLimit) {
             disksAboveBalanceUpperLimit.add(broker.id() + ":" + disk.logDir());
           }
@@ -165,6 +177,7 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
    * Get brokers in the cluster so that the rebalance process will go over to apply balancing actions to replicas
    * they contain.
    * Note this goal moves replica between disks within broker, therefore it is unable to heal dead broker.
+   * For a disk removal, only the brokers of the disks to remove are balanced.
    *
    * @param clusterModel The state of the cluster.
    * @return A collection of brokers that the rebalance process will go over to apply balancing actions to replicas
@@ -172,7 +185,7 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
    */
   @Override
   protected SortedSet<Broker> brokersToBalance(ClusterModel clusterModel) {
-    return new TreeSet<>(clusterModel.aliveBrokers());
+    return _isRemovingDisks ? brokersWithDisksToRemove(clusterModel) : new TreeSet<>(clusterModel.aliveBrokers());
   }
 
   /**
@@ -193,8 +206,8 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
     Broker broker = clusterModel.broker(action.sourceBrokerId());
     Disk sourceDisk = broker.disk(action.sourceBrokerLogdir());
     Disk destinationDisk = broker.disk(action.destinationBrokerLogdir());
-    if (sourceUtilizationDelta == 0) {
-      // No change in terms of load.
+    if (sourceUtilizationDelta == 0 || !_balanceUpperThresholdByBroker.containsKey(broker)) {
+      // No change in terms of load, or the broker is not balanced by this goal.
       return ACCEPT;
     }
     if (isChangeViolatingLimit(sourceUtilizationDelta, sourceDisk, destinationDisk)) {
@@ -272,7 +285,7 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
     double upperLimit = _balanceUpperThresholdByBroker.get(broker);
     double lowerLimit = _balanceLowerThresholdByBroker.get(broker);
     for (Disk disk : broker.disks()) {
-      if (!disk.isAlive()) {
+      if (!isAliveAndNotMarkedForRemoval(disk)) {
         continue;
       }
       if (diskUtilizationPercentage(disk) > upperLimit) {
@@ -308,7 +321,7 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
         (d1, d2) -> Double.compare(diskUtilizationPercentage(d2), diskUtilizationPercentage(d1)));
     for (Disk candidateDisk : broker.disks()) {
       // Get candidate disk on broker to try moving load from -- sorted in the order of trial (descending load).
-      if (candidateDisk.isAlive() && diskUtilizationPercentage(candidateDisk) > brokerUtilization) {
+      if (isAliveAndNotMarkedForRemoval(candidateDisk) && diskUtilizationPercentage(candidateDisk) > brokerUtilization) {
         candidateDiskPQ.add(candidateDisk);
       }
     }
@@ -356,7 +369,7 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
     PriorityQueue<Disk> candidateDiskPQ = new PriorityQueue<>(Comparator.comparingDouble(GoalUtils::diskUtilizationPercentage));
     for (Disk candidateDisk : broker.disks()) {
       // Get candidate disk on broker to try moving load to -- sorted in the order of trial (ascending load).
-      if (candidateDisk.isAlive() && diskUtilizationPercentage(candidateDisk) < brokerUtilization) {
+      if (isAliveAndNotMarkedForRemoval(candidateDisk) && diskUtilizationPercentage(candidateDisk) < brokerUtilization) {
         candidateDiskPQ.add(candidateDisk);
       }
     }
@@ -404,7 +417,8 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
     PriorityQueue<Disk> candidateDiskPQ = new PriorityQueue<>(Comparator.comparingDouble(GoalUtils::diskUtilizationPercentage));
     for (Disk candidateDisk : broker.disks()) {
       // Get candidate disk on broker to try to swap replica with -- sorted in the order of trial (ascending load).
-      if (candidateDisk.isAlive() && diskUtilizationPercentage(candidateDisk) < _balanceUpperThresholdByBroker.get(broker)) {
+      if (isAliveAndNotMarkedForRemoval(candidateDisk)
+          && diskUtilizationPercentage(candidateDisk) < _balanceUpperThresholdByBroker.get(broker)) {
         candidateDiskPQ.add(candidateDisk);
       }
     }
@@ -455,7 +469,8 @@ public class IntraBrokerDiskUsageDistributionGoal extends AbstractGoal {
         (d1, d2) -> Double.compare(diskUtilizationPercentage(d2), diskUtilizationPercentage(d1)));
     for (Disk candidateDisk : broker.disks()) {
       // Get candidate disk on broker to try to swap replica with -- sorted in the order of trial (descending load).
-      if (candidateDisk.isAlive() && diskUtilizationPercentage(candidateDisk) > _balanceLowerThresholdByBroker.get(broker)) {
+      if (isAliveAndNotMarkedForRemoval(candidateDisk)
+          && diskUtilizationPercentage(candidateDisk) > _balanceLowerThresholdByBroker.get(broker)) {
         candidateDiskPQ.add(candidateDisk);
       }
     }
