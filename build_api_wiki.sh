@@ -3,11 +3,10 @@
 set -e
 
 BASE_DIR=$(pwd)
-SCHEMA_WORKDIR="$BASE_DIR/cruise-control/src/main/resources/yaml"
+SCHEMA="$BASE_DIR/cruise-control/build/generated/openapi/openapi.json"
 WIKI_TARGET="$BASE_DIR/target/api_wiki"
 
 rm -rf "$WIKI_TARGET"
 mkdir -p "$WIKI_TARGET"
 
-cd "$SCHEMA_WORKDIR"; npx redoc-cli bundle base.yaml
-mv -v "$SCHEMA_WORKDIR"/redoc-static.html "$WIKI_TARGET"
+npx redoc-cli bundle "$SCHEMA" --output "$WIKI_TARGET/redoc-static.html"

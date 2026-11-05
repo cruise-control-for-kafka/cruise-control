@@ -4,13 +4,15 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
 
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.getBaseJsonString;
 
-@JsonResponseClass
+@Schema(requiredProperties = {"version"})
+@JsonResponseClass(versioned = true)
 @JsonResponseExternalFields(ResponseUtils.class)
 public class TrainResult extends AbstractCruiseControlResponse {
 

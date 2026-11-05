@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.common;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import java.util.Collections;
 import java.util.List;
@@ -16,12 +17,16 @@ import java.util.List;
  */
 public enum Resource {
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   CPU("cpu", 0, true, true, 0.001),
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   NW_IN("networkInbound", 1, true, false, 10),
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   NW_OUT("networkOutbound", 2, true, false, 10),
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   DISK("disk", 3, false, true, 100);
 
   // EPSILON_PERCENT defines the acceptable nuance when comparing the utilization of the resource.

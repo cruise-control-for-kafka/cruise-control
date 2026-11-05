@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.linkedin.cruisecontrol.http.CruiseControlRequestContext;
@@ -20,9 +22,11 @@ import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JS
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;
 import static jakarta.servlet.http.HttpServletResponse.SC_ACCEPTED;
 
-@JsonResponseClass
+@Schema(requiredProperties = {"version"})
+@JsonResponseClass(versioned = true)
 public class ProgressResult extends AbstractCruiseControlResponse {
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/OperationProgress"))
   protected static final String PROGRESS = "progress";
   protected List<OperationFuture> _futures;
 

@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.analyzer;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutionProposal;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
@@ -33,32 +35,46 @@ import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils.MAX_BALAN
 @JsonResponseClass
 public class OptimizerResult {
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   private static final String NUM_INTER_BROKER_REPLICA_MOVEMENTS = "numReplicaMovements";
   @JsonResponseField
+  @Schema(type = "integer", format = "int64")
   private static final String INTER_BROKER_DATA_TO_MOVE_MB = "dataToMoveMB";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   private static final String NUM_INTRA_BROKER_REPLICA_MOVEMENTS = "numIntraBrokerReplicaMovements";
   @JsonResponseField
+  @Schema(type = "integer", format = "int64")
   private static final String INTRA_BROKER_DATA_TO_MOVE_MB = "intraBrokerDataToMoveMB";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   private static final String NUM_LEADER_MOVEMENTS = "numLeaderMovements";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   private static final String RECENT_WINDOWS = "recentWindows";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   private static final String MONITORED_PARTITIONS_PERCENTAGE = "monitoredPartitionsPercentage";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(type = "string"))
   private static final String EXCLUDED_TOPICS = "excludedTopics";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(type = "integer", format = "int32"))
   private static final String EXCLUDED_BROKERS_FOR_LEADERSHIP = "excludedBrokersForLeadership";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(type = "integer", format = "int32"))
   private static final String EXCLUDED_BROKERS_FOR_REPLICA_MOVE = "excludedBrokersForReplicaMove";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   private static final String ON_DEMAND_BALANCEDNESS_SCORE_AFTER = "onDemandBalancednessScoreAfter";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   private static final String ON_DEMAND_BALANCEDNESS_SCORE_BEFORE = "onDemandBalancednessScoreBefore";
   @JsonResponseField
+  @Schema(implementation = ProvisionStatus.class)
   private static final String PROVISION_STATUS = "provisionStatus";
   @JsonResponseField
+  @Schema(type = "string")
   private static final String PROVISION_RECOMMENDATION = "provisionRecommendation";
   private static final String VIOLATED = "VIOLATED";
   private static final String FIXED = "FIXED";

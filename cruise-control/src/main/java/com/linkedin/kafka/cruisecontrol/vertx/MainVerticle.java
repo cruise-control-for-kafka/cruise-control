@@ -51,7 +51,8 @@ public class MainVerticle extends AbstractVerticle {
 
     _endPoints = new VertxRequestHandler(_asynckafkaCruiseControl, _dropwizardMetricRegistry);
 
-    RouterBuilder.create(vertx, Objects.requireNonNull(this.getClass().getClassLoader().getResource("yaml/base.yaml")).toString(), asyncResult -> {
+    String specification = Objects.requireNonNull(this.getClass().getClassLoader().getResource("webroot/openapi.json")).toString();
+    RouterBuilder.create(vertx, specification, asyncResult -> {
       if (!asyncResult.succeeded()) {
         throw new RuntimeException(asyncResult.cause());
       } else {

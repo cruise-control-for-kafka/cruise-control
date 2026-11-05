@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.MetricRegistry;
 import com.codahale.metrics.Timer;
@@ -619,16 +620,22 @@ public class UserTaskManager implements Closeable {
   @JsonResponseClass
   public static class UserTaskInfo {
     @JsonResponseField
+    @Schema(type = "string")
     protected static final String USER_TASK_ID = "UserTaskId";
     @JsonResponseField
+    @Schema(type = "string")
     protected static final String REQUEST_URL = "RequestURL";
     @JsonResponseField
+    @Schema(type = "string")
     protected static final String CLIENT_ID = "ClientIdentity";
     @JsonResponseField
+    @Schema(type = "string")
     protected static final String START_MS = "StartMs";
     @JsonResponseField
+    @Schema(implementation = TaskState.class)
     protected static final String STATUS = "Status";
     @JsonResponseField(required = false)
+    @Schema(type = "string")
     protected static final String ORIGINAL_RESPONSE = "originalResponse";
 
     private final List<OperationFuture> _futures;

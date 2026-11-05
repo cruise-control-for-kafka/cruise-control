@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.async;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.LoadRunnable;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.OperationFuture;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.ClusterLoadParameters;
@@ -20,6 +24,20 @@ public class ClusterLoadRequest extends AbstractAsyncRequest {
     super();
   }
 
+  @Operation(operationId = "load",
+      summary = "Get the cluster load once Cruise Control Load Monitor is running.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "Successful load from valid partitions response.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/BrokerStats")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))}),
+      @ApiResponse(responseCode = "202",
+      description = "Cluster load fetch in progress.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/ProgressResult")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))})})
   @Override
   protected OperationFuture handle(String uuid) {
     OperationFuture future = new OperationFuture("Get broker stats");

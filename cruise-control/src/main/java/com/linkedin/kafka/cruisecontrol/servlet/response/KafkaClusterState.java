@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.google.gson.Gson;
 import com.linkedin.kafka.cruisecontrol.config.BrokerSetResolver;
 import com.linkedin.kafka.cruisecontrol.config.TopicConfigProvider;
@@ -21,11 +22,14 @@ import org.apache.kafka.common.Cluster;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JSON_VERSION;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;
 
-@JsonResponseClass
+@Schema(requiredProperties = {"version"})
+@JsonResponseClass(versioned = true)
 public class KafkaClusterState extends AbstractCruiseControlResponse {
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/ClusterBrokerState")
   public static final String KAFKA_BROKER_STATE = "KafkaBrokerState";
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/ClusterPartitionState")
   public static final String KAFKA_PARTITION_STATE = "KafkaPartitionState";
   protected final Map<String, Properties> _allTopicConfigs;
   protected final Properties _clusterConfigs;

@@ -5,6 +5,8 @@
 
 package com.linkedin.kafka.cruisecontrol.analyzer;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
@@ -23,10 +25,13 @@ import java.util.HashMap;
 @JsonResponseClass
 public class AnalyzerState {
   @JsonResponseField
+  @Schema(type = "boolean")
   private static final String IS_PROPOSAL_READY = "isProposalReady";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(type = "string"))
   private static final String READY_GOALS = "readyGoals";
   @JsonResponseField(required = false)
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/GoalReadinessRecord"))
   private static final String GOAL_READINESS = "goalReadiness";
   private static final String READY = "ready";
   private static final String NOT_READY = "notReady";

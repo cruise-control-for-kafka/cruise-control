@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
@@ -27,18 +29,23 @@ import org.slf4j.LoggerFactory;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JSON_VERSION;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;
 
-@JsonResponseClass
+@JsonResponseClass(versioned = true)
 public class OptimizationResult extends AbstractCruiseControlResponse {
   private static final Logger LOG = LoggerFactory.getLogger(OptimizationResult.class);
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/OptimizerResult")
   protected static final String SUMMARY = "summary";
   @JsonResponseField(required = false)
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/ExecutionProposal"))
   protected static final String PROPOSALS = "proposals";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/GoalStatus"))
   protected static final String GOAL_SUMMARY = "goalSummary";
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/BrokerStats")
   protected static final String LOAD_AFTER_OPTIMIZATION = "loadAfterOptimization";
   @JsonResponseField(required = false)
+  @Schema(ref = "#/components/schemas/BrokerStats")
   protected static final String LOAD_BEFORE_OPTIMIZATION = "loadBeforeOptimization";
   protected OptimizerResult _optimizerResult;
   protected String _cachedJsonResponse;
@@ -169,12 +176,16 @@ public class OptimizationResult extends AbstractCruiseControlResponse {
   @JsonResponseClass
   protected class GoalStatus {
     @JsonResponseField
+    @Schema(type = "string")
     protected static final String GOAL = "goal";
     @JsonResponseField
+    @Schema(type = "string", allowableValues = {"VIOLATED", "FIXED", "NO-ACTION"})
     protected static final String STATUS = "status";
     @JsonResponseField
+    @Schema(ref = "#/components/schemas/ClusterModelStats")
     protected static final String CLUSTER_MODEL_STATS = "clusterModelStats";
     @JsonResponseField
+    @Schema(type = "integer", format = "int64")
     protected static final String OPTIMIZATION_TIME_MS = "optimizationTimeMs";
     protected String _goalName;
 

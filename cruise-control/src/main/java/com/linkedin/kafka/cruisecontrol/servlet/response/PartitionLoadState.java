@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.google.gson.Gson;
 import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
@@ -20,9 +22,11 @@ import java.util.stream.Collectors;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JSON_VERSION;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;
 
-@JsonResponseClass
+@Schema(requiredProperties = {"version"})
+@JsonResponseClass(versioned = true)
 public class PartitionLoadState extends AbstractCruiseControlResponse {
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/PartitionLoadRecord"))
   protected static final String RECORDS = "records";
   protected final List<Partition> _sortedPartitions;
   protected final boolean _wantMaxLoad;
@@ -123,14 +127,19 @@ public class PartitionLoadState extends AbstractCruiseControlResponse {
   @JsonResponseExternalFields(Resource.class)
   protected class PartitionLoadRecord {
     @JsonResponseField
+    @Schema(type = "string")
     protected static final String TOPIC = "topic";
     @JsonResponseField
+    @Schema(type = "integer", format = "int32")
     protected static final String PARTITION = "partition";
     @JsonResponseField
+    @Schema(type = "integer", format = "int32")
     protected static final String LEADER = "leader";
     @JsonResponseField
+    @ArraySchema(schema = @Schema(type = "integer", format = "int32"))
     protected static final String FOLLOWERS = "followers";
     @JsonResponseField
+    @Schema(type = "number", format = "double")
     protected static final String MSG_IN = "msg_in";
     protected Partition _partition;
 

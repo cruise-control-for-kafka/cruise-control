@@ -4,6 +4,11 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.UserRequestException;
@@ -158,6 +163,77 @@ public class PartitionLoadParameters extends AbstractParameters {
     super.configure(configs);
   }
 
+  @Parameters(value = {@Parameter(name = "resource",
+      in = ParameterIn.QUERY,
+      description = "The host and broker-level resource by which to sort the cruise-control response.",
+      schema = @Schema(type = "string",
+      defaultValue = "disk",
+      implementation = Resource.class)),
+      @Parameter(name = "start",
+      in = ParameterIn.QUERY,
+      description = "The timestamp in millisecond of the earliest metric sample use to generate load.",
+      schema = @Schema(type = "integer",
+      format = "int64",
+      minimum = "-1",
+      defaultValue = "-1")),
+      @Parameter(name = "end",
+      in = ParameterIn.QUERY,
+      description = "The timestamp in millisecond of the latest metric sample use to generate load, "
+      + "current time will be used if this parameter is not specified.",
+      schema = @Schema(type = "integer",
+      format = "int64",
+      minimum = "0")),
+      @Parameter(name = "entries",
+      in = ParameterIn.QUERY,
+      description = "The number of entries to show in the response.",
+      schema = @Schema(type = "integer",
+      format = "int32",
+      minimum = "1",
+      defaultValue = "2147483647")),
+      @Parameter(name = "topic",
+      in = ParameterIn.QUERY,
+      description = "A regular expression used to filter the partition load returned based on topic.",
+      schema = @Schema(type = "string",
+      example = "myTopic.*")),
+      @Parameter(name = "partition",
+      in = ParameterIn.QUERY,
+      description = "The partition or partition range to filter partition load returned.",
+      schema = @Schema(oneOf = {Integer.class,
+      com.linkedin.kafka.cruisecontrol.servlet.response.OpenApiSchemaTypes.PartitionRange.class})),
+      @Parameter(name = "min_valid_partition_ratio",
+      in = ParameterIn.QUERY,
+      description = "The minimum required ratio of partition load data completeness.",
+      schema = @Schema(type = "number",
+      format = "double",
+      minimum = "0.0",
+      maximum = "1.0",
+      defaultValue = "0.98")),
+      @Parameter(name = "allow_capacity_estimation",
+      in = ParameterIn.QUERY,
+      description = "Whether to allow capacity estimation when cruise-control is unable to obtain all "
+      + "per-broker capacity information.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "false")),
+      @Parameter(name = "max_load",
+      in = ParameterIn.QUERY,
+      description = "If true, the maximum load is returned.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "false")),
+      @Parameter(name = "avg_load",
+      in = ParameterIn.QUERY,
+      description = "If true, the average load is returned.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "false")),
+      @Parameter(name = "brokerid",
+      in = ParameterIn.QUERY,
+      description = "Set of broker ids used to filter partition load returned.",
+      array = @ArraySchema(schema = @Schema(type = "integer",
+      format = "int32"),
+      arraySchema = @Schema(example = "[1,2,3]"))),
+      @Parameter(name = "reason",
+      in = ParameterIn.QUERY,
+      description = "Reason for request.",
+      schema = @Schema(type = "string"))})
   @Override
   public SortedSet<String> caseInsensitiveParameterNames() {
     return CASE_INSENSITIVE_PARAMETER_NAMES;

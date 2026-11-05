@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import java.io.UnsupportedEncodingException;
 import java.util.Collections;
@@ -69,6 +73,27 @@ public class RightsizeParameters extends AbstractParameters {
     return _topic;
   }
 
+  @Parameters(value = {@Parameter(name = "num_brokers_to_add",
+      in = ParameterIn.QUERY,
+      description = "The difference in broker count to rightsize towards.",
+      schema = @Schema(type = "integer",
+      format = "int32",
+      minimum = "1")),
+      @Parameter(name = "partition_count",
+      in = ParameterIn.QUERY,
+      description = "The target number of partitions to rightsize towards.",
+      schema = @Schema(type = "integer",
+      format = "int32",
+      minimum = "1")),
+      @Parameter(name = "topic",
+      in = ParameterIn.QUERY,
+      description = "Regular expression to specify subject topics.",
+      schema = @Schema(type = "string",
+      example = "topic_%5B0-9%5D.%2A")),
+      @Parameter(name = "reason",
+      in = ParameterIn.QUERY,
+      description = "Reason for request.",
+      schema = @Schema(type = "string"))})
   @Override
   public SortedSet<String> caseInsensitiveParameterNames() {
     return CASE_INSENSITIVE_PARAMETER_NAMES;

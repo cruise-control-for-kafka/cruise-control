@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.async;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.GetStateRunnable;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.OperationFuture;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.CruiseControlStateParameters;
@@ -20,6 +24,20 @@ public class CruiseControlStateRequest extends AbstractAsyncRequest {
     super();
   }
 
+  @Operation(operationId = "state",
+      summary = "Get the state of cruise control.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "Successful state response.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/CruiseControlState")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))}),
+      @ApiResponse(responseCode = "202",
+      description = "State querying in progress.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/ProgressResult")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))})})
   @Override
   protected OperationFuture handle(String uuid) {
     OperationFuture future = new OperationFuture("Get state");

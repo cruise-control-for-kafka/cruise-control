@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -15,26 +16,37 @@ import java.util.Map;
 @JsonResponseClass
 public class ClusterStats {
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   public static final String BROKERS = "Brokers";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   public static final String TOPICS = "Topics";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   public static final String REPLICAS = "Replicas";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   public static final String LEADERS = "Leaders";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   public static final String AVG_REPLICATION_FACTOR = "AvgReplicationFactor";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   public static final String AVG_REPLICAS_PER_BROKER = "AvgReplicasPerBroker";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   public static final String AVG_LEADERS_PER_BROKER = "AvgLeadersPerBroker";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   public static final String MAX_REPLICAS_PER_BROKER = "MaxReplicasPerBroker";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   public static final String MAX_LEADERS_PER_BROKER = "MaxLeadersPerBroker";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   public static final String STD_REPLICAS_PER_BROKER = "StdReplicasPerBroker";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   public static final String STD_LEADERS_PER_BROKER = "StdLeadersPerBroker";
   protected final int _numBrokers;
   protected final int _numTopics;

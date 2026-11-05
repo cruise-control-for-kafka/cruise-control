@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.executor;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import java.util.Arrays;
@@ -25,12 +27,16 @@ import com.linkedin.kafka.cruisecontrol.model.ReplicaPlacementInfo;
 @JsonResponseClass
 public class ExecutionProposal {
   @JsonResponseField
+  @Schema(type = "string")
   private static final String TOPIC_PARTITION = "topicPartition";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   private static final String OLD_LEADER = "oldLeader";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(type = "integer", format = "int32"))
   private static final String OLD_REPLICAS = "oldReplicas";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(type = "integer", format = "int32"))
   private static final String NEW_REPLICAS = "newReplicas";
 
   private final TopicPartition _tp;

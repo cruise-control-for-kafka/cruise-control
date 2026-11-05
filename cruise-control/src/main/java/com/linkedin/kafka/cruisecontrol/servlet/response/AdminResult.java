@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.google.gson.Gson;
 import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
@@ -15,21 +16,29 @@ import java.util.Map;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JSON_VERSION;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;
 
-@JsonResponseClass
+@Schema(requiredProperties = {"version"})
+@JsonResponseClass(versioned = true)
 public class AdminResult extends AbstractCruiseControlResponse {
   @JsonResponseField(required = false)
+  @Schema(type = "object", additionalPropertiesSchema = Boolean.class)
   protected static final String SELF_HEALING_ENABLED_BEFORE = "selfHealingEnabledBefore";
   @JsonResponseField(required = false)
+  @Schema(type = "object", additionalPropertiesSchema = Boolean.class)
   protected static final String SELF_HEALING_ENABLED_AFTER = "selfHealingEnabledAfter";
   @JsonResponseField(required = false)
+  @Schema(type = "string")
   protected static final String ONGOING_CONCURRENCY_CHANGE_REQUEST = "ongoingConcurrencyChangeRequest";
   @JsonResponseField(required = false)
+  @Schema(type = "string")
   protected static final String DROP_RECENT_BROKERS_REQUEST = "dropRecentBrokersRequest";
   @JsonResponseField(required = false)
+  @Schema(type = "object", additionalPropertiesSchema = Boolean.class)
   protected static final String CONCURRENCY_ADJUSTER_ENABLED_BEFORE = "concurrencyAdjusterEnabledBefore";
   @JsonResponseField(required = false)
+  @Schema(type = "object", additionalPropertiesSchema = Boolean.class)
   protected static final String CONCURRENCY_ADJUSTER_ENABLED_AFTER = "concurrencyAdjusterEnabledAfter";
   @JsonResponseField(required = false)
+  @Schema(type = "string")
   protected static final String MIN_ISR_BASED_CONCURRENCY_ADJUSTMENT_REQUEST = "minIsrBasedConcurrencyAdjustmentRequest";
   protected final Map<AnomalyType, Boolean> _selfHealingEnabledBefore;
   protected final Map<AnomalyType, Boolean> _selfHealingEnabledAfter;

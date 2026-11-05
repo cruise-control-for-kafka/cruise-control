@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import java.util.Map;
@@ -11,10 +12,13 @@ import java.util.Map;
 @JsonResponseClass
 public class ClusterModelStatsMetaData {
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   protected static final String BROKERS = "brokers";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   protected static final String REPLICAS = "replicas";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   protected static final String TOPICS = "topics";
   protected int _numBrokers;
   protected int _numReplicas;

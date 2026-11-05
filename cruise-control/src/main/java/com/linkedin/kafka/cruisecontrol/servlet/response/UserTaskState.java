@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.google.gson.Gson;
 import com.linkedin.cruisecontrol.servlet.response.CruiseControlResponse;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
@@ -28,9 +30,11 @@ import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VE
 import static java.lang.Math.max;
 
 
-@JsonResponseClass
+@Schema(requiredProperties = {"version"})
+@JsonResponseClass(versioned = true)
 public class UserTaskState extends AbstractCruiseControlResponse {
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/UserTaskInfo"))
   protected static final String USER_TASKS = "userTasks";
   protected final List<UserTaskManager.UserTaskInfo> _userTasks;
 

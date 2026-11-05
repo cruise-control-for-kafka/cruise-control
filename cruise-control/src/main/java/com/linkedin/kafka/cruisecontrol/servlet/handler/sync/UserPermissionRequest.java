@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.sync;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlEndPoints;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.UserPermissionsManager;
@@ -23,6 +27,20 @@ public class UserPermissionRequest extends AbstractSyncRequest {
         super();
     }
 
+    @Operation(operationId = "permissions",
+        summary = "Get the permissions of a user specified as a query parameter",
+        responses = {@ApiResponse(responseCode = "200",
+        description = "Successful permissions response.",
+        content = {@Content(mediaType = "application/json",
+        schema = @Schema(ref = "#/components/schemas/UserPermissions")),
+        @Content(mediaType = "text/plain",
+        schema = @Schema(type = "string"))}),
+        @ApiResponse(responseCode = "202",
+        description = "Permissions querying in progress.",
+        content = {@Content(mediaType = "application/json",
+        schema = @Schema(ref = "#/components/schemas/ProgressResult")),
+        @Content(mediaType = "text/plain",
+        schema = @Schema(type = "string"))})})
     @Override
     protected UserPermissions handle() {
         return new UserPermissions(_config, _userPermissionsManager);

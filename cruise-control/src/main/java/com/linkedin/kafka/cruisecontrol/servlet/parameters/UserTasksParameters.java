@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.UserTaskManager;
 import java.io.UnsupportedEncodingException;
@@ -98,6 +102,40 @@ public class UserTasksParameters extends AbstractParameters {
     super.configure(configs);
   }
 
+  @Parameters(value = {@Parameter(name = "client_ids",
+      in = ParameterIn.QUERY,
+      description = "Comma separated IP addresses to filter the task results Cruise Control report.",
+      schema = @Schema(type = "string",
+      example = "[0.0.0.1]")),
+      @Parameter(name = "endpoints",
+      in = ParameterIn.QUERY,
+      description = "Comma separated endpoints to filter the task results Cruise Control report.",
+      schema = @Schema(type = "string",
+      example = "[PROPOSALS,REBALANCE]")),
+      @Parameter(name = "entries",
+      in = ParameterIn.QUERY,
+      description = "The number of entries to show in the response.",
+      schema = @Schema(type = "integer",
+      format = "int64",
+      minimum = "0")),
+      @Parameter(name = "types",
+      in = ParameterIn.QUERY,
+      description = "Comma separated HTTP request types to filter the task results Cruise Control report.",
+      schema = @Schema(type = "string",
+      example = "[COMPLETED, ACTIVE]")),
+      @Parameter(name = "user_task_ids",
+      in = ParameterIn.QUERY,
+      description = "Comma separated UUIDs to filter the task results Cruise Control report.",
+      schema = @Schema(type = "string")),
+      @Parameter(name = "fetch_completed_task",
+      in = ParameterIn.QUERY,
+      description = "Whether return the original request's final response.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "false")),
+      @Parameter(name = "reason",
+      in = ParameterIn.QUERY,
+      description = "Reason for request.",
+      schema = @Schema(type = "string"))})
   @Override
   public SortedSet<String> caseInsensitiveParameterNames() {
     return CASE_INSENSITIVE_PARAMETER_NAMES;

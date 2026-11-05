@@ -7,7 +7,7 @@ plugins {
   id "io.github.ben-manes.versions" version "0.66.0"
   id "com.github.spotbugs" version "6.5.10" apply false
   id "checkstyle"
-  id "org.openapi.generator" version "5.3.0"
+  id "io.swagger.core.v3.swagger-gradle-plugin" version "${swaggerVersion}" apply false
   id "io.github.gradle-nexus.publish-plugin" version "2.0.0"
 }
 
@@ -273,6 +273,9 @@ project(':cruise-control') {
       scala {
         srcDirs = ['src/main/java', 'src/main/scala']
       }
+      resources {
+        exclude 'webroot/openapi.json'
+      }
     }
 
     test {
@@ -295,12 +298,21 @@ project(':cruise-control') {
       runtimeClasspath += main.output + test.output
     }
 
+    openapi {
+      compileClasspath += main.output.classesDirs + configurations.runtimeClasspath
+      runtimeClasspath += main.output.classesDirs + configurations.runtimeClasspath
+    }
+
   }
 
   configurations {
     integrationTestImplementation.extendsFrom testImplementation
     integrationTestRuntime.extendsFrom testRuntime
+    testImplementation.extendsFrom openapiImplementation
    }
+
+  sourceSets.test.compileClasspath += sourceSets.openapi.output
+  sourceSets.test.runtimeClasspath += sourceSets.openapi.output
 
   dependencies {
     configurations.all {
@@ -332,7 +344,12 @@ project(':cruise-control') {
     implementation "io.vertx:vertx-web-openapi:${vertxVersion}"
     implementation "com.fasterxml.jackson.core:jackson-databind"
     implementation "com.nimbusds:nimbus-jose-jwt:${nimbusJoseJwtVersion}"
+    implementation "io.swagger.core.v3:swagger-annotations:${swaggerVersion}"
     compileOnly "com.google.code.findbugs:jsr305:${jsr305Version}"
+    openapiImplementation "io.swagger.core.v3:swagger-integration:${swaggerVersion}"
+    openapiImplementation "io.swagger.core.v3:swagger-jaxrs2:${swaggerVersion}"
+    openapiImplementation "io.swagger.core.v3:swagger-core:${swaggerVersion}"
+    openapiImplementation "io.github.classgraph:classgraph:${classgraphVersion}"
 
     constraints {
       implementation("org.apache.logging.log4j:log4j-core:${log4jVersion}") {
@@ -457,14 +474,23 @@ project(':cruise-control') {
     }
   }
 
-  tasks.register("generateOpenApiJson", org.openapitools.generator.gradle.plugin.tasks.GenerateTask) {
-    inputSpec = "$rootDir/cruise-control/src/main/resources/yaml/base.yaml"
-    generatorName = "openapi"
-    outputDir = "$rootDir/cruise-control/src/main/resources/webroot"
+  tasks.register("generateOpenApiJson", io.swagger.v3.plugins.gradle.tasks.ResolveTask) {
+    classpath = sourceSets.main.output.classesDirs
+    buildClasspath = sourceSets.openapi.runtimeClasspath
+    readerClass = "com.linkedin.kafka.cruisecontrol.openapi.CruiseControlOpenApiReader"
+    scannerClass = "com.linkedin.kafka.cruisecontrol.openapi.CruiseControlOpenApiScanner"
+    outputDir = layout.buildDirectory.dir("generated/openapi")
+    outputFormat = "JSON"
+    prettyPrint = true
+    sortOutput = true
   }
 
-  processResources.dependsOn generateOpenApiJson
-  compileJava.dependsOn generateOpenApiJson
+  processResources {
+    from(tasks.named("generateOpenApiJson")) {
+      into "webroot"
+    }
+  }
+  test.dependsOn('checkstyleOpenapi', 'spotbugsOpenapi')
 }
 
 project(':cruise-control-metrics-reporter') {
@@ -523,6 +549,7 @@ project(':cruise-control-metrics-reporter') {
 }
 
 tasks.register("buildApiWiki", Exec) {
+  dependsOn ':cruise-control:generateOpenApiJson'
   workingDir '.'
   commandLine './build_api_wiki.sh'
 }

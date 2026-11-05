@@ -3,6 +3,8 @@
  */
 
 package com.linkedin.kafka.cruisecontrol.monitor;
+
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.HashMap;
 import java.util.Map;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
@@ -34,10 +36,13 @@ import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 @JsonResponseClass
 public class ModelCompletenessRequirements {
   @JsonResponseField
+  @Schema(type = "number")
   private static final String REQUIRED_NUM_SNAPSHOTS = "requiredNumSnapshots";
   @JsonResponseField
+  @Schema(type = "number")
   private static final String MIN_MONITORED_PARTITION_PERCENTAGE = "minMonitoredPartitionsPercentage";
   @JsonResponseField
+  @Schema(type = "boolean")
   private static final String INCLUDE_ALL_TOPICS = "includeAllTopics";
   private final int _minRequiredNumWindows;
   private final double _minMonitoredPartitionsPercentage;

@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response.stats;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
@@ -17,30 +18,54 @@ import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUtils.UNIT_INTERVA
 @JsonResponseClass
 public class BasicStats {
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   protected static final String DISK_MB = "DiskMB";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   protected static final String DISK_PCT = "DiskPct";
   @JsonResponseField
+  @Schema(type = "number",
+      format = "double")
   protected static final String CPU_PCT = "CpuPct";
   @JsonResponseField
+  @Schema(type = "number",
+      format = "double")
   protected static final String LEADER_NW_IN_RATE = "LeaderNwInRate";
   @JsonResponseField
+  @Schema(type = "number",
+      format = "double")
   protected static final String FOLLOWER_NW_IN_RATE = "FollowerNwInRate";
   @JsonResponseField
+  @Schema(type = "number",
+      format = "double")
   protected static final String NW_OUT_RATE = "NwOutRate";
   @JsonResponseField
+  @Schema(type = "number",
+      format = "double")
   protected static final String PNW_OUT_RATE = "PnwOutRate";
   @JsonResponseField
+  @Schema(type = "integer",
+      format = "int32")
   protected static final String REPLICAS = "Replicas";
   @JsonResponseField
+  @Schema(type = "integer",
+      format = "int32")
   protected static final String LEADERS = "Leaders";
   @JsonResponseField
+  @Schema(type = "number",
+      format = "double")
   protected static final String DISK_CAPACITY_MB = "DiskCapacityMB";
   @JsonResponseField
+  @Schema(type = "number",
+      format = "double")
   protected static final String NETWORK_IN_CAPACITY = "NetworkInCapacity";
   @JsonResponseField
+  @Schema(type = "number",
+      format = "double")
   protected static final String NETWORK_OUT_CAPACITY = "NetworkOutCapacity";
   @JsonResponseField
+  @Schema(type = "number",
+      format = "double")
   protected static final String NUM_CORE = "NumCore";
   protected double _diskUtil;
   protected double _cpuUtil;

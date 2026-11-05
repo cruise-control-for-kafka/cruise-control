@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response.stats;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.DiskStats;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
@@ -15,14 +16,21 @@ import java.util.Map;
 @JsonResponseClass
 public class SingleBrokerStats extends BasicStats {
   @JsonResponseField
+  @Schema(type = "string")
   protected static final String HOST = "Host";
   @JsonResponseField
+  @Schema(type = "integer",
+      format = "int32")
   protected static final String BROKER = "Broker";
   @JsonResponseField
+  @Schema(type = "string")
   protected static final String RACK = "Rack";
   @JsonResponseField
+  @Schema(implementation = Broker.State.class)
   protected static final String BROKER_STATE = "BrokerState";
   @JsonResponseField(required = false)
+  @Schema(type = "object",
+      additionalPropertiesSchema = com.linkedin.kafka.cruisecontrol.model.DiskStats.class)
   protected static final String DISK_STATE = "DiskState";
   protected final String _host;
   protected final int _id;

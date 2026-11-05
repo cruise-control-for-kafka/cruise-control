@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.sync;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.StopProposalParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.response.StopProposalResult;
@@ -25,6 +29,14 @@ public class StopProposalRequest extends AbstractSyncRequest {
     super();
   }
 
+  @Operation(operationId = "stopProposalExecution",
+      summary = "Stop ongoing execution in Cruise Control.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "Successful admin response.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/StopProposalResult")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))})})
   @Override
   protected StopProposalResult handle() {
     if (_parameters.forceExecutionStop()) {

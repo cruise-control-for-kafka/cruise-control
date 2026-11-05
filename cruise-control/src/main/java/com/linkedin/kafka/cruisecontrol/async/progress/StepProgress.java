@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.async.progress;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import java.util.Map;
@@ -14,12 +15,18 @@ import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUtils.UNIT_INTERVA
 @JsonResponseClass
 public class StepProgress {
   @JsonResponseField
+  @Schema(type = "string")
   protected static final String STEP = "step";
   @JsonResponseField
+  @Schema(type = "string")
   protected static final String DESCRIPTION = "description";
   @JsonResponseField
+  @Schema(type = "integer",
+      format = "int64")
   protected static final String TIME_IN_MS = "time-in-ms";
   @JsonResponseField
+  @Schema(type = "number",
+      format = "double")
   protected static final String COMPLETION_PERCENTAGE = "completionPercentage";
   protected final OperationStep _step;
   protected final long _duration;

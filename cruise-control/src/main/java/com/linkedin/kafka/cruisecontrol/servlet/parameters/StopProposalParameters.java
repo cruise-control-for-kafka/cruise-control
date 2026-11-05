@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import java.io.UnsupportedEncodingException;
@@ -81,6 +85,28 @@ public class StopProposalParameters extends AbstractParameters {
     super.configure(configs);
   }
 
+  @Parameters(value = {@Parameter(name = "force_stop",
+      in = ParameterIn.QUERY,
+      description = "If true, stop execution forcefully.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "false")),
+      @Parameter(name = "stop_external_agent",
+      in = ParameterIn.QUERY,
+      description = "If true, stop any ongoing execution even if it is started by an external agent. If"
+      + " false, only stop execution started by the current CC instance. This parameter "
+      + "would only be honored with Kafka 2.4 or above.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "true")),
+      @Parameter(name = "review_id",
+      in = ParameterIn.QUERY,
+      description = "Review id for 2-step verification.",
+      schema = @Schema(type = "integer",
+      format = "int32",
+      minimum = "0")),
+      @Parameter(name = "reason",
+      in = ParameterIn.QUERY,
+      description = "Reason for request.",
+      schema = @Schema(type = "string"))})
   @Override
   public SortedSet<String> caseInsensitiveParameterNames() {
     return CASE_INSENSITIVE_PARAMETER_NAMES;

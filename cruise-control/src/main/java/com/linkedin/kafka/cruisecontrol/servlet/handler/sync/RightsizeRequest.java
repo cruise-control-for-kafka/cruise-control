@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.sync;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionRecommendation;
 import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionStatus;
@@ -30,6 +34,14 @@ public class RightsizeRequest extends AbstractSyncRequest {
     super();
   }
 
+  @Operation(operationId = "rightsize",
+      summary = "Manually invoke provisioner rightsizing of the cluster.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "Successful rightsize response.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/RightsizeResult")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))})})
   @Override
   protected RightsizeResult handle() {
     KafkaCruiseControlConfig config = _kafkaCruiseControl.config();

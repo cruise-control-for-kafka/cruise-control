@@ -4,6 +4,7 @@
  */
 package com.linkedin.kafka.cruisecontrol.analyzer;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
@@ -12,10 +13,13 @@ import java.util.Map;
 @JsonResponseClass
 public class GoalReadinessRecord {
   @JsonResponseField
+  @Schema(type = "string")
   protected static final String NAME = "name";
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/ModelCompletenessRequirements")
   protected static final String MODEL_COMPLETE_REQUIREMENT = "modelCompleteRequirement";
   @JsonResponseField
+  @Schema(type = "string", allowableValues = {"ready", "notReady"})
   protected static final String STATUS = "status";
 
   protected Goal _goal;

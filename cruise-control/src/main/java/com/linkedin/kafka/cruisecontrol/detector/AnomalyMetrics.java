@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.detector;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyType;
 import java.util.Map;
@@ -20,14 +21,19 @@ import static com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyTyp
 @JsonResponseClass
 public class AnomalyMetrics {
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/MeanTimeBetweenAnomaliesMs")
   private static final String MEAN_TIME_BETWEEN_ANOMALIES_MS = "meanTimeBetweenAnomaliesMs";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   private static final String MEAN_TIME_TO_START_FIX_MS = "meanTimeToStartFixMs";
   @JsonResponseField
+  @Schema(type = "integer", format = "int64")
   private static final String ONGOING_ANOMALY_DURATION_MS = "ongoingAnomalyDurationMs";
   @JsonResponseField
+  @Schema(type = "integer", format = "int64")
   private static final String NUM_SELF_HEALING_STARTED = "numSelfHealingStarted";
   @JsonResponseField
+  @Schema(type = "integer", format = "int64")
   private static final String NUM_SELF_HEALING_FAILED_TO_START = "numSelfHealingFailedToStart";
 
   private final MeanTimeBetweenAnomaliesMs _meanTimeBetweenAnomaliesMs;

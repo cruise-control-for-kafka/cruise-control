@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.sync;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.ReviewBoardParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.purgatory.Purgatory;
 import com.linkedin.kafka.cruisecontrol.servlet.response.ReviewResult;
@@ -21,6 +25,14 @@ public class ReviewBoardRequest extends AbstractSyncRequest {
     super();
   }
 
+  @Operation(operationId = "reviewBoard",
+      summary = "Check review status of Cruise Control requests.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "Successful review response.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/ReviewResult")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))})})
   @Override
   protected ReviewResult handle() {
     return _purgatory.reviewBoard(_parameters.reviewIds());

@@ -4,6 +4,11 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.purgatory.ReviewStatus;
 import java.io.UnsupportedEncodingException;
@@ -63,6 +68,22 @@ public class ReviewParameters extends AbstractParameters {
     super.configure(configs);
   }
 
+  @Parameters(value = {@Parameter(name = "approve",
+      in = ParameterIn.QUERY,
+      description = "Approve one or more pending Cruise Control requests.",
+      array = @ArraySchema(schema = @Schema(type = "integer",
+      format = "int32"),
+      arraySchema = @Schema(example = "[1,2,3]"))),
+      @Parameter(name = "discard",
+      in = ParameterIn.QUERY,
+      description = "Reject one or more pending Cruise Control requests.",
+      array = @ArraySchema(schema = @Schema(type = "integer",
+      format = "int32"),
+      arraySchema = @Schema(example = "[4,5,6]"))),
+      @Parameter(name = "reason",
+      in = ParameterIn.QUERY,
+      description = "Reason of approval or rejection.",
+      schema = @Schema(type = "string"))})
   @Override
   public SortedSet<String> caseInsensitiveParameterNames() {
     return CASE_INSENSITIVE_PARAMETER_NAMES;

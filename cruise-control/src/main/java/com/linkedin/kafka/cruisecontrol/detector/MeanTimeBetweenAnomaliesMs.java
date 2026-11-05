@@ -10,6 +10,7 @@ import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseExternalFields;
 import java.util.Map;
 
+@io.swagger.v3.oas.annotations.media.Schema(additionalPropertiesSchema = Double.class)
 @JsonResponseClass
 @JsonResponseExternalFields(KafkaAnomalyType.class)
 public class MeanTimeBetweenAnomaliesMs {

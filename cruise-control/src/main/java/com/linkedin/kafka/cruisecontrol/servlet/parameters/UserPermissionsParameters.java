@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import java.io.UnsupportedEncodingException;
 import java.util.Collections;
@@ -58,6 +62,10 @@ public class UserPermissionsParameters extends AbstractParameters {
         super.configure(configs);
     }
 
+    @Parameters(value = {@Parameter(name = "reason",
+        in = ParameterIn.QUERY,
+        description = "Reason for request.",
+        schema = @Schema(type = "string"))})
     @Override
     public SortedSet<String> caseInsensitiveParameterNames() {
         return CASE_INSENSITIVE_PARAMETER_NAMES;

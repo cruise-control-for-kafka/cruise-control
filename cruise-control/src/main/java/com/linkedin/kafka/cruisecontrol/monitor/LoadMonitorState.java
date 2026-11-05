@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.monitor;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.model.LinearRegressionModelParameters;
 import com.linkedin.kafka.cruisecontrol.model.ModelParameters;
 import com.linkedin.kafka.cruisecontrol.monitor.task.LoadMonitorTaskRunner.LoadMonitorTaskRunnerState;
@@ -18,30 +19,43 @@ import javax.annotation.Nonnull;
 @JsonResponseClass
 public final class LoadMonitorState {
   @JsonResponseField
+  @Schema(implementation = LoadMonitorTaskRunnerState.class)
   private static final String STATE = "state";
   @JsonResponseField(required = false)
+  @Schema(type = "string")
   private static final String REASON_OF_LATEST_PAUSE_OR_RESUME = "reasonOfLatestPauseOrResume";
   @JsonResponseField
+  @Schema(type = "boolean")
   private static final String TRAINED = "trained";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   private static final String TRAINING_PCT = "trainingPct";
   @JsonResponseField
+  @Schema(type = "number")
   private static final String NUM_MONITORED_WINDOWS = "numMonitoredWindows";
   @JsonResponseField(required = false)
+  @Schema(type = "object", additionalPropertiesSchema = Double.class)
   private static final String MONITORED_WINDOWS = "monitoredWindows";
   @JsonResponseField
+  @Schema(type = "number")
   private static final String NUM_VALID_PARTITIONS = "numValidPartitions";
   @JsonResponseField
+  @Schema(type = "number")
   private static final String NUM_TOTAL_PARTITIONS = "numTotalPartitions";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   private static final String MONITORING_COVERAGE_PCT = "monitoringCoveragePct";
   @JsonResponseField
+  @Schema(type = "number")
   private static final String NUM_FLAWED_PARTITIONS = "numFlawedPartitions";
   @JsonResponseField(required = false)
+  @Schema(type = "number", format = "double")
   private static final String BOOTSTRAP_PROGRESS_PCT = "bootstrapProgressPct";
   @JsonResponseField(required = false)
+  @Schema(type = "number", format = "double")
   private static final String LOADING_PROGRESS_PCT = "loadingProgressPct";
   @JsonResponseField(required = false)
+  @Schema(type = "string")
   private static final String ERROR = "error";
   private static final double UNDEFINED_PROGRESS = -1.0;
   private final LoadMonitorTaskRunnerState _loadMonitorTaskRunnerState;

@@ -15,6 +15,13 @@ import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.UserPermissionsManager;
 import com.linkedin.kafka.cruisecontrol.servlet.UserTaskManager;
 import com.linkedin.kafka.cruisecontrol.servlet.purgatory.Purgatory;
+import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+import io.swagger.v3.oas.annotations.info.Info;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.security.SecurityScheme;
+import io.swagger.v3.oas.annotations.servers.Server;
+import io.swagger.v3.oas.annotations.servers.ServerVariable;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -22,6 +29,19 @@ import java.util.Map;
 
 import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils.KAFKA_CRUISE_CONTROL_SERVLET_SENSOR;
 
+@OpenAPIDefinition(
+    info = @Info(title = "Cruise Control API", version = "1.0.0",
+        description = "Cruise-control is the first of its kind to fully automate the dynamic workload rebalance and self-healing of a kafka cluster. "
+            + "It provides great value to Kafka users by simplifying the operation of Kafka clusters."),
+    servers = @Server(url = "/{urlPrefix}", variables = @ServerVariable(name = "urlPrefix", defaultValue = "kafkacruisecontrol",
+        description = "REST API default url prefix, configured by webserver.api.urlprefix")),
+    security = @SecurityRequirement(name = "basicAuth"))
+@SecurityScheme(name = "basicAuth", type = SecuritySchemeType.HTTP, scheme = "basic",
+    description = "HTTP Basic authentication. Enable via webserver.security.enable=true and configure credentials "
+        + "with webserver.auth.credentials.file in cruisecontrol.properties.")
+@SecurityScheme(name = "jwtAuth", type = SecuritySchemeType.HTTP, scheme = "bearer", bearerFormat = "JWT",
+    description = "JWT authentication. Enable via webserver.security.enable=true and "
+        + "webserver.security.provider=com.linkedin.kafka.cruisecontrol.servlet.security.jwt.JwtSecurityProvider.")
 public class KafkaCruiseControlEndPoints {
     private final AsyncKafkaCruiseControl _asyncKafkaCruiseControl;
     private final KafkaCruiseControlConfig _config;

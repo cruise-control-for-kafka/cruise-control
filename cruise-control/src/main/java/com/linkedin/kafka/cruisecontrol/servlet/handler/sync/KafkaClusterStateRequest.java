@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.sync;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlEndPoints;
 import com.linkedin.kafka.cruisecontrol.config.BrokerSetResolver;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
@@ -30,6 +34,14 @@ public class KafkaClusterStateRequest extends AbstractSyncRequest {
     super();
   }
 
+  @Operation(operationId = "kafkaClusterState",
+      summary = "Retrive the current Kafka cluster state.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "Current Kafka cluster state.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/KafkaClusterState")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))})})
   @Override
   protected KafkaClusterState handle() {
     return new KafkaClusterState(_kafkaCluster, _topicConfigProvider, _adminClient, _config, _brokerSetResolver);

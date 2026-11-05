@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
@@ -25,10 +27,12 @@ import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VE
  * - If security disabled, then it will result a 400 HTTP status code, with the following message:
  *      "Unable to retrieve privilege information for an unsecure connection."
  */
-@JsonResponseClass
+@Schema(requiredProperties = {"version"})
+@JsonResponseClass(versioned = true)
 public class UserPermissions extends AbstractCruiseControlResponse {
 
     @JsonResponseField(required = false)
+    @ArraySchema(schema = @Schema(type = "string"))
     public static final String ROLES = "roles";
     protected Set<String> _roles = new HashSet<>();
 

@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response.stats;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import java.util.Map;
@@ -11,8 +12,10 @@ import java.util.Map;
 @JsonResponseClass
 public class SingleHostStats extends BasicStats {
   @JsonResponseField
+  @Schema(type = "string")
   protected static final String HOST = "Host";
   @JsonResponseField
+  @Schema(type = "string")
   protected static final String RACK = "Rack";
   private final String _host;
   private final String _rack;
