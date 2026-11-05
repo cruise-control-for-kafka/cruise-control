@@ -37,7 +37,6 @@ import com.linkedin.kafka.cruisecontrol.detector.TopicReplicationFactorAnomalyFi
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.KafkaServerConfigs;
 import net.minidev.json.JSONArray;
 import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.server.config.ServerLogConfigs;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
@@ -84,7 +83,7 @@ public class DiskFailureIntegrationTest extends CruiseControlIntegrationTestHarn
   @Override
   public Properties overridingProps() {
     Properties props = super.overridingProps();
-    props.put(ServerLogConfigs.LOG_DIR_CONFIG, CONTAINER_LOG_DIR_1 + "," + CONTAINER_LOG_DIR_2);
+    props.put(KafkaServerConfigs.LOG_DIR_CONFIG, CONTAINER_LOG_DIR_1 + "," + CONTAINER_LOG_DIR_2);
     props.put(KafkaServerConfigs.METADATA_LOG_DIR_CONFIG, CONTAINER_METADATA_LOG_DIR);
     return props;
   }

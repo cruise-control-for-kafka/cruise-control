@@ -14,6 +14,7 @@ public final class KafkaServerConfigs {
     public static final String NUM_PARTITIONS_CONFIG = "num.partitions";
     public static final String METADATA_LOG_DIR_CONFIG = "metadata.log.dir";
     public static final String LOG_FLUSH_INTERVAL_MESSAGES_CONFIG = "log.flush.interval.messages";
+    public static final String LOG_DIR_CONFIG = "log.dir";
 
     private KafkaServerConfigs() { }
 }

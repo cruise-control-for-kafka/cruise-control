@@ -18,15 +18,9 @@ package com.linkedin.kafka.cruisecontrol.metricsreporter.utils;
 
 import java.io.File;
 import java.util.Properties;
-import com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporter;
-import com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.security.auth.SecurityProtocol;
 import org.junit.After;
 import org.junit.Before;
-
-import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_TOPIC_CONFIG;
 
 public abstract class CCKafkaIntegrationTestHarness {
   protected static final String TOPIC = "CruiseControlMetricsReporterTest";
@@ -82,15 +76,10 @@ public abstract class CCKafkaIntegrationTestHarness {
    */
   public Properties overridingProps() {
     Properties props = new Properties();
-    props.setProperty(CommonClientConfigs.METRIC_REPORTER_CLASSES_CONFIG, CruiseControlMetricsReporter.class.getName());
-    props.setProperty(CruiseControlMetricsReporterConfig.config(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG),
-       "127.0.0.1:" + CCContainerizedKraftCluster.CONTAINER_INTERNAL_LISTENER_PORT);
     props.put("listener.security.protocol.map", String.join(",",
       CCContainerizedKraftCluster.CONTROLLER_LISTENER_NAME + ":PLAINTEXT",
       CCContainerizedKraftCluster.INTERNAL_LISTENER_NAME + ":PLAINTEXT",
       CCContainerizedKraftCluster.EXTERNAL_LISTENER_NAME + ":PLAINTEXT"));
-    props.setProperty(CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG, "100");
-    props.setProperty(CRUISE_CONTROL_METRICS_TOPIC_CONFIG, TOPIC);
     props.setProperty(KafkaServerConfigs.LOG_FLUSH_INTERVAL_MESSAGES_CONFIG, "1");
     props.setProperty(KafkaServerConfigs.OFFSETS_TOPIC_REPLICATION_FACTOR_CONFIG, "1");
     props.setProperty(KafkaServerConfigs.DEFAULT_REPLICATION_FACTOR_CONFIG, "2");

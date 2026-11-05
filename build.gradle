@@ -42,7 +42,6 @@ project.ext {
   }
   buildVersionFileName = "cruise-control-version.properties"
   commitId = project.hasProperty('commitId') ? commitId : null
-  scalaBinaryVersion = getScalaBinaryVersion(scalaVersion)
 
   defaultTestJvmArgs = []
   // "JEP 403: Strongly Encapsulate JDK Internals" causes some tests to fail when they try
@@ -261,29 +260,7 @@ project(':cruise-control-core') {
 }
 
 project(':cruise-control') {
-  apply plugin: 'scala'
-
-  //needed because our java classes depend on scala classes, so must be compiled by scala
   sourceSets {
-    main {
-      java {
-        srcDirs = []
-      }
-
-      scala {
-        srcDirs = ['src/main/java', 'src/main/scala']
-      }
-    }
-
-    test {
-      java {
-        srcDirs = []
-      }
-      scala {
-        srcDirs = ['src/test/java', 'src/test/scala']
-      }
-    }
-
     integrationTest {
       java {
         srcDirs = ["src/integrationTest/java"]
@@ -315,7 +292,6 @@ project(':cruise-control') {
     api "com.google.guava:guava:${guavaVersion}"
     api "io.vertx:vertx-core:${vertxVersion}"
     api "io.vertx:vertx-web:${vertxVersion}"
-    api "org.apache.kafka:kafka_$scalaBinaryVersion:$kafkaVersion"
     api "org.apache.kafka:kafka-server:$kafkaVersion"
     api "org.apache.kafka:kafka-server-common:$kafkaVersion"
     api "org.apache.kafka:kafka-clients:$kafkaVersion"
@@ -351,7 +327,6 @@ project(':cruise-control') {
     testImplementation "io.swagger.parser.v3:swagger-parser-v3:${swaggerParserVersion}"
     testImplementation "junit:junit:${junitVersion}"
     testImplementation "org.easymock:easymock:${easymockVersion}"
-    testImplementation "org.apache.kafka:kafka_$scalaBinaryVersion:$kafkaVersion:test"
     testImplementation "org.apache.kafka:kafka-clients:$kafkaVersion:test"
     testImplementation "org.apache.httpcomponents:httpclient:${httpclientVersion}:tests"
     testImplementation "org.bouncycastle:bcpkix-jdk15on:${bouncyCastleVersion}"
@@ -400,7 +375,7 @@ project(':cruise-control') {
     with jar
   }
 
-  compileScala.finalizedBy(tasks.copyDependantLibs)
+  compileJava.finalizedBy(tasks.copyDependantLibs)
 
   tasks.register("determineCommitId") {
     def takeFromHash = 40
@@ -518,11 +493,6 @@ project(':cruise-control-metrics-reporter') {
 tasks.register("buildApiWiki", Exec) {
   workingDir '.'
   commandLine './build_api_wiki.sh'
-}
-
-static def getScalaBinaryVersion(versionStr) {
-  String[] versionList = versionStr.split("\\.")
-  return versionList[0] + "." + versionList[1]
 }
 
 //wrapper generation task

@@ -18,6 +18,8 @@ package com.linkedin.kafka.cruisecontrol.metricsreporter.utils;
 
 import java.io.File;
 import java.util.Properties;
+import com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporter;
+import com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.Producer;
@@ -27,7 +29,21 @@ import org.apache.kafka.common.security.auth.SecurityProtocol;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.Before;
 
+import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG;
+import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_TOPIC_CONFIG;
+
 public abstract class CCKafkaClientsIntegrationTestHarness extends CCKafkaIntegrationTestHarness {
+
+  @Override
+  public Properties overridingProps() {
+    Properties props = super.overridingProps();
+    props.setProperty(CommonClientConfigs.METRIC_REPORTER_CLASSES_CONFIG, CruiseControlMetricsReporter.class.getName());
+    props.setProperty(CruiseControlMetricsReporterConfig.config(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG),
+       "127.0.0.1:" + CCContainerizedKraftCluster.CONTAINER_INTERNAL_LISTENER_PORT);
+    props.setProperty(CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG, "100");
+    props.setProperty(CRUISE_CONTROL_METRICS_TOPIC_CONFIG, TOPIC);
+    return props;
+  }
 
   @Override
   @Before

@@ -26,6 +26,7 @@ import com.linkedin.kafka.cruisecontrol.common.MetadataClient;
 import com.linkedin.kafka.cruisecontrol.config.constants.MonitorConfig;
 import com.linkedin.kafka.cruisecontrol.exception.SamplingException;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCKafkaIntegrationTestHarness;
+import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.KafkaServerConfigs;
 import com.linkedin.kafka.cruisecontrol.monitor.metricdefinition.KafkaMetricDef;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricFetcherManager;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricSampler;
@@ -95,6 +96,18 @@ public class LoadMonitorTaskRunnerTest extends CCKafkaIntegrationTestHarness {
     }
   }
 
+  @Override
+  public int clusterSize() {
+    return 1;
+  }
+
+  @Override
+  public Properties overridingProps() {
+    Properties props = super.overridingProps();
+    props.setProperty(KafkaServerConfigs.DEFAULT_REPLICATION_FACTOR_CONFIG, "1");
+    return props;
+  }
+
   @Test
   public void testSimpleFetch() throws InterruptedException {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
@@ -129,9 +142,6 @@ public class LoadMonitorTaskRunnerTest extends CCKafkaIntegrationTestHarness {
         partitionsToSample.add(new TopicPartition(TOPIC_PREFIX + i, j));
       }
     }
-
-    // Account for the CC metrics reporter topic auto-created by the broker
-    partitionsToSample.add(new TopicPartition(TOPIC, 0));
 
     long startMs = System.currentTimeMillis();
     BlockingQueue<PartitionMetricSample> sampleQueue = mockPartitionMetricSampleAggregator.metricSampleQueue();
@@ -185,8 +195,7 @@ public class LoadMonitorTaskRunnerTest extends CCKafkaIntegrationTestHarness {
         numSamples++;
       }
     }
-    // +1 to account for the CC metrics reporter topic auto-created by the broker
-    int expectedNumSamples = (NUM_TOPICS * NUM_PARTITIONS) + 1;
+    int expectedNumSamples = NUM_TOPICS * NUM_PARTITIONS;
     assertEquals("Only see " + numSamples + " samples. Expecting " + expectedNumSamples + " samples",
         expectedNumSamples, numSamples);
     fetcherManager.shutdown();

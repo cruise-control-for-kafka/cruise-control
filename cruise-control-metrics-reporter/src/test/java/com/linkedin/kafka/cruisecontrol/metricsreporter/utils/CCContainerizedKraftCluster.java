@@ -17,8 +17,6 @@
 package com.linkedin.kafka.cruisecontrol.metricsreporter.utils;
 
 import com.github.dockerjava.api.command.InspectContainerResponse;
-import com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporter;
-import com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClientConfig;
@@ -56,9 +54,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_TOPIC_CONFIG;
-import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.DEFAULT_CRUISE_CONTROL_METRICS_TOPIC;
 
 /**
  * The {@code CCContainerizedKraftCluster} class creates a containerized KRaft Kafka cluster used for testing purposes.
@@ -102,7 +98,7 @@ public class CCContainerizedKraftCluster implements Startable {
   private String _bootstrapServers;
   private final List<String> _brokerAddressList;
   private final Admin _adminClient;
-  private List<Map<Object, Object>> _brokerConfigs;
+  private final List<Map<Object, Object>> _brokerConfigs;
 
   public CCContainerizedKraftCluster(int numOfBrokers, Properties brokerProperties, Properties adminClientProps) {
     if (numOfBrokers <= 0) {
@@ -149,11 +145,6 @@ public class CCContainerizedKraftCluster implements Startable {
     brokerConfig.put("listeners", String.join(",", listeners));
 
     brokerConfig.put("controller.quorum.voters", this._controllerQuorumVoters);
-    brokerConfig.put(CommonClientConfigs.METRIC_REPORTER_CLASSES_CONFIG, CruiseControlMetricsReporter.class.getName());
-    brokerConfig.put(CruiseControlMetricsReporterConfig.config(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG),
-      "127.0.0.1:" + CONTAINER_INTERNAL_LISTENER_PORT);
-    brokerConfig.put(CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG, "100");
-    brokerConfig.putIfAbsent(CRUISE_CONTROL_METRICS_TOPIC_CONFIG, DEFAULT_CRUISE_CONTROL_METRICS_TOPIC);
 
     // TestContainers automatically sets `inter.broker.listener.name` so we must disable `security.inter.broker.protocol`
     // https://kafka.apache.org/documentation/#brokerconfigs_inter.broker.listener.name
@@ -499,6 +490,10 @@ public class CCContainerizedKraftCluster implements Startable {
 
             if (!brokerOnline) {
               return false;
+            }
+
+            if (_metricsTopic == null) {
+              return true;
             }
 
             return _adminClient.describeTopics(Collections.singleton(_metricsTopic))

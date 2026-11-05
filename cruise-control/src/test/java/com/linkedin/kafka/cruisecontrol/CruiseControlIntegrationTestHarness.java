@@ -18,14 +18,21 @@ package com.linkedin.kafka.cruisecontrol;
 
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.MonitorConfig;
+import com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporter;
+import com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig;
+import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCContainerizedKraftCluster;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCKafkaIntegrationTestHarness;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.CruiseControlMetricsReporterSampler;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.KafkaSampleStore;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.junit.After;
 import org.junit.Before;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Properties;
+
+import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG;
+import static com.linkedin.kafka.cruisecontrol.metricsreporter.CruiseControlMetricsReporterConfig.CRUISE_CONTROL_METRICS_TOPIC_CONFIG;
 
 public abstract class CruiseControlIntegrationTestHarness extends CCKafkaIntegrationTestHarness {
   protected KafkaCruiseControlConfig _config;
@@ -33,6 +40,17 @@ public abstract class CruiseControlIntegrationTestHarness extends CCKafkaIntegra
 
   protected static final String LOCALHOST = "localhost";
   private static final int ANY_PORT = 0;
+
+  @Override
+  public Properties overridingProps() {
+    Properties props = super.overridingProps();
+    props.setProperty(CommonClientConfigs.METRIC_REPORTER_CLASSES_CONFIG, CruiseControlMetricsReporter.class.getName());
+    props.setProperty(CruiseControlMetricsReporterConfig.config(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG),
+       "127.0.0.1:" + CCContainerizedKraftCluster.CONTAINER_INTERNAL_LISTENER_PORT);
+    props.setProperty(CRUISE_CONTROL_METRICS_REPORTER_INTERVAL_MS_CONFIG, "100");
+    props.setProperty(CRUISE_CONTROL_METRICS_TOPIC_CONFIG, TOPIC);
+    return props;
+  }
 
   protected Map<String, Object> withConfigs() {
     return Collections.emptyMap();
@@ -68,11 +86,9 @@ public abstract class CruiseControlIntegrationTestHarness extends CCKafkaIntegra
   @Override
   @After
   public void tearDown() {
+    super.tearDown();
     if (_app != null) {
       _app.stop();
-    }
-    if (_cluster != null) {
-      _cluster.close();
     }
   }
 }
