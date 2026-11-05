@@ -171,6 +171,7 @@ public class KafkaCruiseControlServletEndpointTest {
     List<UserTaskManager.UserTaskInfo> result1 = userTaskState.prepareResultList(parameters1);
     // Test Case 1 result
     Assert.assertEquals(3, result1.size());
+    EasyMock.verify(MOCK_UUID_GENERATOR, MOCK_HTTP_SESSION, MOCK_HTTP_SERVLET_RESPONSE);
     EasyMock.reset(MOCK_UUID_GENERATOR, MOCK_HTTP_SESSION, MOCK_HTTP_SERVLET_RESPONSE);
 
     // Test Case 2: Get all tasks from client 0.0.0.1
@@ -183,6 +184,7 @@ public class KafkaCruiseControlServletEndpointTest {
     List<UserTaskManager.UserTaskInfo> result2 = userTaskState.prepareResultList(parameters2);
     // Test Case 2 result
     Assert.assertEquals(3, result2.size());
+    EasyMock.verify(MOCK_UUID_GENERATOR, MOCK_HTTP_SESSION, MOCK_HTTP_SERVLET_RESPONSE);
     EasyMock.reset(MOCK_UUID_GENERATOR, MOCK_HTTP_SESSION, MOCK_HTTP_SERVLET_RESPONSE);
 
     // Test Case 3: Get all PROPOSALS and REMOVE_BROKERS from client 0.0.0.1
@@ -196,6 +198,7 @@ public class KafkaCruiseControlServletEndpointTest {
     List<UserTaskManager.UserTaskInfo> result3 = userTaskState.prepareResultList(parameters3);
     // Test Case 3 result
     Assert.assertEquals(2, result3.size());
+    EasyMock.verify(MOCK_UUID_GENERATOR, MOCK_HTTP_SESSION, MOCK_HTTP_SERVLET_RESPONSE);
     EasyMock.reset(MOCK_UUID_GENERATOR, MOCK_HTTP_SESSION, MOCK_HTTP_SERVLET_RESPONSE);
 
     // Test Case 4: Get all tasks limit to 4 entries
@@ -208,6 +211,7 @@ public class KafkaCruiseControlServletEndpointTest {
     List<UserTaskManager.UserTaskInfo> result4 = userTaskState.prepareResultList(parameters4);
     // Test Case 4 result
     Assert.assertEquals(4, result4.size());
+    EasyMock.verify(MOCK_UUID_GENERATOR, MOCK_HTTP_SESSION, MOCK_HTTP_SERVLET_RESPONSE);
     EasyMock.reset(MOCK_UUID_GENERATOR, MOCK_HTTP_SESSION, MOCK_HTTP_SERVLET_RESPONSE);
 
     // Transition UserTaskManager state: some tasks will move from ACTIVE to COMPLETED
@@ -235,6 +239,7 @@ public class KafkaCruiseControlServletEndpointTest {
     List<UserTaskManager.UserTaskInfo> result5 = userTaskState2.prepareResultList(parameters5);
     // Test Case 5 result
     Assert.assertEquals(1, result5.size());
+    EasyMock.verify(MOCK_UUID_GENERATOR, MOCK_HTTP_SESSION, MOCK_HTTP_SERVLET_RESPONSE);
     EasyMock.reset(MOCK_UUID_GENERATOR, MOCK_HTTP_SESSION, MOCK_HTTP_SERVLET_RESPONSE);
 
   }
