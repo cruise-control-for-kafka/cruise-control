@@ -482,8 +482,6 @@ project(':cruise-control-metrics-reporter') {
 
     compileOnly "org.slf4j:slf4j-api:${slf4jLegacyVersion}"
     implementation "com.yammer.metrics:metrics-core:${yammerMetricsVersion}"
-    implementation "org.apache.kafka:kafka_$scalaBinaryVersion:$kafkaVersion"
-    implementation "org.apache.kafka:kafka-server:$kafkaVersion"
     implementation "org.apache.kafka:kafka-clients:$kafkaVersion"
 
     testCompileOnly "com.google.code.findbugs:jsr305:${jsr305Version}"
@@ -492,11 +490,6 @@ project(':cruise-control-metrics-reporter') {
     testImplementation "org.powermock:powermock-module-junit4:${powermockVersion}"
     testImplementation "org.powermock:powermock-api-easymock:${powermockVersion}"
     testImplementation "org.apache.kafka:kafka-clients:$kafkaVersion:test"
-    testImplementation "org.apache.kafka:kafka-server-common:$kafkaVersion"
-    testImplementation "org.apache.kafka:kafka-group-coordinator:$kafkaVersion"
-    testImplementation "org.apache.kafka:kafka-metadata:$kafkaVersion"
-    testImplementation "org.apache.kafka:kafka-raft:$kafkaVersion"
-    testImplementation "org.apache.kafka:kafka-storage:$kafkaVersion"
     testImplementation "org.testcontainers:kafka:$testcontainersVersion"
     testRuntimeOnly "org.slf4j:slf4j-api:${slf4jLegacyVersion}"
     testRuntimeOnly "org.apache.logging.log4j:log4j-slf4j-impl:${log4jVersion}"

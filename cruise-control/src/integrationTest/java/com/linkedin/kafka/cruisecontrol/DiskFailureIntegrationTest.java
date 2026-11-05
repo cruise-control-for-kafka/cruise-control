@@ -16,7 +16,6 @@
 
 package com.linkedin.kafka.cruisecontrol;
 
-import java.io.IOException;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collection;
@@ -35,6 +34,7 @@ import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import com.linkedin.kafka.cruisecontrol.detector.AnomalyState;
 import com.linkedin.kafka.cruisecontrol.detector.TopicReplicationFactorAnomalyFinder;
+import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.KafkaServerConfigs;
 import net.minidev.json.JSONArray;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.server.config.ServerLogConfigs;
@@ -53,6 +53,7 @@ import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlIntegrationTest
 public class DiskFailureIntegrationTest extends CruiseControlIntegrationTestHarness {
   private static final String CONTAINER_LOG_DIR_1 = "/tmp/kafka-logs-1";
   private static final String CONTAINER_LOG_DIR_2 = "/tmp/kafka-logs-2";
+  private static final String CONTAINER_METADATA_LOG_DIR = "/tmp/kafka-metadata";
   private static final short TOPIC0_REPLICATION_FACTOR = (short) 2;
   private static final int BROKER_ID_TO_CAUSE_DISK_FAILURE = 2;
   private static final int PARTITION_COUNT = 3;
@@ -84,6 +85,7 @@ public class DiskFailureIntegrationTest extends CruiseControlIntegrationTestHarn
   public Properties overridingProps() {
     Properties props = super.overridingProps();
     props.put(ServerLogConfigs.LOG_DIR_CONFIG, CONTAINER_LOG_DIR_1 + "," + CONTAINER_LOG_DIR_2);
+    props.put(KafkaServerConfigs.METADATA_LOG_DIR_CONFIG, CONTAINER_METADATA_LOG_DIR);
     return props;
   }
 
@@ -101,14 +103,15 @@ public class DiskFailureIntegrationTest extends CruiseControlIntegrationTestHarn
         .add(ReplicaCapacityGoal.class.getName())
         .add(DiskCapacityGoal.class.getName()).toString());
     configs.put(WebServerConfig.VERTX_ENABLED_CONFIG, String.valueOf(_vertxEnabled));
-    
+
     return configs;
   }
 
   @Test
-  public void testDiskFailure() throws IOException, InterruptedException {
+  public void testDiskFailure() throws Exception {
     _cluster.adminClient().createTopics(Collections
-      .singleton(new NewTopic(TOPIC0, PARTITION_COUNT, TOPIC0_REPLICATION_FACTOR)));
+      .singleton(new NewTopic(TOPIC0, PARTITION_COUNT, TOPIC0_REPLICATION_FACTOR)))
+      .all().get();
 
     waitForMetadataPropagates();
 

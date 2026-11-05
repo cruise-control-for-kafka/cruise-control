@@ -1,14 +1,24 @@
 /*
  * Copyright 2019 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.executor;
 
-import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCKafkaIntegrationTestHarness;
 import com.linkedin.kafka.cruisecontrol.model.ReplicaPlacementInfo;
 import org.apache.kafka.clients.admin.Admin;
-import org.apache.kafka.clients.admin.AdminClientConfig;
 import org.apache.kafka.clients.admin.AlterConfigOp;
 import org.apache.kafka.clients.admin.AlterConfigsResult;
 import org.apache.kafka.clients.admin.Config;
@@ -21,10 +31,7 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.errors.UnknownTopicOrPartitionException;
 import org.easymock.EasyMock;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -50,39 +57,13 @@ import static org.junit.Assert.assertTrue;
 public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness {
   private static final Config EMPTY_CONFIG = new Config(Collections.emptyList());
 
-  /**
-   * The admin client
-   */
-  private Admin _adminClient;
-
   @Override
   public int clusterSize() {
     return 4;
   }
 
-  /**
-   * Setup the test.
-   */
-  @Before
-  public void setUp() {
-    super.setUp();
-    _adminClient = KafkaCruiseControlUtils.createAdminClient(Collections.singletonMap(
-            AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, broker(0).plaintextAddr()));
-  }
-
-  /**
-   * Teardown the test.
-   */
-  @After
-  public void tearDown() {
-    super.tearDown();
-    if (_adminClient != null) {
-      _adminClient.close(Duration.ofMillis(1000L));
-    }
-  }
-
   private void createTopics() throws ExecutionException, InterruptedException {
-    _adminClient.createTopics(Arrays.asList(
+    _cluster.adminClient().createTopics(Arrays.asList(
         new NewTopic(TOPIC0, 2, (short) 2),
         new NewTopic(TOPIC1, 2, (short) 2)
     )).all().get();
@@ -246,7 +227,7 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     createTopics();
 
     final long throttleRate = 100L;
-    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_adminClient, throttleRate);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_cluster.adminClient(), throttleRate);
     ExecutionProposal proposal = new ExecutionProposal(new TopicPartition(TOPIC0, 0),
                                            100,
                                                        new ReplicaPlacementInfo(0),
@@ -278,7 +259,7 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     createTopics();
 
     final long throttleRate = 100L;
-    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_adminClient, throttleRate);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_cluster.adminClient(), throttleRate);
     ExecutionProposal proposal = new ExecutionProposal(
         new TopicPartition(TOPIC0, 0),
         100,
@@ -352,7 +333,7 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
 
     final long throttleRate = 100L;
 
-    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_adminClient, throttleRate);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_cluster.adminClient(), throttleRate);
 
     // Set replica throttle config values for both topics
     setWildcardThrottleReplicaForTopic(throttleHelper, TOPIC0);
@@ -423,7 +404,7 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
 
     final long throttleRate = 100L;
 
-    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_adminClient, throttleRate);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(_cluster.adminClient(), throttleRate);
     ExecutionProposal proposal = new ExecutionProposal(new TopicPartition(TOPIC0, 0),
                                            100,
                                                        new ReplicaPlacementInfo(0),
@@ -641,7 +622,7 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
 
   private void assertExpectedThrottledRateForBroker(int brokerId, Long expectedRate) throws ExecutionException, InterruptedException {
     ConfigResource cf = new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(brokerId));
-    Map<ConfigResource, Config> brokerConfig = _adminClient.describeConfigs(Collections.singletonList(cf)).all().get();
+    Map<ConfigResource, Config> brokerConfig = _cluster.adminClient().describeConfigs(Collections.singletonList(cf)).all().get();
     String expectedString = expectedRate == null ? null : String.valueOf(expectedRate);
     assertNotNull(brokerConfig.get(cf));
     if (expectedRate == null) {
@@ -655,7 +636,7 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
 
   private void assertExpectedThrottledReplicas(String topic, String expectedReplicas) throws ExecutionException, InterruptedException {
     ConfigResource cf = new ConfigResource(ConfigResource.Type.TOPIC, topic);
-    Map<ConfigResource, Config> topicConfig = _adminClient.describeConfigs(Collections.singletonList(cf)).all().get();
+    Map<ConfigResource, Config> topicConfig = _cluster.adminClient().describeConfigs(Collections.singletonList(cf)).all().get();
     assertNotNull(topicConfig.get(cf));
     assertEquals(expectedReplicas, topicConfig.get(cf).get(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG).value());
     assertEquals(expectedReplicas, topicConfig.get(cf).get(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG).value());

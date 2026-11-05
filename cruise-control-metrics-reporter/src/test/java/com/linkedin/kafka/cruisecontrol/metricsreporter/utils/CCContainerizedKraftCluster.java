@@ -43,6 +43,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -101,8 +102,9 @@ public class CCContainerizedKraftCluster implements Startable {
   private String _bootstrapServers;
   private final List<String> _brokerAddressList;
   private final Admin _adminClient;
+  private List<Map<Object, Object>> _brokerConfigs;
 
-  public CCContainerizedKraftCluster(int numOfBrokers, List<Map<Object, Object>> brokerConfigs, Properties adminClientProps) {
+  public CCContainerizedKraftCluster(int numOfBrokers, Properties brokerProperties, Properties adminClientProps) {
     if (numOfBrokers <= 0) {
       throw new IllegalArgumentException("numOfBrokers '" + numOfBrokers + "' must be greater than 0");
     }
@@ -125,13 +127,16 @@ public class CCContainerizedKraftCluster implements Startable {
     adminClientPropsWithBootstrapAddress.setProperty(AdminClientConfig.METADATA_MAX_AGE_CONFIG, "10000");
     this._adminClient = Admin.create(adminClientPropsWithBootstrapAddress);
 
+    this._brokerConfigs = new ArrayList<>();
+
     this._brokers = IntStream.range(0, numOfBrokers)
-      .mapToObj(brokerNum -> createBrokerContainer(brokerNum, brokerConfigs.get(brokerNum), "broker,controller",
+      .mapToObj(brokerNum -> createBrokerContainer(brokerNum, brokerProperties, "broker,controller",
         containerHostPorts.get(brokerNum)))
       .collect(Collectors.toCollection(ArrayList::new));
   }
 
-  private KafkaContainer createBrokerContainer(int brokerNum, Map<Object, Object> brokerConfig, String processRoles, int containerHostPort) {
+  private KafkaContainer createBrokerContainer(int brokerNum, Properties brokerProperties, String processRoles, int containerHostPort) {
+    Map<Object, Object> brokerConfig = new HashMap<>(brokerProperties);
     brokerConfig.put("node.id", brokerNum + "");
     brokerConfig.put("process.roles", processRoles);
 
@@ -192,6 +197,8 @@ public class CCContainerizedKraftCluster implements Startable {
     // Mount metrics reporter and copy generated certs into container
     setupContainerResources(kafkaContainer, brokerConfig);
 
+    _brokerConfigs.add(brokerConfig);
+
     return kafkaContainer;
   }
 
@@ -225,11 +232,11 @@ public class CCContainerizedKraftCluster implements Startable {
    * Add new broker to existing containerized Kraft cluster.
    *
    * @param brokerId     the node ID for the new broker
-   * @param brokerConfig the broker configuration properties
+   * @param brokerProperties the broker configuration properties
    */
-  public void addBroker(int brokerId, Map<Object, Object> brokerConfig) {
+  public void addBroker(int brokerId, Properties brokerProperties) {
     int hostPort = CCKafkaTestUtils.findLocalPort();
-    KafkaContainer broker = createBrokerContainer(brokerId, brokerConfig, "broker", hostPort);
+    KafkaContainer broker = createBrokerContainer(brokerId, brokerProperties, "broker", hostPort);
     String brokerAddress = String.format("%s:%s", CONTAINER_HOST, hostPort);
     broker.start();
 
@@ -325,6 +332,15 @@ public class CCContainerizedKraftCluster implements Startable {
    */
   public List<KafkaContainer> getBrokers() {
     return this._brokers;
+  }
+
+  /**
+   * Returns list of broker configuration maps within the TestContainer Kafka cluster.
+   *
+   * @return List of broker configuration maps within the TestContainer Kafka cluster.
+   */
+  public List<Map<Object, Object>> getBrokerConfigs() {
+    return this._brokerConfigs;
   }
 
   /**

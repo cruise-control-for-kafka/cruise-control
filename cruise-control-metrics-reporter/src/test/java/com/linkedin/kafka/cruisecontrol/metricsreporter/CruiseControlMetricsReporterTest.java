@@ -170,7 +170,7 @@ public class CruiseControlMetricsReporterTest extends CCKafkaClientsIntegrationT
     broker.stop();
 
     // Change broker config
-    Map<Object, Object> brokerConfig = _brokerConfigs.get(0);
+    Map<Object, Object> brokerConfig = _cluster.getBrokerConfigs().get(0);
     brokerConfig.put(CRUISE_CONTROL_METRICS_TOPIC_AUTO_CREATE_CONFIG, "true");
     brokerConfig.put(CRUISE_CONTROL_METRICS_TOPIC_NUM_PARTITIONS_CONFIG, "2");
     brokerConfig.put(CRUISE_CONTROL_METRICS_TOPIC_REPLICATION_FACTOR_CONFIG, "1");
@@ -191,13 +191,13 @@ public class CruiseControlMetricsReporterTest extends CCKafkaClientsIntegrationT
   @Test
   public void testGetKafkaBootstrapServersConfigure() {
     // Test with a "listeners" config with a host
-    Map<Object, Object> brokerConfig = buildBrokerConfigs().get(0);
+    Map<Object, Object> brokerConfig = _cluster.getBrokerConfigs().get(0);
     Map<String, Object> listenersMap = Map.of("listeners", brokerConfig.get("listeners"));
     String bootstrapServers = CruiseControlMetricsReporter.getBootstrapServers(listenersMap);
     String urlParse = "\\[?([0-9a-zA-Z\\-%._:]*)]?:(-?[0-9]+)";
     Pattern urlParsePattern = Pattern.compile(urlParse);
     assertTrue(urlParsePattern.matcher(bootstrapServers).matches());
-    assertEquals("localhost", bootstrapServers.split(":")[0]);
+    assertEquals("0.0.0.0", bootstrapServers.split(":")[0]);
 
     // Test with a "listeners" config without a host in the first listener.
     String listeners = "SSL://:1234,PLAINTEXT://myhost:4321";
