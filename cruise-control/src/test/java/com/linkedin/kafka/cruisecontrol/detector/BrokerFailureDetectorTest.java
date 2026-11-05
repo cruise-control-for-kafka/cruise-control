@@ -1,5 +1,17 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.detector;
@@ -11,7 +23,6 @@ import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnomalyDetectorConfig;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCKafkaIntegrationTestHarness;
-import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCEmbeddedBroker;
 import com.linkedin.kafka.cruisecontrol.monitor.LoadMonitor;
 import java.io.File;
 import java.nio.file.Files;
@@ -28,8 +39,6 @@ import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Time;
 import org.easymock.EasyMock;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
 import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.anomalyComparator;
@@ -43,24 +52,6 @@ import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils.A
  * Unit test for broker failure detector.
  */
 public class BrokerFailureDetectorTest extends CCKafkaIntegrationTestHarness {
-
-  @Override
-  public int clusterSize() {
-    // When a broker is stopped and restarted via the harness, it changes the port it listens on because ports are set to 0.
-    // Some tests restart 2 brokers, so use a 3 broker cluster to ensure at least one broker keeps the same port so clients
-    // created with the initial bootstrap servers can still connect.
-    return 3;
-  }
-
-  @Before
-  public void setUp() {
-    super.setUp();
-  }
-
-  @After
-  public void tearDown() {
-    super.tearDown();
-  }
 
   @Test
   public void testFailureDetection() throws Exception {
@@ -204,13 +195,11 @@ public class BrokerFailureDetectorTest extends CCKafkaIntegrationTestHarness {
   }
 
   private void killBroker(int index) {
-    CCEmbeddedBroker broker = _brokers.get(index);
-    broker.shutdown();
-    broker.awaitShutdown();
+    _cluster.getBrokers().get(index).stop();
   }
 
   private void restartDeadBroker(int index) {
-    _brokers.get(index).startup();
+    _cluster.getBrokers().get(index).start();
   }
 
   private MockTime getMockTime() {

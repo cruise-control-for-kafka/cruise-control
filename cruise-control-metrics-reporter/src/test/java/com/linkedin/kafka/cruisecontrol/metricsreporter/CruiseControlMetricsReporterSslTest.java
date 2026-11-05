@@ -1,5 +1,17 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.metricsreporter;
@@ -9,6 +21,7 @@ import java.io.IOException;
 import java.util.Properties;
 import javax.net.ssl.KeyManagerFactory;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCContainerizedKraftCluster;
+import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCSslTestUtils;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.common.security.auth.SecurityProtocol;
@@ -30,12 +43,21 @@ public class CruiseControlMetricsReporterSslTest extends CruiseControlMetricsRep
   @Override
   public Properties overridingProps() {
     Properties props = new Properties();
-    // We need to convert all the properties to the Cruise Control properties.
-    setSecurityConfigs(props, "producer");
+
+    // Generate server-side SSL configs (keystore + truststore) for the broker
+    try {
+      props.putAll(CCSslTestUtils.createSslConfig(false, true,
+          CCSslTestUtils.ConnectionMode.SERVER, _trustStoreFile, "server"));
+    } catch (Exception e) {
+      throw new IllegalStateException(e);
+    }
+
+    // Generate client-side SSL configs for the CC metrics reporter and prefix them
+    Properties clientSslProps = new Properties();
+    setSecurityConfigs(clientSslProps, "producer");
     for (String configName : ProducerConfig.configNames()) {
-      Object value = props.get(configName);
+      Object value = clientSslProps.get(configName);
       if (value != null) {
-        props.remove(configName);
         props.put(appendPrefix(configName), value);
       }
     }

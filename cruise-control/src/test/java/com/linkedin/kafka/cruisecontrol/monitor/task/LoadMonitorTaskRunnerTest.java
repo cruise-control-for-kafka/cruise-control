@@ -1,5 +1,17 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.monitor.task;
@@ -14,6 +26,7 @@ import com.linkedin.kafka.cruisecontrol.common.MetadataClient;
 import com.linkedin.kafka.cruisecontrol.config.constants.MonitorConfig;
 import com.linkedin.kafka.cruisecontrol.exception.SamplingException;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCKafkaIntegrationTestHarness;
+import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.KafkaServerConfigs;
 import com.linkedin.kafka.cruisecontrol.monitor.metricdefinition.KafkaMetricDef;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricFetcherManager;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricSampler;
@@ -31,20 +44,16 @@ import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.Metadata;
-import org.apache.kafka.clients.admin.Admin;
-import org.apache.kafka.clients.admin.CreateTopicsResult;
 import org.apache.kafka.clients.admin.NewTopic;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.internals.ClusterResourceListeners;
 import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
 import org.easymock.EasyMock;
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -70,37 +79,33 @@ public class LoadMonitorTaskRunnerTest extends CCKafkaIntegrationTestHarness {
   private static final Time TIME = new MockTime(1L);
 
   /**
-   * Setup the test.
+   * Creates containerized KRaft cluster and test topics required by tests.
    */
+  @Override
   @Before
   public void setUp() {
     super.setUp();
-    Properties adminProps = new Properties();
-    adminProps.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
-    Admin adminClient = Admin.create(adminProps);
     Set<NewTopic> newTopics = new HashSet<>();
     for (int i = 0; i < NUM_TOPICS; i++) {
       newTopics.add(new NewTopic(TOPIC_PREFIX + i, NUM_PARTITIONS, (short) 1));
     }
-    CreateTopicsResult createTopicsResult = adminClient.createTopics(newTopics);
-
-    AtomicInteger adminFailed = new AtomicInteger(0);
-    createTopicsResult.all().whenComplete((v, e) -> {
-      if (e != null) {
-        adminFailed.incrementAndGet();
-      }
-    });
-    assertEquals(0, adminFailed.get());
-  }
-
-  @After
-  public void tearDown() {
-    super.tearDown();
+    try {
+      _cluster.adminClient().createTopics(newTopics).all().get();
+    } catch (InterruptedException | ExecutionException e) {
+      throw new RuntimeException("Failed to create test topics", e);
+    }
   }
 
   @Override
   public int clusterSize() {
     return 1;
+  }
+
+  @Override
+  public Properties overridingProps() {
+    Properties props = super.overridingProps();
+    props.setProperty(KafkaServerConfigs.DEFAULT_REPLICATION_FACTOR_CONFIG, "1");
+    return props;
   }
 
   @Test
