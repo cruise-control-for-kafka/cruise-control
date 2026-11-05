@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.async.progress;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import java.util.ArrayList;
@@ -22,8 +24,10 @@ import jakarta.servlet.http.HttpSession;
 @JsonResponseClass
 public class OperationProgress {
   @JsonResponseField
+  @Schema(type = "string")
   protected static final String OPERATION = "operation";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/StepProgress"))
   protected static final String OPERATION_PROGRESS = "operationProgress";
   private boolean _mutable = true;
   private List<OperationStep> _steps = new ArrayList<>();

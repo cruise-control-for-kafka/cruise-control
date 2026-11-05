@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import java.io.UnsupportedEncodingException;
@@ -102,6 +106,46 @@ public class ClusterLoadParameters extends AbstractParameters {
     super.configure(configs);
   }
 
+  @Parameters(value = {@Parameter(name = "start",
+      in = ParameterIn.QUERY,
+      description = "Start time of the cluster load. Default is time of earliest valid window.",
+      schema = @Schema(type = "integer",
+      format = "int64",
+      minimum = "-1",
+      defaultValue = "-1")),
+      @Parameter(name = "end",
+      in = ParameterIn.QUERY,
+      description = "End time of the cluster load. Default is current system time.",
+      schema = @Schema(type = "integer",
+      format = "int64",
+      minimum = "0")),
+      @Parameter(name = "time",
+      in = ParameterIn.QUERY,
+      description = "End time of the clutser load. Default is current system time, mutually exclusive "
+      + "with end parameter.",
+      schema = @Schema(type = "integer",
+      format = "int64",
+      minimum = "0")),
+      @Parameter(name = "allow_capacity_estimation",
+      in = ParameterIn.QUERY,
+      description = "Whether to allow capacity estimation when cruise-control is unable to obtain all "
+      + "per-broker capacity information.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "true")),
+      @Parameter(name = "populate_disk_info",
+      in = ParameterIn.QUERY,
+      description = "Whether show the load of each disk of broker.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "false")),
+      @Parameter(name = "capacity_only",
+      in = ParameterIn.QUERY,
+      description = "Whether show only the cluster capacity or the utilization, as well.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "false")),
+      @Parameter(name = "reason",
+      in = ParameterIn.QUERY,
+      description = "Reason for request.",
+      schema = @Schema(type = "string"))})
   @Override
   public SortedSet<String> caseInsensitiveParameterNames() {
     return CASE_INSENSITIVE_PARAMETER_NAMES;

@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.async;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.PartitionLoadRunnable;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.OperationFuture;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.PartitionLoadParameters;
@@ -20,6 +24,20 @@ public class PartitionLoadRequest extends AbstractAsyncRequest {
     super();
   }
 
+  @Operation(operationId = "partitionload",
+      summary = "Get the resource load for each partition.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "Successful partition load state response.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/PartitionLoadState")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))}),
+      @ApiResponse(responseCode = "202",
+      description = "Partition load state fetch in progress.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/ProgressResult")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))})})
   @Override
   protected OperationFuture handle(String uuid) {
     OperationFuture future = new OperationFuture(String.format("Get partition load from %d to %d", _parameters.startMs(), _parameters.endMs()));

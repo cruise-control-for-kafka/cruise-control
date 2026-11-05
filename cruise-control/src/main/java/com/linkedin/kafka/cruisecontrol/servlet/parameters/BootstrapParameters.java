@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.UserRequestException;
 import java.io.UnsupportedEncodingException;
@@ -89,6 +93,30 @@ public class BootstrapParameters extends AbstractParameters {
     super.configure(configs);
   }
 
+  @Parameters(value = {@Parameter(name = "start",
+      in = ParameterIn.QUERY,
+      description = "Timestamp in millisecond of earliest metrics sample to load during bootstrap.",
+      schema = @Schema(type = "integer",
+      format = "int64",
+      minimum = "-1",
+      defaultValue = "-1")),
+      @Parameter(name = "end",
+      in = ParameterIn.QUERY,
+      description = "Timestamp in millisecond of latest metrics sample to load during bootstrap, "
+      + "current time will be used if this parameter is not specified.",
+      schema = @Schema(type = "integer",
+      format = "int64",
+      minimum = "0")),
+      @Parameter(name = "clearmetrics",
+      in = ParameterIn.QUERY,
+      description = "Whether to clear the collected metric samples during bootstrap.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "false")),
+      @Parameter(name = "developer_mode",
+      in = ParameterIn.QUERY,
+      description = "Whether to run the request in developer mode.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "false"))})
   @Override
   public SortedSet<String> caseInsensitiveParameterNames() {
     return CASE_INSENSITIVE_PARAMETER_NAMES;

@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -25,14 +27,19 @@ import org.slf4j.LoggerFactory;
 @JsonResponseClass
 public class ClusterPartitionState {
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/PartitionState"))
   public static final String OFFLINE = "offline";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/PartitionState"))
   public static final String WITH_OFFLINE_REPLICAS = "with-offline-replicas";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/PartitionState"))
   public static final String URP = "urp";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/PartitionState"))
   public static final String UNDER_MIN_ISR = "under-min-isr";
   @JsonResponseField(required = false)
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/PartitionState"))
   public static final String OTHER = "other";
   public static final String MIN_INSYNC_REPLICAS = "min.insync.replicas";
   public static final int DEFAULT_MIN_INSYNC_REPLICAS = 1;

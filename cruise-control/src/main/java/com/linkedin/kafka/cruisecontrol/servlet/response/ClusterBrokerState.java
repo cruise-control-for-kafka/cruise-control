@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.BrokerSetAwareGoal;
 import com.linkedin.kafka.cruisecontrol.config.BrokerSetResolutionHelper;
 import com.linkedin.kafka.cruisecontrol.config.BrokerSetResolver;
@@ -37,22 +38,33 @@ import static com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig.L
 public class ClusterBrokerState {
   private static final Logger LOG = LoggerFactory.getLogger(ClusterBrokerState.class);
   @JsonResponseField
+  @Schema(type = "object", additionalPropertiesSchema = Integer.class)
   public static final String LEADER_COUNT = "LeaderCountByBrokerId";
   @JsonResponseField
+  @Schema(type = "object", additionalPropertiesSchema = Integer.class)
   public static final String OUT_OF_SYNC_COUNT = "OutOfSyncCountByBrokerId";
   @JsonResponseField
+  @Schema(type = "object", additionalPropertiesSchema = Integer.class)
   public static final String REPLICA_COUNT = "ReplicaCountByBrokerId";
   @JsonResponseField
+  @Schema(type = "object", additionalPropertiesSchema = Integer.class)
   public static final String OFFLINE_REPLICA_COUNT = "OfflineReplicaCountByBrokerId";
   @JsonResponseField
+  @Schema(type = "object", additionalPropertiesSchema = Boolean.class)
   public static final String IS_CONTROLLER = "IsController";
   @JsonResponseField
+  @Schema(type = "object",
+      additionalPropertiesSchema = com.linkedin.kafka.cruisecontrol.servlet.response.OpenApiSchemaTypes.StringList.class)
   public static final String ONLINE_LOGDIRS = "OnlineLogDirsByBrokerId";
   @JsonResponseField
+  @Schema(type = "object",
+      additionalPropertiesSchema = com.linkedin.kafka.cruisecontrol.servlet.response.OpenApiSchemaTypes.StringList.class)
   public static final String OFFLINE_LOGDIRS = "OfflineLogDirsByBrokerId";
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/ClusterStats")
   public static final String SUMMARY = "Summary";
   @JsonResponseField
+  @Schema(type = "object", additionalPropertiesSchema = String.class)
   public static final String BROKER_SET = "BrokerSetByBrokerId";
   public static final String TIMED_OUT_LOGDIR_FLAG = "timed_out";
   protected final Map<Integer, Integer> _leaderCountByBrokerId;

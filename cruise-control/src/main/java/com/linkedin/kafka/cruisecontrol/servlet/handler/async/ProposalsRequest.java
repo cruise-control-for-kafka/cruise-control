@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.async;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.ProposalsRunnable;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.OperationFuture;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.ProposalsParameters;
@@ -20,6 +24,18 @@ public class ProposalsRequest extends AbstractAsyncRequest {
     super();
   }
 
+  @Operation(operationId = "proposals",
+      summary = "Get current proposals.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "Successful optimization proposals response.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/OptimizationResult")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))}),
+      @ApiResponse(responseCode = "202",
+      description = "Optimization proposals generation in progress.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/ProgressResult"))})})
   @Override
   protected OperationFuture handle(String uuid) {
     OperationFuture future = new OperationFuture("Get customized proposals");

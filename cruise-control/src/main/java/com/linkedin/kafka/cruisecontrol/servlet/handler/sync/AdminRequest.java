@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.sync;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.executor.ConcurrencyType;
@@ -47,6 +51,14 @@ public class AdminRequest extends AbstractSyncRequest {
    *
    * @return Admin response.
    */
+  @Operation(operationId = "admin",
+      summary = "Dynamically change some configs of Cruise Control.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "Successful admin response.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/AdminResult")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))})})
   @Override
   protected AdminResult handle() {
     // 1. Increase/decrease the specified proposal execution concurrency.

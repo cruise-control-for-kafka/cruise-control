@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import java.util.Map;
@@ -12,6 +13,7 @@ import java.util.Map;
 /**
  * A helper class to store statistics about the {@link Disk}.
  */
+@Schema(description = "Based on _diskStatsByLogDir")
 @JsonResponseClass
 public class DiskStats {
   private final int _numLeaderReplicas;
@@ -20,12 +22,20 @@ public class DiskStats {
   private final Double _utilization;
   private final double _capacity;
   @JsonResponseField
+  @Schema(oneOf = {com.linkedin.kafka.cruisecontrol.servlet.response.OpenApiSchemaTypes.DeadDiskValue.class,
+      Double.class})
   private static final String DISK_MB = "DiskMB";
   @JsonResponseField
+  @Schema(oneOf = {com.linkedin.kafka.cruisecontrol.servlet.response.OpenApiSchemaTypes.DeadDiskValue.class,
+      Double.class})
   private static final String DISK_PCT = "DiskPct";
   @JsonResponseField
+  @Schema(type = "integer",
+      format = "int32")
   private static final String NUM_LEADER_REPLICAS = "NumLeaderReplicas";
   @JsonResponseField
+  @Schema(type = "integer",
+      format = "int32")
   private static final String NUM_REPLICAS = "NumReplicas";
   private static final String DEAD_STATE = "DEAD";
 

@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.analyzer.OptimizationOptions;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.ResourceDistributionGoal;
@@ -29,8 +30,10 @@ import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUtils.UNIT_INTERVA
 @JsonResponseClass
 public class ClusterModelStats {
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/ClusterModelStatsMetaData")
   private static final String METADATA = "metadata";
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/ClusterModelStatsValue")
   private static final String STATISTICS = "statistics";
   private final Map<Statistic, Map<Resource, Double>> _resourceUtilizationStats;
   private final Map<Statistic, Double> _potentialNwOutUtilizationStats;

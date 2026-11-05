@@ -20,4 +20,8 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface JsonResponseClass {
+  /**
+   * @return Whether this schema includes the version added by an outer response serializer.
+   */
+  boolean versioned() default false;
 }

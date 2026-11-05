@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.async;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.DemoteBrokerRunnable;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.OperationFuture;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.DemoteBrokerParameters;
@@ -20,6 +24,20 @@ public class DemoteRequest extends AbstractAsyncRequest {
     super();
   }
 
+  @Operation(operationId = "demoteBroker",
+      summary = "Demote specified brokers.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "Successful demote brokers response.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/OptimizationResult")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))}),
+      @ApiResponse(responseCode = "202",
+      description = "Demote brokers in progress.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/ProgressResult")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))})})
   @Override
   protected OperationFuture handle(String uuid) {
     OperationFuture future = new OperationFuture("Demote");

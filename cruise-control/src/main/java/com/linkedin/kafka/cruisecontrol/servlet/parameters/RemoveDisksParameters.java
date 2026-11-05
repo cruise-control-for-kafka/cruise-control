@@ -4,6 +4,13 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.Explode;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.enums.ParameterStyle;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.UserRequestException;
 import java.io.UnsupportedEncodingException;
@@ -61,6 +68,31 @@ public class RemoveDisksParameters extends GoalBasedOptimizationParameters {
         super.configure(configs);
     }
 
+    @Parameters(value = {@Parameter(name = "dryrun",
+        in = ParameterIn.QUERY,
+        description = "Whether to dry-run the request or not.",
+        schema = @Schema(type = "boolean",
+        defaultValue = "true")),
+        @Parameter(name = "stop_ongoing_execution",
+        in = ParameterIn.QUERY,
+        description = "Whether to stop the ongoing execution (if any) and start executing the given request.",
+        schema = @Schema(type = "boolean",
+        defaultValue = "false")),
+        @Parameter(name = "reason",
+        in = ParameterIn.QUERY,
+        description = "Reason for request.",
+        example = "Balance disk utilization across all brokers in the cluster.",
+        schema = @Schema(type = "string")),
+        @Parameter(name = "brokerid_and_logdirs",
+        in = ParameterIn.QUERY,
+        description = "Comma-separated broker-id and log-directory pairs. Each pair uses the first hyphen"
+        + " as its separator.",
+        example = "101-/tmp/kafka-logs-1,101-/tmp/kafka-logs-2",
+        required = true,
+        style = ParameterStyle.FORM,
+        explode = Explode.FALSE,
+        array = @ArraySchema(schema = @Schema(type = "string",
+        pattern = "^\\d+-.+$")))})
     @Override
     public SortedSet<String> caseInsensitiveParameterNames() {
         return CASE_INSENSITIVE_PARAMETER_NAMES;

@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
@@ -20,15 +21,20 @@ import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VE
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JSON_VERSION;
 
 
-@JsonResponseClass
+@Schema(requiredProperties = {"version"})
+@JsonResponseClass(versioned = true)
 public class RightsizeResult extends AbstractCruiseControlResponse {
   @JsonResponseField(required = false)
+  @Schema(type = "integer", format = "int32")
   protected static final String NUM_BROKERS_TO_ADD = "numBrokersToAdd";
   @JsonResponseField(required = false)
+  @Schema(type = "integer", format = "int32")
   protected static final String PARTITION_COUNT = "partitionCount";
   @JsonResponseField(required = false)
+  @Schema(type = "string")
   protected static final String TOPIC = "topic";
   @JsonResponseField
+  @Schema(type = "string")
   protected static final String PROVISIONER_STATE = "provisionerState";
   private static final String NO_ACTION = "No actions were taken on the cluster towards rightsizing it";
 

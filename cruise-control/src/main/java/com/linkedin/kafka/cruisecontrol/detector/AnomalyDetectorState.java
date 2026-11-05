@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.detector;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
@@ -34,28 +36,40 @@ import static com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyTyp
 public class AnomalyDetectorState {
   private static final Logger LOG = LoggerFactory.getLogger(AnomalyDetectorState.class);
   @JsonResponseField
+  @ArraySchema(schema = @Schema(type = "string"))
   private static final String SELF_HEALING_ENABLED = "selfHealingEnabled";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(type = "string"))
   private static final String SELF_HEALING_DISABLED = "selfHealingDisabled";
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/SelfHealingEnabledRatio")
   private static final String SELF_HEALING_ENABLED_RATIO = "selfHealingEnabledRatio";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/AnomalyDetails"))
   private static final String RECENT_GOAL_VIOLATIONS = "recentGoalViolations";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/AnomalyDetails"))
   private static final String RECENT_BROKER_FAILURES = "recentBrokerFailures";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/AnomalyDetails"))
   private static final String RECENT_METRIC_ANOMALIES = "recentMetricAnomalies";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/AnomalyDetails"))
   private static final String RECENT_TOPIC_ANOMALIES = "recentTopicAnomalies";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/AnomalyDetails"))
   private static final String RECENT_MAINTENANCE_EVENTS = "recentMaintenanceEvents";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/AnomalyDetails"))
   private static final String RECENT_DISK_FAILURES = "recentDiskFailures";
   @JsonResponseField(required = false)
+  @Schema(type = "string")
   private static final String ONGOING_SELF_HEALING_ANOMALY = "ongoingSelfHealingAnomaly";
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/AnomalyMetrics")
   private static final String METRICS = "metrics";
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   private static final String BALANCEDNESS_SCORE = "balancednessScore";
   private static final double INITIAL_BALANCEDNESS_SCORE = 100.0;
   static final String NUM_SELF_HEALING_STARTED = "numSelfHealingStarted";

@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.google.gson.Gson;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
@@ -18,9 +20,11 @@ import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VE
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JSON_VERSION;
 
 
-@JsonResponseClass
+@Schema(requiredProperties = {"version"})
+@JsonResponseClass(versioned = true)
 public class ReviewResult extends AbstractCruiseControlResponse {
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/RequestInfo"))
   protected static final String REQUEST_INFO = "RequestInfo";
   protected final Map<Integer, RequestInfo> _requestInfoById;
   protected final Set<Integer> _filteredRequestIds;

@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.analyzer.AnalyzerState;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.Goal;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
@@ -29,18 +30,23 @@ import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.JS
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;
 import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTask.TaskType;
 
-@JsonResponseClass
+@Schema(requiredProperties = {"version"})
+@JsonResponseClass(versioned = true)
 public class CruiseControlState extends AbstractCruiseControlResponse {
   protected static final String INTER_BROKER_PARTITION_MOVEMENTS = "inter-broker partition movements";
   protected static final String INTRA_BROKER_PARTITION_MOVEMENTS = "intra-broker partition movements";
   protected static final String LEADERSHIP_MOVEMENTS = "leadership movements";
   @JsonResponseField(required = false)
+  @Schema(ref = "#/components/schemas/LoadMonitorState")
   protected static final String MONITOR_STATE = "MonitorState";
   @JsonResponseField(required = false)
+  @Schema(ref = "#/components/schemas/ExecutorState")
   protected static final String EXECUTOR_STATE = "ExecutorState";
   @JsonResponseField(required = false)
+  @Schema(ref = "#/components/schemas/AnalyzerState")
   protected static final String ANALYZER_STATE = "AnalyzerState";
   @JsonResponseField(required = false)
+  @Schema(ref = "#/components/schemas/AnomalyDetectorState")
   protected static final String ANOMALY_DETECTOR_STATE = "AnomalyDetectorState";
   protected ExecutorState _executorState;
   protected LoadMonitorState _monitorState;

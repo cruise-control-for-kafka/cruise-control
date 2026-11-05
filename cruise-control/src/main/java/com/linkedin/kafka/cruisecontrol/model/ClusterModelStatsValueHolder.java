@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.model;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseExternalFields;
@@ -17,12 +18,16 @@ import java.util.Map;
 @JsonResponseExternalFields(Resource.class)
 public class ClusterModelStatsValueHolder {
   @JsonResponseField
+  @Schema(type = "number", format = "double")
   protected static final String POTENTIAL_NW_OUT = "potentialNwOut";
   @JsonResponseField
+  @Schema(type = "number")
   protected static final String LEADER_REPLICAS = "leaderReplicas";
   @JsonResponseField
+  @Schema(type = "number")
   protected static final String TOPIC_REPLICAS = "topicReplicas";
   @JsonResponseField
+  @Schema(type = "number")
   protected static final String REPLICAS = "replicas";
   protected final Map<Resource, Double> _resourceUtilizationStats;
   protected final Double _potentialNwOutUtilizationStats;

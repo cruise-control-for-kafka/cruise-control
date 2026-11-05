@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.sync;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlEndPoints;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.UserTaskManager;
@@ -25,6 +29,14 @@ public class UserTasksRequest extends AbstractSyncRequest {
     super();
   }
 
+  @Operation(operationId = "userTasks",
+      summary = "Get the recent user tasks from cruise control.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "User tasks state response.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/UserTaskState")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))})})
   @Override
   protected UserTaskState handle() {
     return new UserTaskState(_userTasks, _config);

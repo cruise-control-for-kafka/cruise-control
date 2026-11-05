@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import com.linkedin.kafka.cruisecontrol.servlet.UserRequestException;
 import java.io.UnsupportedEncodingException;
@@ -67,6 +71,20 @@ public class TrainParameters extends AbstractParameters {
     super.configure(configs);
   }
 
+  @Parameters(value = {@Parameter(name = "start",
+      in = ParameterIn.QUERY,
+      description = "Timestamp in millisecond of earliest metrics sample used to train Cruise Control.",
+      schema = @Schema(type = "integer",
+      format = "int64",
+      minimum = "-1",
+      defaultValue = "-1")),
+      @Parameter(name = "end",
+      in = ParameterIn.QUERY,
+      description = "Timestamp in millisecond of latest metrics sample used to train Cruise Control, "
+      + "current time will be used if this parameter is not specified.",
+      schema = @Schema(type = "integer",
+      format = "int64",
+      minimum = "0"))})
   @Override
   public SortedSet<String> caseInsensitiveParameterNames() {
     return CASE_INSENSITIVE_PARAMETER_NAMES;

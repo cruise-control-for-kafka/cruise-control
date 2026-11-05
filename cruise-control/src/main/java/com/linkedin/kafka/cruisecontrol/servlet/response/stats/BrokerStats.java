@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response.stats;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.google.gson.Gson;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
@@ -26,11 +28,13 @@ import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VE
 /**
  * Get broker level stats in human readable format.
  */
-@JsonResponseClass
+@JsonResponseClass(versioned = true)
 public class BrokerStats extends AbstractCruiseControlResponse {
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/SingleHostStats"))
   protected static final String HOSTS = "hosts";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(ref = "#/components/schemas/SingleBrokerStats"))
   protected static final String BROKERS = "brokers";
   protected final List<SingleBrokerStats> _brokerStats;
   protected final SortedMap<String, SingleHostStats> _hostStats;

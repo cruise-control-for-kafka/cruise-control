@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.common;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import java.util.Collections;
 import java.util.List;
@@ -11,12 +12,16 @@ import java.util.List;
 
 public enum Statistic {
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/ClusterModelStatsValueHolder")
   AVG("AVG"),
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/ClusterModelStatsValueHolder")
   MAX("MAX"),
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/ClusterModelStatsValueHolder")
   MIN("MIN"),
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/ClusterModelStatsValueHolder")
   ST_DEV("STD");
 
   private final String _stat;

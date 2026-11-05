@@ -58,3 +58,24 @@ The full guidelines are in [CONTRIBUTING.md](./CONTRIBUTING.md). Key points for 
 - Reference related issues, prior discussions, or relevant documentation where helpful.
 - Do not copy-paste large blocks of code into the description; use `<details>` tags for lengthy
   log output or stack traces.
+
+## Maintaining the OpenAPI Contract
+
+The API specification is generated from Java annotations. The build-only Swagger reader and
+model converter live in `cruise-control/src/openapi/java/`; do not maintain a separate YAML contract.
+When changing request parsing, response serialization, HTTP status codes, or headers:
+
+1. Update `@Operation` on the real request handler, `@Parameters` on the parameter class's
+   `caseInsensitiveParameterNames()` method, and `@Schema`/`@ArraySchema` on the response's
+   `@JsonResponseField` keys as applicable. Shared query parameters live in `AbstractParameters`;
+   shared task headers and errors live in `AbstractRequest`. API metadata lives in `KafkaCruiseControlEndPoints`.
+   Keep header parameters separate from query-parameter allowlists. Check wire serialization
+   against `ParameterUtils` and task headers against `UserTaskManager`. Mark versioned response
+   envelopes with `@JsonResponseClass(versioned = true)`; do not add a version to nested records.
+2. Update contract regressions in `RequestParameterTest`, `ResponseTest`, and `CruiseControlOpenApiReaderTest`.
+   Run `./gradlew :cruise-control:test --tests '*RequestParameterTest' --tests '*ResponseTest' --tests '*CruiseControlOpenApiReaderTest'` and
+   if failures occur, fix them.
+3. Regenerate with `./gradlew :cruise-control:generateOpenApiJson --rerun-tasks`.
+   The output is `cruise-control/build/generated/openapi/openapi.json`. Do not edit it by hand.
+4. Review the generated diff. `processResources` packages it at `webroot/openapi.json`, which
+   both Swagger UI and the Vert.x router consume. Keep operation IDs stable.

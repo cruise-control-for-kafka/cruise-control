@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.purgatory;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.cruisecontrol.servlet.EndPoint;
 import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
 import com.linkedin.cruisecontrol.http.CruiseControlRequestContext;
@@ -28,16 +29,22 @@ import static com.linkedin.kafka.cruisecontrol.servlet.purgatory.ReviewStatus.*;
 @JsonResponseClass
 public class RequestInfo {
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   public static final String ID = "Id";
   @JsonResponseField
+  @Schema(type = "string")
   public static final String SUBMITTER_ADDRESS = "SubmitterAddress";
   @JsonResponseField
+  @Schema(type = "integer", format = "int64")
   public static final String SUBMISSION_TIME_MS = "SubmissionTimeMs";
   @JsonResponseField
+  @Schema(implementation = ReviewStatus.class)
   public static final String STATUS = "Status";
   @JsonResponseField
+  @Schema(type = "string")
   public static final String ENDPOINT_WITH_PARAMS = "EndpointWithParams";
   @JsonResponseField
+  @Schema(type = "string")
   public static final String REASON = "Reason";
   private static final String INIT_REASON = "Awaiting review.";
   private static final String FINAL_REASON = "Submitted approved request.";

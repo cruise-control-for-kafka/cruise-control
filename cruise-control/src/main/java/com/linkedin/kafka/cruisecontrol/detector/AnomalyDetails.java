@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.detector;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyType;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
@@ -18,26 +20,38 @@ import static com.linkedin.cruisecontrol.CruiseControlUtils.utcDateFor;
 @JsonResponseClass
 public class AnomalyDetails {
   @JsonResponseField
+  @Schema(type = "integer", format = "int64")
   protected static final String STATUS_UPDATE_MS = "statusUpdateMs";
   protected static final String STATUS_UPDATE_DATE = "statusUpdateDate";
   @JsonResponseField
+  @Schema(type = "integer", format = "int64")
   protected static final String DETECTION_MS = "detectionMs";
   protected static final String DETECTION_DATE = "detectionDate";
   @JsonResponseField
+  @Schema(implementation = AnomalyState.Status.class)
   protected static final String STATUS = "status";
   @JsonResponseField
+  @Schema(type = "string")
   protected static final String ANOMALY_ID = "anomalyId";
   @JsonResponseField(required = false)
+  @ArraySchema(schema = @Schema(type = "string"))
   protected static final String FIXABLE_VIOLATED_GOALS = "fixableViolatedGoals";
   @JsonResponseField(required = false)
+  @ArraySchema(schema = @Schema(type = "string"))
   protected static final String UNFIXABLE_VIOLATED_GOALS = "unfixableViolatedGoals";
   @JsonResponseField(required = false)
+  @Schema(type = "object", description = "Dictionary of broker id to failure time in MS.", additionalPropertiesSchema = Long.class)
   protected static final String FAILED_BROKERS_BY_TIME_MS = "failedBrokersByTimeMs";
   @JsonResponseField(required = false)
+  @Schema(type = "object",
+      description = "Dictionary of broker id to a dictionary of log dir to failure time in MS.",
+      additionalPropertiesSchema = com.linkedin.kafka.cruisecontrol.servlet.response.OpenApiSchemaTypes.LongMap.class)
   protected static final String FAILED_DISKS_BY_TIME_MS = "failedDisksByTimeMs";
   @JsonResponseField(required = false)
+  @Schema(type = "string")
   protected static final String OPTIMIZATION_RESULT = "optimizationResult";
   @JsonResponseField(required = false)
+  @Schema(type = "string")
   protected static final String DESCRIPTION = "description";
 
   protected AnomalyState _anomalyState;

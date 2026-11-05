@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.HashMap;
 
 
+@io.swagger.v3.oas.annotations.media.Schema(additionalPropertiesSchema = Float.class)
 @JsonResponseClass
 @JsonResponseExternalFields(KafkaAnomalyType.class)
 public class SelfHealingEnabledRatio {

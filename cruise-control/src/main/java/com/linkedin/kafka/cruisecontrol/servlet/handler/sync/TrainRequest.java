@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.sync;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.TrainParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.response.TrainResult;
@@ -21,6 +25,14 @@ public class TrainRequest extends AbstractSyncRequest {
     super();
   }
 
+  @Operation(operationId = "train",
+      summary = "Train Cruise Control to better model broker cpu usage.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "Successful train response.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/TrainResult")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))})})
   @Override
   protected TrainResult handle() {
     _kafkaCruiseControl.train(_parameters.startMs(), _parameters.endMs());

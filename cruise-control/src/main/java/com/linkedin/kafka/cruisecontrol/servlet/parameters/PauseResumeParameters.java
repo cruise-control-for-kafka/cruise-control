@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import java.io.UnsupportedEncodingException;
@@ -75,6 +79,16 @@ public class PauseResumeParameters extends AbstractParameters {
     super.configure(configs);
   }
 
+  @Parameters(value = {@Parameter(name = "reason",
+      in = ParameterIn.QUERY,
+      description = "Reason for request.",
+      schema = @Schema(type = "string")),
+      @Parameter(name = "review_id",
+      in = ParameterIn.QUERY,
+      description = "Review id for 2-step verification.",
+      schema = @Schema(type = "integer",
+      format = "int32",
+      minimum = "0"))})
   @Override
   public SortedSet<String> caseInsensitiveParameterNames() {
     return CASE_INSENSITIVE_PARAMETER_NAMES;

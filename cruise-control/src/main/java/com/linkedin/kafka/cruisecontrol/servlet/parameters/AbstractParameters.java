@@ -10,6 +10,10 @@ import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.servlet.ServletRequestContext;
 import com.linkedin.kafka.cruisecontrol.vertx.VertxRequestContext;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.vertx.ext.web.RoutingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,6 +87,17 @@ public abstract class AbstractParameters implements CruiseControlParameters {
       return true;
     }
   }
+
+  @Override
+  @Parameters({
+      @Parameter(name = JSON_PARAM, in = ParameterIn.QUERY, description = "Whether to return in JSON format or not.",
+          schema = @Schema(type = "boolean", defaultValue = "false")),
+      @Parameter(name = GET_RESPONSE_SCHEMA, in = ParameterIn.QUERY, description = "Whether to return JSON schema in response header or not.",
+          schema = @Schema(type = "boolean", defaultValue = "false")),
+      @Parameter(name = DO_AS, in = ParameterIn.QUERY, description = "The user specified by a trusted proxy in that authentication model.",
+          schema = @Schema(type = "string"))
+  })
+  public abstract SortedSet<String> caseInsensitiveParameterNames();
 
   @Override
   public boolean json() {

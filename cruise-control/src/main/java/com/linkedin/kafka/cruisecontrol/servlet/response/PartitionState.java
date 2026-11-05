@@ -4,6 +4,8 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -18,22 +20,31 @@ import org.apache.kafka.common.PartitionInfo;
 @JsonResponseClass
 public class PartitionState {
   @JsonResponseField
+  @Schema(type = "string")
   protected static final String TOPIC = "topic";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   protected static final String PARTITION = "partition";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   protected static final String LEADER = "leader";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(type = "integer", format = "int32"))
   protected static final String REPLICAS = "replicas";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(type = "integer", format = "int32"))
   protected static final String IN_SYNC = "in-sync";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(type = "integer", format = "int32"))
   protected static final String OUT_OF_SYNC = "out-of-sync";
   @JsonResponseField
+  @ArraySchema(schema = @Schema(type = "integer", format = "int32"))
   protected static final String OFFLINE = "offline";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   protected static final String MIN_ISR = "min-isr";
   @JsonResponseField(required = false)
+  @Schema(type = "boolean", format = "boolean")
   protected static final String REMOTE_STORAGE_ENABLED = "remote-storage-enabled";
   public static final String PARTITION_STATE_FORMAT_WITH_REMOTE_SUFFIX = "s%10s%10s%30s%30s%25s%25s%10s%25s%n";
   public static final String PARTITION_STATE_FORMAT_WITHOUT_REMOTE_SUFFIX = "s%10s%10s%30s%30s%25s%25s%10s%n";

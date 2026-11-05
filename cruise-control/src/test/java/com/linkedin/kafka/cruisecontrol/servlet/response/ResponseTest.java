@@ -4,6 +4,13 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.response;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
+import com.linkedin.kafka.cruisecontrol.async.progress.OperationProgress;
+import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.model.ModelParameters;
+import com.linkedin.kafka.cruisecontrol.monitor.LoadMonitorState;
+import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ClassInfo;
 import io.github.classgraph.ScanResult;
@@ -26,6 +33,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
 import java.util.Queue;
+import java.util.TreeMap;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -33,8 +41,10 @@ import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils.O
 import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils.CRUISE_CONTROL_PACKAGE;
 import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils.JSON_CONTENT_TYPE;
 import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils.PLAIN_TEXT_CONTENT_TYPE;
+import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties;
 import static com.linkedin.kafka.cruisecontrol.servlet.response.ResponseUtils.VERSION;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
@@ -98,6 +108,134 @@ public class ResponseTest {
   }
 
   /**
+   * Check that cluster standard deviations retain the fractional values emitted by ClusterStats.
+   */
+  @Test
+  public void checkClusterStatsStandardDeviationTypes() {
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    Schema schema = api.getComponents().getSchemas().get("ClusterStats");
+    for (String field : Arrays.asList("StdReplicasPerBroker", "StdLeadersPerBroker")) {
+      Schema property = (Schema) schema.getProperties().get(field);
+      assertEquals(field, "number", property.getType());
+      assertEquals(field, "double", property.getFormat());
+    }
+    Map<String, Object> stats = new ClusterStats(2, Map.of(1, 3, 2, 3), Map.of(1, 2, 2, 1)).getJsonStructure();
+    assertEquals(0.5, (Double) stats.get("StdLeadersPerBroker"), 0.0);
+  }
+
+  /**
+   * Check numeric and boolean wire values without narrowing the existing broad numeric schemas.
+   */
+  @Test
+  public void checkModelCompletenessWireValues() {
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    Schema schema = api.getComponents().getSchemas().get("ModelCompletenessRequirements");
+    JsonObject json = new Gson().toJsonTree(new ModelCompletenessRequirements(3, 0.625, true).getJsonStructure())
+        .getAsJsonObject();
+
+    assertEquals("number", ((Schema) schema.getProperties().get("requiredNumSnapshots")).getType());
+    assertTrue(json.getAsJsonPrimitive("requiredNumSnapshots").isNumber());
+    assertEquals(3, json.get("requiredNumSnapshots").getAsBigDecimal().intValueExact());
+    assertEquals("number", ((Schema) schema.getProperties().get("minMonitoredPartitionsPercentage")).getType());
+    assertTrue(json.getAsJsonPrimitive("minMonitoredPartitionsPercentage").isNumber());
+    assertEquals(0.625, json.get("minMonitoredPartitionsPercentage").getAsDouble(), 0.0);
+    assertEquals("boolean", ((Schema) schema.getProperties().get("includeAllTopics")).getType());
+    assertTrue(json.getAsJsonPrimitive("includeAllTopics").isBoolean());
+    assertTrue(json.get("includeAllTopics").getAsBoolean());
+    assertFalse(json.has(VERSION));
+  }
+
+  /**
+   * Check calculated partition counts, percentage units, and optional timestamp-keyed window coverage.
+   */
+  @Test
+  public void checkLoadMonitorCalculatedWireValues() {
+    ModelParameters.init(new KafkaCruiseControlConfig(getKafkaCruiseControlProperties()));
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    Schema schema = api.getComponents().getSchemas().get("LoadMonitorState");
+    LoadMonitorState state = LoadMonitorState.running(1, new TreeMap<>(Map.of(1234L, 0.625f)), 0.625, 10, 1, null);
+    JsonObject json = new Gson().toJsonTree(state.getJsonStructure(true)).getAsJsonObject();
+
+    assertEquals("number", ((Schema) schema.getProperties().get("numValidPartitions")).getType());
+    assertTrue(json.getAsJsonPrimitive("numValidPartitions").isNumber());
+    assertEquals(6, json.get("numValidPartitions").getAsBigDecimal().intValueExact());
+    assertEquals("number", ((Schema) schema.getProperties().get("monitoringCoveragePct")).getType());
+    assertTrue(json.getAsJsonPrimitive("monitoringCoveragePct").isNumber());
+    assertEquals(62.5, json.get("monitoringCoveragePct").getAsDouble(), 0.0);
+    Schema windows = (Schema) schema.getProperties().get("monitoredWindows");
+    assertEquals("object", windows.getType());
+    assertEquals("number", ((Schema) windows.getAdditionalProperties()).getType());
+    JsonObject windowValues = json.getAsJsonObject("monitoredWindows");
+    assertEquals(1, windowValues.size());
+    assertTrue(windowValues.getAsJsonPrimitive("1234").isNumber());
+    assertEquals(0.625, windowValues.get("1234").getAsDouble(), 0.0);
+    assertFalse(schema.getRequired().contains("monitoredWindows"));
+    assertFalse(state.getJsonStructure(false).containsKey("monitoredWindows"));
+    assertFalse(json.has("error"));
+  }
+
+  /**
+   * Check that the error branch emits text rather than normal monitoring measurements.
+   */
+  @Test
+  public void checkLoadMonitorErrorWireValue() {
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    Schema schema = api.getComponents().getSchemas().get("LoadMonitorState");
+    JsonObject json = new Gson().toJsonTree(LoadMonitorState.notStarted().getJsonStructure(true)).getAsJsonObject();
+
+    assertEquals("string", ((Schema) schema.getProperties().get("error")).getType());
+    assertFalse(schema.getRequired().contains("error"));
+    assertTrue(json.getAsJsonPrimitive("error").isString());
+    assertEquals("ILLEGAL_STATE_EXCEPTION", json.get("error").getAsString());
+    assertFalse(json.has("monitoredWindows"));
+    assertFalse(json.has("monitoringCoveragePct"));
+  }
+
+  /**
+   * Check that partition-load metrics permit the fractional utilization returned by the load model.
+   */
+  @Test
+  public void checkPartitionLoadNumericTypes() {
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    Schema schema = api.getComponents().getSchemas().get("PartitionLoadRecord");
+    for (String field : Arrays.asList("cpu", "disk", "networkInbound", "networkOutbound", "msg_in")) {
+      Schema property = (Schema) schema.getProperties().get(field);
+      assertEquals(field, "number", property.getType());
+      assertEquals(field, "double", property.getFormat());
+    }
+  }
+
+  /**
+   * Check that cluster-load requests document asynchronous progress as well as completed results.
+   */
+  @Test
+  public void checkClusterLoadProgressResponse() {
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    assertTrue(api.getPaths().get("/load").getGet().getResponses().containsKey("202"));
+  }
+
+  /**
+   * Check that review entries are a list, not a single request object.
+   */
+  @Test
+  public void checkReviewResultShape() {
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    Schema schema = api.getComponents().getSchemas().get("ReviewResult");
+    assertEquals("array", ((Schema) schema.getProperties().get("RequestInfo")).getType());
+    assertTrue(schema.getProperties().keySet().containsAll(schema.getRequired()));
+  }
+
+  /**
+   * Check the nested progress record against the actual serializer rather than an outer response envelope.
+   */
+  @Test
+  public void checkOperationProgressShape() {
+    OpenAPI api = new OpenAPIV3Parser().read(OPENAPI_SPEC_PATH);
+    Schema schema = api.getComponents().getSchemas().get("OperationProgress");
+    assertEquals(new OperationProgress("Getting load").getJsonStructure().keySet(), schema.getProperties().keySet());
+  }
+
+  /**
    * For each endpoint, check all the possible responses defined in OpenAPI spec.
    *
    * @param operation The OpenAPI operation for certain endpoint.
@@ -135,6 +273,9 @@ public class ResponseTest {
     Map<String, Boolean> fields = extractFieldKeys(_schemaToClass.get(className));
 
     Map<String, Schema> properties = schema.getProperties();
+    if (schema.getRequired() != null) {
+      assertTrue(className + " requires an undeclared field.", properties.keySet().containsAll(schema.getRequired()));
+    }
 
     // Check version field.
     // If current schema is the schema for the outermost layer in the response, it must contain version field;
@@ -159,25 +300,29 @@ public class ResponseTest {
         // Check key's necessity.
         assertEquals(className + ":" + k, fields.get(k), schema.getRequired() != null && schema.getRequired().contains(k));
         // Check value
-        Schema schemaToCheck = v;
-        while (schemaToCheck instanceof ArraySchema || schemaToCheck instanceof MapSchema) {
-          if (schemaToCheck instanceof ArraySchema) {
-            schemaToCheck = ((ArraySchema) schemaToCheck).getItems();
-          } else {
-            schemaToCheck = (Schema) schemaToCheck.getAdditionalProperties();
-          }
-        }
-
-        if (schemaToCheck instanceof StringSchema || schemaToCheck instanceof IntegerSchema || schemaToCheck instanceof NumberSchema
-            || schemaToCheck instanceof ComposedSchema || schemaToCheck instanceof BooleanSchema) {
-          return;
-        }
-        assertNotEquals(null, schemaToCheck.get$ref());
-        String refName = schemaToCheck.get$ref();
-        String schemaName = refName.substring(refName.lastIndexOf('/') + 1);
-        checkSchema(_openAPI.getComponents().getSchemas().get(schemaName), schemaName, false);
+        checkValueSchema(v);
       }
     });
+  }
+
+  private void checkValueSchema(Schema schema) {
+    if (schema instanceof ArraySchema) {
+      checkValueSchema(((ArraySchema) schema).getItems());
+    } else if (schema instanceof MapSchema) {
+      checkValueSchema((Schema) schema.getAdditionalProperties());
+    } else if (!(schema instanceof StringSchema || schema instanceof IntegerSchema || schema instanceof NumberSchema
+        || schema instanceof ComposedSchema || schema instanceof BooleanSchema)) {
+      assertNotEquals(null, schema.get$ref());
+      String reference = schema.get$ref();
+      String name = reference.substring(reference.lastIndexOf('/') + 1);
+      Schema referenced = _openAPI.getComponents().getSchemas().get(name);
+      assertNotEquals("Unresolved schema: " + name, null, referenced);
+      if (_schemaToClass.containsKey(name)) {
+        checkSchema(referenced, name, false);
+      } else {
+        checkValueSchema(referenced);
+      }
+    }
   }
 
   /**

@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.executor;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -40,14 +41,19 @@ import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 @JsonResponseClass
 public class ExecutionTask implements Comparable<ExecutionTask> {
   @JsonResponseField
+  @Schema(type = "integer", format = "int64")
   private static final String EXECUTION_ID = "executionId";
   @JsonResponseField
+  @Schema(implementation = TaskType.class)
   private static final String TYPE = "type";
   @JsonResponseField
+  @Schema(implementation = ExecutionTaskState.class)
   private static final String STATE = "state";
   @JsonResponseField
+  @Schema(ref = "#/components/schemas/ExecutionProposal")
   private static final String PROPOSAL = "proposal";
   @JsonResponseField
+  @Schema(type = "integer", format = "int32")
   private static final String BROKER_ID = "brokerId";
   private static final Map<ExecutionTaskState, Set<ExecutionTaskState>> VALID_TRANSFER = new HashMap<>();
   private final TaskType _type;

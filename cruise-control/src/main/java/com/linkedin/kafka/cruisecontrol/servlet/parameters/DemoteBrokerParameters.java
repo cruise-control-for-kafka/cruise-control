@@ -4,6 +4,13 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.Explode;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.enums.ParameterStyle;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
 import com.linkedin.kafka.cruisecontrol.executor.ConcurrencyType;
@@ -178,6 +185,98 @@ public class DemoteBrokerParameters extends KafkaOptimizationParameters {
     super.configure(configs);
   }
 
+  @Parameters(value = {@Parameter(name = "brokerid",
+      in = ParameterIn.QUERY,
+      description = "List of target broker ids. Specify brokerid, brokerid_and_logdirs, or both.",
+      array = @ArraySchema(schema = @Schema(type = "integer",
+      format = "int32"))),
+      @Parameter(name = "dryrun",
+      in = ParameterIn.QUERY,
+      description = "Whether to dry-run the request or not.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "true")),
+      @Parameter(name = "concurrent_leader_movements",
+      in = ParameterIn.QUERY,
+      description = "The upper bound of cluster ongoing leadership movements.",
+      schema = @Schema(type = "integer",
+      format = "int32",
+      minimum = "1",
+      defaultValue = "1000")),
+      @Parameter(name = "broker_concurrent_leader_movements",
+      in = ParameterIn.QUERY,
+      description = "The upper bound of per broker ongoing leadership movements.",
+      schema = @Schema(type = "integer",
+      format = "int32",
+      minimum = "1",
+      defaultValue = "250")),
+      @Parameter(name = "allow_capacity_estimation",
+      in = ParameterIn.QUERY,
+      description = "Whether to allow capacity estimation when cruise-control is unable to obtain all "
+      + "per-broker capacity information.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "true")),
+      @Parameter(name = "skip_urp_demotion",
+      in = ParameterIn.QUERY,
+      description = "Whether to operate on partitions which are currently under-replicated.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "true")),
+      @Parameter(name = "exclude_follower_demotion",
+      in = ParameterIn.QUERY,
+      description = "Whether to operate on partitions which only have follower replicas on the "
+      + "specified broker(s).",
+      schema = @Schema(type = "boolean",
+      defaultValue = "true")),
+      @Parameter(name = "verbose",
+      in = ParameterIn.QUERY,
+      description = "Return detailed state information.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "false")),
+      @Parameter(name = "exclude_recently_demoted_brokers",
+      in = ParameterIn.QUERY,
+      description = "Whether to allow leader replicas to be moved to recently demoted brokers.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "false")),
+      @Parameter(name = "replica_movement_strategies",
+      in = ParameterIn.QUERY,
+      description = "Replica movement strategies to use.",
+      array = @ArraySchema(schema = @Schema(type = "string"),
+      arraySchema = @Schema(example = "[\"PrioritizeLargeReplicaMovementStrategy\",\"PostponeUrpReplicaMovementStrategy\"]"))),
+      @Parameter(name = "brokerid_and_logdirs",
+      in = ParameterIn.QUERY,
+      description = "Comma-separated broker-id and log-directory pairs. Each pair uses the first hyphen"
+      + " as its separator.",
+      example = "101-/tmp/kafka-logs-1,101-/tmp/kafka-logs-2",
+      style = ParameterStyle.FORM,
+      explode = Explode.FALSE,
+      array = @ArraySchema(schema = @Schema(type = "string",
+      pattern = "^\\d+-.+$"))),
+      @Parameter(name = "replication_throttle",
+      in = ParameterIn.QUERY,
+      description = "Upper bound on the bandwidth in bytes per second used to move replicas.",
+      schema = @Schema(type = "integer",
+      format = "int64",
+      minimum = "1")),
+      @Parameter(name = "reason",
+      in = ParameterIn.QUERY,
+      description = "Reason for request.",
+      schema = @Schema(type = "string")),
+      @Parameter(name = "execution_progress_check_interval_ms",
+      in = ParameterIn.QUERY,
+      description = "Execution progress check interval in milliseconds.",
+      schema = @Schema(type = "integer",
+      format = "int64",
+      minimum = "5000")),
+      @Parameter(name = "stop_ongoing_execution",
+      in = ParameterIn.QUERY,
+      description = "Whether to stop the ongoing execution (if any) and start executing the given request.",
+      schema = @Schema(type = "boolean",
+      defaultValue = "false")),
+      @Parameter(name = "review_id",
+      in = ParameterIn.QUERY,
+      description = "Review id for 2-step verification.",
+      schema = @Schema(type = "integer",
+      format = "int32",
+      minimum = "0"))})
   @Override
   public SortedSet<String> caseInsensitiveParameterNames() {
     return CASE_INSENSITIVE_PARAMETER_NAMES;

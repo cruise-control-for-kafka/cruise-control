@@ -4,6 +4,10 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.sync;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.PauseResumeParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.response.PauseSamplingResult;
@@ -21,6 +25,14 @@ public class PauseRequest extends AbstractSyncRequest {
     super();
   }
 
+  @Operation(operationId = "pauseSampling",
+      summary = "Pause metric sampling.",
+      responses = {@ApiResponse(responseCode = "200",
+      description = "Successful execution response.",
+      content = {@Content(mediaType = "application/json",
+      schema = @Schema(ref = "#/components/schemas/PauseSamplingResult")),
+      @Content(mediaType = "text/plain",
+      schema = @Schema(type = "string"))})})
   @Override
   protected PauseSamplingResult handle() {
     _kafkaCruiseControl.pauseMetricSampling(_parameters.reason());

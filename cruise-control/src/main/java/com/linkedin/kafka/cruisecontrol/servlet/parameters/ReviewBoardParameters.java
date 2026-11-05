@@ -4,6 +4,11 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.Parameters;
+import io.swagger.v3.oas.annotations.enums.ParameterIn;
+import io.swagger.v3.oas.annotations.media.ArraySchema;
+import io.swagger.v3.oas.annotations.media.Schema;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
 import java.io.UnsupportedEncodingException;
 import java.util.Collections;
@@ -52,6 +57,12 @@ public class ReviewBoardParameters extends AbstractParameters {
     super.configure(configs);
   }
 
+  @Parameters(value = {@Parameter(name = "review_ids",
+      in = ParameterIn.QUERY,
+      description = "Ids for selected request to check.",
+      array = @ArraySchema(schema = @Schema(type = "integer",
+      format = "int32"),
+      arraySchema = @Schema(example = "[1,2,3]")))})
   @Override
   public SortedSet<String> caseInsensitiveParameterNames() {
     return CASE_INSENSITIVE_PARAMETER_NAMES;
