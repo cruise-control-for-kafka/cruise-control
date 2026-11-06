@@ -22,6 +22,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -309,6 +310,213 @@ public class PreferredLeaderElectionGoalTest {
     }
   }
 
+  @Test
+  public void testOptimizeWithDemotedBrokersAndExcludedTopics() {
+    ClusterModel clusterModel = createClusterModel(true, false).clusterModel();
+    // Broker 1 is the leader of T0P1 and T1P0.
+    clusterModel.setBrokerState(1, Broker.State.DEMOTED);
+
+    Map<TopicPartition, ReplicaPlacementInfo> originalLeaderDistribution = clusterModel.getLeaderDistribution();
+    Map<TopicPartition, List<ReplicaPlacementInfo>> originalReplicaDistribution = clusterModel.getReplicaDistribution();
+    PreferredLeaderElectionGoal goal = new PreferredLeaderElectionGoal(false, false, null, true);
+    // Before the optimization, goals are expected to be undecided wrt their provision status.
+    assertEquals(ProvisionStatus.UNDECIDED, goal.provisionResponse().status());
+    goal.optimize(clusterModel, Collections.emptySet(), new OptimizationOptions(Collections.singleton(TOPIC0),
+                                                                                Collections.emptySet(),
+                                                                                Collections.emptySet()));
+    // After the optimization, PreferredLeaderElectionGoal is expected to be undecided wrt its provision status.
+    assertEquals(ProvisionStatus.UNDECIDED, goal.provisionResponse().status());
+
+    // The replica order and leadership of the partitions of the excluded topic are expected to remain unchanged.
+    assertPartitionsUnchanged(clusterModel, TOPIC0, originalReplicaDistribution, originalLeaderDistribution);
+    assertEquals(1, clusterModel.partition(T0P1).leader().broker().id());
+    // The leadership of the partitions of the other topics is expected to be moved away from the demoted broker.
+    assertDemoted(clusterModel, T1P0, 1);
+  }
+
+  @Test
+  public void testOptimizeWithDemotedBrokersIgnoresExcludedTopicsByDefault() {
+    ClusterModel clusterModel = createClusterModel(true, false).clusterModel();
+    // Broker 1 is the leader of T0P1 and T1P0.
+    clusterModel.setBrokerState(1, Broker.State.DEMOTED);
+
+    // Unless the goal is asked to honor the excluded topics, it ignores them.
+    PreferredLeaderElectionGoal goal = new PreferredLeaderElectionGoal(false, false, null);
+    goal.optimize(clusterModel, Collections.emptySet(), new OptimizationOptions(Collections.singleton(TOPIC0),
+                                                                                Collections.emptySet(),
+                                                                                Collections.emptySet()));
+
+    assertDemoted(clusterModel, T0P1, 1);
+    assertDemoted(clusterModel, T1P0, 1);
+  }
+
+  @Test
+  public void testOptimizeWithDemotedDisksAndExcludedTopics() {
+    ClusterModel clusterModel = createClusterModel(true, true).clusterModel();
+    // LOGDIR0 of broker 4 hosts the leaders of T2P0, T2P2, and T3P2.
+    clusterModel.broker(4).disk(LOGDIR0).setState(Disk.State.DEMOTED);
+
+    Map<TopicPartition, ReplicaPlacementInfo> originalLeaderDistribution = clusterModel.getLeaderDistribution();
+    Map<TopicPartition, List<ReplicaPlacementInfo>> originalReplicaDistribution = clusterModel.getReplicaDistribution();
+    PreferredLeaderElectionGoal goal = new PreferredLeaderElectionGoal(false, false, null, true);
+    goal.optimize(clusterModel, Collections.emptySet(), new OptimizationOptions(Collections.singleton(TOPIC2),
+                                                                                Collections.emptySet(),
+                                                                                Collections.emptySet()));
+
+    // The replica order and leadership of the partitions of the excluded topic are expected to remain unchanged.
+    assertPartitionsUnchanged(clusterModel, TOPIC2, originalReplicaDistribution, originalLeaderDistribution);
+    assertEquals(4, clusterModel.partition(T2P0).leader().broker().id());
+    assertEquals(4, clusterModel.partition(T2P2).leader().broker().id());
+    // The leadership of the partitions of the other topics is expected to be moved away from the demoted disk.
+    assertDemoted(clusterModel, T3P2, 4);
+  }
+
+  @Test
+  public void testOptimizeWithoutDemotedBrokersAndWithExcludedTopics() {
+    ClusterModel clusterModel = createClusterModel(true, false).clusterModel();
+
+    Map<TopicPartition, ReplicaPlacementInfo> originalLeaderDistribution = clusterModel.getLeaderDistribution();
+    Map<TopicPartition, List<ReplicaPlacementInfo>> originalReplicaDistribution = clusterModel.getReplicaDistribution();
+    PreferredLeaderElectionGoal goal = new PreferredLeaderElectionGoal(false, false, null, true);
+    goal.optimize(clusterModel, Collections.emptySet(), new OptimizationOptions(Collections.singleton(TOPIC1),
+                                                                                Collections.emptySet(),
+                                                                                Collections.emptySet()));
+
+    // The leaders of the partitions of the excluded topic (i.e. not the first replicas) are expected to remain unchanged.
+    assertPartitionsUnchanged(clusterModel, TOPIC1, originalReplicaDistribution, originalLeaderDistribution);
+    for (String t : Arrays.asList(TOPIC0, TOPIC2)) {
+      for (int p = 0; p < 3; p++) {
+        List<Replica> replicas = clusterModel.partition(new TopicPartition(t, p)).replicas();
+        for (int i = 0; i < 3; i++) {
+          // only the first replica should be leader.
+          assertEquals(i == 0, replicas.get(i).isLeader());
+        }
+      }
+    }
+  }
+
+  @Test
+  public void testDemotedBrokerLeadershipMovesOnlyToInSyncReplicas() {
+    ClusterModelAndInfo clusterModelAndInfo = createClusterModelWithIsr(false);
+    ClusterModel clusterModel = clusterModelAndInfo.clusterModel();
+    clusterModel.setBrokerState(1, Broker.State.DEMOTED);
+
+    optimizeWithIsr(clusterModel, clusterModelAndInfo.clusterInfo(), false, Collections.emptySet());
+    assertInSyncDemotion(clusterModel);
+  }
+
+  @Test
+  public void testDemotedDiskLeadershipMovesOnlyToInSyncReplicas() {
+    ClusterModelAndInfo clusterModelAndInfo = createClusterModelWithIsr(true);
+    ClusterModel clusterModel = clusterModelAndInfo.clusterModel();
+    clusterModel.broker(1).disk(LOGDIR0).setState(Disk.State.DEMOTED);
+
+    optimizeWithIsr(clusterModel, clusterModelAndInfo.clusterInfo(), false, Collections.emptySet());
+    assertInSyncDemotion(clusterModel);
+  }
+
+  @Test
+  public void testDemotionWithSkipUrpDemotionAndIsr() {
+    ClusterModelAndInfo clusterModelAndInfo = createClusterModelWithIsr(false);
+    ClusterModel clusterModel = clusterModelAndInfo.clusterModel();
+    clusterModel.setBrokerState(1, Broker.State.DEMOTED);
+
+    optimizeWithIsr(clusterModel, clusterModelAndInfo.clusterInfo(), true, Collections.emptySet());
+    // Only the partition with all replicas in sync is demoted.
+    assertReplicaOrder(clusterModel, T0P0, 2, 3, 1);
+    assertReplicaOrder(clusterModel, T0P1, 1, 2, 3);
+    assertReplicaOrder(clusterModel, T0P2, 1, 3, 2);
+    assertReplicaOrder(clusterModel, T1P0, 1, 2, 3);
+    assertReplicaOrder(clusterModel, T1P1, 2, 1, 3);
+  }
+
+  @Test
+  public void testDemotionSkipsPartitionsWhoseInSyncReplicasAreExcludedForLeadership() {
+    ClusterModelAndInfo clusterModelAndInfo = createClusterModelWithIsr(false);
+    ClusterModel clusterModel = clusterModelAndInfo.clusterModel();
+    clusterModel.setBrokerState(1, Broker.State.DEMOTED);
+
+    optimizeWithIsr(clusterModel, clusterModelAndInfo.clusterInfo(), false, Collections.singleton(3));
+    assertReplicaOrder(clusterModel, T0P0, 2, 3, 1);
+    // The only other in-sync replica is on broker 3, which is excluded for leadership.
+    assertReplicaOrder(clusterModel, T0P1, 1, 2, 3);
+    assertReplicaOrder(clusterModel, T0P2, 2, 3, 1);
+    assertReplicaOrder(clusterModel, T1P0, 1, 2, 3);
+  }
+
+  @Test
+  public void testDemotionOfTwoBrokersMovesLeadershipOffBoth() {
+    ClusterModelAndInfo clusterModelAndInfo = createClusterModelWithIsr(false);
+    ClusterModel clusterModel = clusterModelAndInfo.clusterModel();
+    clusterModel.setBrokerState(1, Broker.State.DEMOTED);
+    clusterModel.setBrokerState(2, Broker.State.DEMOTED);
+
+    optimizeWithIsr(clusterModel, clusterModelAndInfo.clusterInfo(), false, Collections.emptySet());
+    // The followers on the demoted brokers stay in place (excludeFollowerDemotion), but do not take over the leadership.
+    assertReplicaOrder(clusterModel, T0P0, 3, 2, 1);
+    assertReplicaOrder(clusterModel, T0P1, 3, 2, 1);
+    // Broker 2 is in sync but demoted, and broker 3 is not in sync.
+    assertReplicaOrder(clusterModel, T0P2, 1, 3, 2);
+    assertReplicaOrder(clusterModel, T1P0, 1, 2, 3);
+    assertReplicaOrder(clusterModel, T1P1, 3, 1, 2);
+  }
+
+  // The expected result of demoting broker 1, or its disk, in the cluster of createClusterModelWithIsr.
+  private static void assertInSyncDemotion(ClusterModel clusterModel) {
+    // All replicas are in sync: the next replica takes over the leadership.
+    assertReplicaOrder(clusterModel, T0P0, 2, 3, 1);
+    // Only broker 3 is in sync: it takes over the leadership, although broker 2 is next in the replica list.
+    assertReplicaOrder(clusterModel, T0P1, 3, 2, 1);
+    // Only broker 2 is in sync: it takes over the leadership, although broker 3 is next in the replica list.
+    assertReplicaOrder(clusterModel, T0P2, 2, 3, 1);
+    // No other replica is in sync: the leadership and the replica order stay unchanged.
+    assertReplicaOrder(clusterModel, T1P0, 1, 2, 3);
+    // Followers are not demoted (excludeFollowerDemotion).
+    assertReplicaOrder(clusterModel, T1P1, 2, 1, 3);
+  }
+
+  private static void optimizeWithIsr(ClusterModel clusterModel,
+                                      Cluster cluster,
+                                      boolean skipUrpDemotion,
+                                      Set<Integer> excludedBrokersForLeadership) {
+    PreferredLeaderElectionGoal goal = new PreferredLeaderElectionGoal(skipUrpDemotion, true, cluster, false);
+    goal.optimize(clusterModel, Collections.emptySet(), new OptimizationOptions(Collections.emptySet(),
+                                                                                excludedBrokersForLeadership,
+                                                                                Collections.emptySet()));
+  }
+
+  // Assert that the replicas of the given partition are on the given brokers in the given order, and only the first one leads.
+  private static void assertReplicaOrder(ClusterModel clusterModel, TopicPartition tp, Integer... brokerIds) {
+    List<Replica> replicas = clusterModel.partition(tp).replicas();
+    assertEquals("Tp " + tp, Arrays.asList(brokerIds), replicas.stream().map(r -> r.broker().id()).toList());
+    for (int i = 0; i < replicas.size(); i++) {
+      assertEquals("Tp " + tp, i == 0, replicas.get(i).isLeader());
+    }
+  }
+
+  // Assert that the given partition is led by its first replica, and its replica on the given demoted broker is the last replica.
+  private static void assertDemoted(ClusterModel clusterModel, TopicPartition tp, int demotedBrokerId) {
+    List<Replica> replicas = clusterModel.partition(tp).replicas();
+    for (int i = 0; i < replicas.size(); i++) {
+      assertEquals("Tp " + tp, i == 0, replicas.get(i).isLeader());
+    }
+    assertEquals("Tp " + tp, demotedBrokerId, replicas.get(replicas.size() - 1).broker().id());
+  }
+
+  // Assert that the replica order and leadership of the partitions of the given topic are unchanged.
+  private static void assertPartitionsUnchanged(ClusterModel clusterModel,
+                                                String topic,
+                                                Map<TopicPartition, List<ReplicaPlacementInfo>> originalReplicaDistribution,
+                                                Map<TopicPartition, ReplicaPlacementInfo> originalLeaderDistribution) {
+    Map<TopicPartition, List<ReplicaPlacementInfo>> replicaDistribution = clusterModel.getReplicaDistribution();
+    Map<TopicPartition, ReplicaPlacementInfo> leaderDistribution = clusterModel.getLeaderDistribution();
+    for (int p = 0; p < 3; p++) {
+      TopicPartition tp = new TopicPartition(topic, p);
+      assertEquals("Tp " + tp, originalReplicaDistribution.get(tp), replicaDistribution.get(tp));
+      assertEquals("Tp " + tp, originalLeaderDistribution.get(tp), leaderDistribution.get(tp));
+    }
+  }
+
   private static class ClusterModelAndInfo {
     private final ClusterModel _clusterModel;
     private final Cluster _clusterInfo;
@@ -427,6 +635,52 @@ public class PreferredLeaderElectionGoalTest {
 
       cluster = new Cluster("id", Arrays.asList(nodes), partitions, Collections.emptySet(), Collections.emptySet());
     }
+    return new ClusterModelAndInfo(clusterModel, cluster);
+  }
+
+  /**
+   * Brokers 1, 2 and 3, one per rack, with all replicas on {@code LOGDIR0} if disk info is populated. Broker 1 leads four
+   * partitions with different in-sync replicas, and follows a fifth one:
+   * <ul>
+   *   <li>T0P0 replicas [1, 2, 3], ISR [1, 2, 3]</li>
+   *   <li>T0P1 replicas [1, 2, 3], ISR [1, 3]</li>
+   *   <li>T0P2 replicas [1, 3, 2], ISR [1, 2]</li>
+   *   <li>T1P0 replicas [1, 2, 3], ISR [1]</li>
+   *   <li>T1P1 replicas [2, 1, 3], ISR [1, 2, 3]</li>
+   * </ul>
+   *
+   * @param populateDiskInfo {@code true} to create the brokers with disks, {@code false} otherwise.
+   * @return The cluster model, and the Kafka cluster with the in-sync replicas above.
+   */
+  private ClusterModelAndInfo createClusterModelWithIsr(boolean populateDiskInfo) {
+    ClusterModel clusterModel = new ClusterModel(new ModelGeneration(0, 0), 1.0);
+    BrokerCapacityInfo capacity = populateDiskInfo ? new BrokerCapacityInfo(TestConstants.BROKER_CAPACITY, null, TestConstants.DISK_CAPACITY)
+                                                   : new BrokerCapacityInfo(TestConstants.BROKER_CAPACITY);
+    Node[] nodes = new Node[4];
+    for (int b = 1; b <= 3; b++) {
+      clusterModel.createRack("r" + b);
+      clusterModel.createBroker("r" + b, "h" + b, b, capacity, populateDiskInfo);
+      nodes[b] = new Node(b, "h" + b, 100);
+    }
+    Map<TopicPartition, int[][]> replicasAndIsr = new LinkedHashMap<>();
+    replicasAndIsr.put(T0P0, new int[][]{{1, 2, 3}, {1, 2, 3}});
+    replicasAndIsr.put(T0P1, new int[][]{{1, 2, 3}, {1, 3}});
+    replicasAndIsr.put(T0P2, new int[][]{{1, 3, 2}, {1, 2}});
+    replicasAndIsr.put(T1P0, new int[][]{{1, 2, 3}, {1}});
+    replicasAndIsr.put(T1P1, new int[][]{{2, 1, 3}, {1, 2, 3}});
+    List<PartitionInfo> partitions = new ArrayList<>();
+    for (Map.Entry<TopicPartition, int[][]> entry : replicasAndIsr.entrySet()) {
+      TopicPartition tp = entry.getKey();
+      int[] replicas = entry.getValue()[0];
+      for (int i = 0; i < replicas.length; i++) {
+        createReplicaAndSetLoad(clusterModel, "r" + replicas[i], replicas[i], populateDiskInfo ? LOGDIR0 : null, tp, i, i == 0);
+      }
+      partitions.add(new PartitionInfo(tp.topic(), tp.partition(), nodes[replicas[0]],
+                                       Arrays.stream(replicas).mapToObj(b -> nodes[b]).toArray(Node[]::new),
+                                       Arrays.stream(entry.getValue()[1]).mapToObj(b -> nodes[b]).toArray(Node[]::new)));
+    }
+    Cluster cluster = new Cluster("id", Arrays.asList(nodes[1], nodes[2], nodes[3]), partitions, Collections.emptySet(),
+                                  Collections.emptySet());
     return new ClusterModelAndInfo(clusterModel, cluster);
   }
 

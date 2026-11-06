@@ -240,6 +240,7 @@ class DemoteBrokerEndpoint(AbstractEndpoint):
         CCParameter.DryRunParameter,
         CCParameter.ExcludeFollowerDemotionParameter,
         CCParameter.ExcludeRecentlyDemotedBrokersParameter,
+        CCParameter.ExcludedTopicsParameter,
         CCParameter.JSONParameter,
         CCParameter.ReasonParameter,
         CCParameter.ReplicaMovementStrategiesParameter,
