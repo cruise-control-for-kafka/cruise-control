@@ -74,6 +74,8 @@ public class ExecutionTaskPlanner {
   private final Set<ExecutionTask> _remainingIntraBrokerReplicaMovements;
   private final Map<Long, ExecutionTask> _remainingLeadershipMovements;
   private long _executionId;
+  // Execution ids to keep for the tasks of an execution resumed after a restart, by task (see #taskKey), until their tasks are created.
+  private final Map<String, Long> _executionIdsToKeep;
   private ReplicaMovementStrategy _defaultReplicaMovementTaskStrategy;
   private final Admin _adminClient;
   private final KafkaCruiseControlConfig _config;
@@ -91,6 +93,7 @@ public class ExecutionTaskPlanner {
    */
   public ExecutionTaskPlanner(Admin adminClient, KafkaCruiseControlConfig config) {
     _executionId = 0L;
+    _executionIdsToKeep = new HashMap<>();
     _interPartMoveTasksByBrokerId = new HashMap<>();
     _intraPartMoveTasksByBrokerId = new HashMap<>();
     _remainingInterBrokerReplicaMovements = new HashSet<>();
@@ -191,7 +194,7 @@ public class ExecutionTaskPlanner {
         continue;
       }
       if (!proposal.isInterBrokerMovementCompleted(partitionInfo)) {
-        long replicaActionExecutionId = _executionId++;
+        long replicaActionExecutionId = nextExecutionId(INTER_BROKER_REPLICA_ACTION, tp, ExecutionTask.NO_BROKER_ID);
         long executionAlertingThresholdMs = Math.max(Math.round(proposal.dataToMoveInMB() / _interBrokerReplicaMovementRateAlertingThreshold * 1000),
                                                      _taskExecutionAlertingThresholdMs);
         ExecutionTask executionTask = new ExecutionTask(replicaActionExecutionId, proposal, INTER_BROKER_REPLICA_ACTION,
@@ -206,6 +209,41 @@ public class ExecutionTaskPlanner {
                                                                 : replicaMovementStrategy.chainBaseReplicaMovementStrategyIfAbsent();
     _interPartMoveTasksByBrokerId = chosenReplicaMovementTaskStrategy.applyStrategy(_remainingInterBrokerReplicaMovements, strategyOptions);
     _interPartMoveBrokerComparator = brokerComparator(strategyOptions, chosenReplicaMovementTaskStrategy);
+  }
+
+  /**
+   * @param type Type of a task.
+   * @param tp Partition of the task.
+   * @param brokerId Broker of an intra-broker replica task, ignored for other types.
+   * @return A key that identifies the task within its execution -- e.g. to keep its execution id after a restart.
+   */
+  public static String taskKey(ExecutionTask.TaskType type, TopicPartition tp, int brokerId) {
+    return type == INTRA_BROKER_REPLICA_ACTION ? String.format("%s:%s:%d", type, tp, brokerId) : String.format("%s:%s", type, tp);
+  }
+
+  /**
+   * Make the tasks created next keep the given execution ids -- i.e. the tasks of an execution resumed after a restart keep the ids they
+   * had before -- and give other tasks ids from the given one on.
+   *
+   * @param executionIdByTask Execution id to keep for each task, by task key (see {@link #taskKey}).
+   * @param nextExecutionId The execution id to give the next task without a kept id (at least).
+   */
+  public void keepExecutionIds(Map<String, Long> executionIdByTask, long nextExecutionId) {
+    _executionIdsToKeep.clear();
+    _executionIdsToKeep.putAll(executionIdByTask);
+    _executionId = Math.max(_executionId, nextExecutionId);
+  }
+
+  /**
+   * @return A new execution id, not given to any task yet.
+   */
+  public long newExecutionId() {
+    return _executionId++;
+  }
+
+  private long nextExecutionId(ExecutionTask.TaskType type, TopicPartition tp, int brokerId) {
+    Long keptExecutionId = _executionIdsToKeep.remove(taskKey(type, tp, brokerId));
+    return keptExecutionId != null ? keptExecutionId : _executionId++;
   }
 
   /**
@@ -238,7 +276,7 @@ public class ExecutionTaskPlanner {
         proposal.replicasToMoveBetweenDisksByBroker().values().forEach(r -> {
           String currentLogdir = currentLogdirByReplica.get(new TopicPartitionReplica(proposal.topic(), proposal.partitionId(), r.brokerId()));
           if (currentLogdir != null && !currentLogdir.equals(r.logdir())) {
-            long replicaActionExecutionId = _executionId++;
+            long replicaActionExecutionId = nextExecutionId(INTRA_BROKER_REPLICA_ACTION, proposal.topicPartition(), r.brokerId());
             ExecutionTask task = new ExecutionTask(replicaActionExecutionId, proposal, r.brokerId(), INTRA_BROKER_REPLICA_ACTION,
                                                    Math.max(Math.round(proposal.dataToMoveInMB() / _intraBrokerReplicaMovementRateAlertingThreshold),
                                                             _taskExecutionAlertingThresholdMs));
@@ -263,7 +301,7 @@ public class ExecutionTaskPlanner {
         Node currentLeader = cluster.leaderFor(proposal.topicPartition());
         if (currentLeader != null && currentLeader.id() != proposal.newLeader().brokerId()) {
           // Get the execution Id for the leader action proposal execution;
-          long leaderActionExecutionId = _executionId++;
+          long leaderActionExecutionId = nextExecutionId(LEADER_ACTION, proposal.topicPartition(), ExecutionTask.NO_BROKER_ID);
           ExecutionTask leaderActionTask = new ExecutionTask(leaderActionExecutionId, proposal, LEADER_ACTION, _taskExecutionAlertingThresholdMs);
           _remainingLeadershipMovements.put(leaderActionExecutionId, leaderActionTask);
           LOG.trace("Added action {} as leader proposal {}", leaderActionExecutionId, proposal);
@@ -466,9 +504,51 @@ public class ExecutionTaskPlanner {
   }
 
   /**
+   * Remove the inter-broker replica movement tasks of the given partitions from the remaining tasks without executing them.
+   * This is used for adopting tasks that are already being executed by Kafka.
+   *
+   * @param partitions Partitions whose inter-broker replica movement tasks will be removed.
+   * @return The removed tasks.
+   */
+  public List<ExecutionTask> removeInterBrokerReplicaMovementTasks(Set<TopicPartition> partitions) {
+    List<ExecutionTask> removedTasks = new ArrayList<>();
+    for (ExecutionTask task : new ArrayList<>(_remainingInterBrokerReplicaMovements)) {
+      if (partitions.contains(task.proposal().topicPartition())) {
+        removeInterBrokerReplicaActionForExecution(task);
+        removedTasks.add(task);
+      }
+    }
+    return removedTasks;
+  }
+
+  /**
+   * Remove the intra-broker replica movement tasks of the given replicas from the remaining tasks without executing them.
+   * This is used for adopting tasks that are already being executed by Kafka.
+   *
+   * @param replicas Replicas whose intra-broker replica movement tasks will be removed.
+   * @return The removed tasks.
+   */
+  public List<ExecutionTask> removeIntraBrokerReplicaMovementTasks(Set<TopicPartitionReplica> replicas) {
+    List<ExecutionTask> removedTasks = new ArrayList<>();
+    for (ExecutionTask task : new ArrayList<>(_remainingIntraBrokerReplicaMovements)) {
+      TopicPartitionReplica replica = new TopicPartitionReplica(task.proposal().topic(), task.proposal().partitionId(), task.brokerId());
+      if (replicas.contains(replica)) {
+        SortedSet<ExecutionTask> tasksForBroker = _intraPartMoveTasksByBrokerId.get(task.brokerId());
+        if (tasksForBroker != null) {
+          tasksForBroker.remove(task);
+        }
+        _remainingIntraBrokerReplicaMovements.remove(task);
+        removedTasks.add(task);
+      }
+    }
+    return removedTasks;
+  }
+
+  /**
    * Clear all the states.
    */
   public void clear() {
+    _executionIdsToKeep.clear();
     _intraPartMoveTasksByBrokerId.clear();
     _interPartMoveTasksByBrokerId.clear();
     _remainingLeadershipMovements.clear();
