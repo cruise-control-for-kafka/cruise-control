@@ -16,6 +16,8 @@ import com.linkedin.cruisecontrol.http.CruiseControlHttpSession;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.OperationFuture;
 import com.linkedin.kafka.cruisecontrol.common.KafkaCruiseControlThreadFactory;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.executor.persistence.PersistedUserTask;
+import com.linkedin.kafka.cruisecontrol.servlet.response.AbstractCruiseControlResponse;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils;
 import com.linkedin.kafka.cruisecontrol.servlet.purgatory.Purgatory;
 import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
@@ -430,6 +432,57 @@ public class UserTaskManager implements Closeable {
   }
 
   /**
+   * Report an execution recovered after a Cruise Control restart under the user task that started it before the restart, so that
+   * {@code user_tasks} shows it: the user task is in execution until the recovered execution finishes, and its response tells that the
+   * execution was recovered.
+   *
+   * @param uuid UUID of the user task.
+   * @param userTask The user task, as persisted with the execution.
+   * @return {@code true} if the user task is reported, {@code false} if another user task is in execution.
+   */
+  public synchronized boolean recoverUserTask(String uuid, PersistedUserTask userTask) {
+    if (_inExecutionUserTaskInfo != null) {
+      LOG.warn("Not reporting the recovered execution of user task {}, as user task {} is in execution.", uuid,
+               _inExecutionUserTaskInfo.userTaskId());
+      return false;
+    }
+    CruiseControlEndPoint endPoint = CruiseControlEndPoint.valueOf(userTask.endPoint());
+    OperationFuture future = new OperationFuture("Recover execution after restart");
+    future.complete(new RecoveredExecutionResult(String.format("The execution of this task (%s) was interrupted by a Cruise Control "
+                                                               + "restart and is recovered.", userTask.request())));
+    _inExecutionUserTaskInfo = new UserTaskInfo(userTask, UUID.fromString(uuid), endPoint, future);
+    LOG.info("User task {} ({}) is in execution again: its execution is recovered after a restart.", uuid, userTask.request());
+    return true;
+  }
+
+  /**
+   * Finish a user task reported by {@link #recoverUserTask(String, PersistedUserTask)} whose recovered execution did not start.
+   *
+   * @param uuid UUID of the user task.
+   * @param completeWithError Whether the user task finished with error or not.
+   */
+  public synchronized void finishRecoveredUserTask(String uuid, boolean completeWithError) {
+    if (_inExecutionUserTaskInfo != null && _inExecutionUserTaskInfo.userTaskId().equals(UUID.fromString(uuid))) {
+      markTaskExecutionFinished(uuid, completeWithError);
+    }
+  }
+
+  /**
+   * The response of a user task whose execution is recovered after a restart: the response of the request is not known anymore.
+   */
+  private static final class RecoveredExecutionResult extends AbstractCruiseControlResponse {
+    RecoveredExecutionResult(String message) {
+      super(null);
+      _cachedResponse = message;
+    }
+
+    @Override
+    protected void discardIrrelevantAndCacheRelevant(CruiseControlParameters parameters) {
+      // The message is cached upon construction.
+    }
+  }
+
+  /**
    * Get user task by user task id.
    *
    * @param userTaskId UUID to uniquely identify task.
@@ -640,6 +693,26 @@ public class UserTaskManager implements Closeable {
     private final EndPoint _endPoint;
     private TaskState _state;
     private final CruiseControlParameters _parameters;
+
+    /**
+     * A user task whose execution is recovered after a restart (see {@link #recoverUserTask(String, PersistedUserTask)}).
+     *
+     * @param userTask The user task, as persisted with the execution.
+     * @param userTaskId UUID of the user task.
+     * @param endPoint The endpoint of the request of the user task.
+     * @param future The completed future of the user task.
+     */
+    UserTaskInfo(PersistedUserTask userTask, UUID userTaskId, EndPoint endPoint, OperationFuture future) {
+      _futures = Collections.singletonList(future);
+      _requestUrl = userTask.request();
+      _clientIdentity = userTask.clientIdentity();
+      _startMs = userTask.startMs();
+      _userTaskId = userTaskId;
+      _queryParams = Collections.emptyMap();
+      _endPoint = endPoint;
+      _state = TaskState.IN_EXECUTION;
+      _parameters = null;
+    }
 
     public UserTaskInfo(CruiseControlRequestContext requestContext,
                         List<OperationFuture> futures,

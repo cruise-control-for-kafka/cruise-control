@@ -5,6 +5,7 @@
 package com.linkedin.kafka.cruisecontrol.servlet;
 
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.executor.persistence.PersistedUserTask;
 import com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.OperationFuture;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Time;
@@ -17,11 +18,16 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.kafka.cruisecontrol.servlet.KafkaCruiseControlServletUtils.GET_METHOD;
+import static com.linkedin.kafka.cruisecontrol.servlet.UserTaskManager.TaskState;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class UserTaskManagerTest {
 
@@ -321,5 +327,27 @@ public class UserTaskManagerTest {
     }
     EasyMock.replay(request);
     return request;
+  }
+
+  @Test
+  public void testRecoveredUserTaskIsInExecutionUntilItsExecutionFinishes() {
+    UserTaskManager userTaskManager = new UserTaskManager(1000, 1, TimeUnit.HOURS.toMillis(6), 100, new MockTime());
+    String uuid = UUID.randomUUID().toString();
+    PersistedUserTask userTask = new PersistedUserTask("REBALANCE", "POST /kafkacruisecontrol/rebalance?dryrun=false", "1.2.3.4", 123L);
+    // An execution recovered after a restart is reported under the user task that started it.
+    assertTrue(userTaskManager.recoverUserTask(uuid, userTask));
+    UserTaskManager.UserTaskInfo info = userTaskManager.markTaskExecutionBegan(uuid);
+    assertEquals(UUID.fromString(uuid), info.userTaskId());
+    assertEquals(TaskState.IN_EXECUTION, info.state());
+    assertEquals("POST /kafkacruisecontrol/rebalance?dryrun=false", info.requestWithParams());
+    assertEquals("1.2.3.4", info.clientIdentity());
+    assertEquals(123L, info.startMs());
+    assertEquals(List.of(info), userTaskManager.getAllUserTasks());
+    // Only one user task is in execution at a time.
+    assertFalse(userTaskManager.recoverUserTask(UUID.randomUUID().toString(), userTask));
+    userTaskManager.markTaskExecutionFinished(uuid, false);
+    assertEquals(TaskState.COMPLETED, info.state());
+    assertTrue(String.valueOf(info.getJsonStructure(true).get("originalResponse")).contains("recovered"));
+    userTaskManager.close();
   }
 }
