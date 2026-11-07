@@ -31,13 +31,13 @@ public class SingleBrokerStats extends BasicStats {
   protected final Map<String, DiskStats> _diskStatsByLogdir;
   protected final String _rack;
 
-  SingleBrokerStats(Broker broker, double potentialBytesOutRate, boolean isEstimated) {
+  SingleBrokerStats(Broker broker, double potentialBytesOutRate, Map<String, Double> potentialBytesOutRateByLogdir, boolean isEstimated) {
     super(broker, potentialBytesOutRate);
     _host = broker.host().name();
     _id = broker.id();
     _state = broker.state();
     _isEstimated = isEstimated;
-    _diskStatsByLogdir = broker.diskStats();
+    _diskStatsByLogdir = broker.diskStats(potentialBytesOutRateByLogdir);
     _rack = broker.rack().id();
   }
 

@@ -7,13 +7,13 @@ package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.cruisecontrol.servlet.EndPoint;
 import com.linkedin.cruisecontrol.servlet.parameters.CruiseControlParameters;
+import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils;
 import com.linkedin.kafka.cruisecontrol.analyzer.ProvisionRecommendation;
-import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskCapacityGoal;
-import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.analyzer.kafkaassigner.KafkaAssignerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.analyzer.kafkaassigner.KafkaAssignerEvenRackAwareGoal;
 import com.linkedin.cruisecontrol.http.CruiseControlRequestContext;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
 import com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyType;
 import com.linkedin.kafka.cruisecontrol.executor.ConcurrencyType;
@@ -747,7 +747,20 @@ public final class ParameterUtils {
     return strategy.chainBaseReplicaMovementStrategyIfAbsent();
   }
 
-  static List<String> getGoals(CruiseControlRequestContext requestContext) {
+  /**
+   * Get the goals requested by the given request context.
+   * <ul>
+   *   <li>In Kafka assigner mode, the goals are the Kafka assigner goals -- explicitly requested goals are rejected.</li>
+   *   <li>In rebalance disk mode, the goals are the explicitly requested goals, which must be intra-broker goals (i.e. listed in
+   *   {@link AnalyzerConfig#INTRA_BROKER_GOALS_CONFIG}), or the intra-broker goals if no goal is requested.</li>
+   *   <li>Otherwise, the goals are the explicitly requested goals (if any).</li>
+   * </ul>
+   *
+   * @param requestContext HTTP request received by Cruise Control.
+   * @param config Kafka Cruise Control config.
+   * @return The requested goals, or an empty list to indicate that the default goals should be used.
+   */
+  static List<String> getGoals(CruiseControlRequestContext requestContext, KafkaCruiseControlConfig config) {
     boolean isKafkaAssignerMode = isKafkaAssignerMode(requestContext);
     boolean isRebalanceDiskMode = isRebalanceDiskMode(requestContext);
     // Sanity check isKafkaAssignerMode and isRebalanceDiskMode are not both true at the same time.
@@ -764,10 +777,17 @@ public final class ParameterUtils {
       return List.of(KafkaAssignerEvenRackAwareGoal.class.getSimpleName(), KafkaAssignerDiskUsageDistributionGoal.class.getSimpleName());
     }
     if (isRebalanceDiskMode) {
-      if (!goals.isEmpty()) {
-        throw new UserRequestException("Rebalance disk mode does not support explicitly specifying goals in request.");
+      List<String> intraBrokerGoals = KafkaCruiseControlUtils.intraBrokerGoals(config);
+      if (goals.isEmpty()) {
+        return Collections.unmodifiableList(intraBrokerGoals);
       }
-      return List.of(IntraBrokerDiskCapacityGoal.class.getSimpleName(), IntraBrokerDiskUsageDistributionGoal.class.getSimpleName());
+      Set<String> supportedGoals = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+      supportedGoals.addAll(intraBrokerGoals);
+      List<String> unsupportedGoals = goals.stream().filter(goal -> !supportedGoals.contains(goal)).collect(Collectors.toList());
+      if (!unsupportedGoals.isEmpty()) {
+        throw new UserRequestException(String.format("Rebalance disk mode only supports the intra-broker goals in %s %s, got %s.",
+                                                     AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG, intraBrokerGoals, unsupportedGoals));
+      }
     }
     return goals;
   }
@@ -1045,20 +1065,41 @@ public final class ParameterUtils {
   }
 
   /**
-   * Default: An empty map.
+   * Parse the comma-separated broker id and logdir pairs of {@link #BROKER_ID_AND_LOGDIRS_PARAM}, e.g.
+   * {@code 101-/tmp/kafka-logs-1,101-/tmp/kafka-logs-2}. The first hyphen of a pair separates the broker id from the logdir.
+   * Empty pairs are ignored.
+   *
+   * Default: An empty map -- endpoints that require the parameter (e.g. remove_disks) reject an empty map.
    * @param requestContext the request context.
-   * @return The value for {@link #BROKER_ID_AND_LOGDIRS_PARAM} parameter.
+   * @return The value for {@link #BROKER_ID_AND_LOGDIRS_PARAM} parameter: the logdirs by broker id.
+   * @throws UserRequestException If a pair does not consist of a non-negative broker id and a non-empty logdir.
    */
   static Map<Integer, Set<String>> brokerIdAndLogdirs(CruiseControlRequestContext requestContext) {
     final Map<Integer, Set<String>> brokerIdAndLogdirs = new HashMap<>();
     String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), BROKER_ID_AND_LOGDIRS_PARAM);
-    if (parameterString != null) {
-      Arrays.stream(urlDecode(requestContext.getParameter(parameterString)).split(",")).forEach(e -> {
-        int index = e.indexOf(DELIMITER_BETWEEN_BROKER_ID_AND_LOGDIR);
-        int brokerId = Integer.parseInt(e.substring(0, index));
-        brokerIdAndLogdirs.putIfAbsent(brokerId, new HashSet<>());
-        brokerIdAndLogdirs.get(brokerId).add(e.substring(index + 1));
-      });
+    String parameterValue = parameterString == null ? null : urlDecode(requestContext.getParameter(parameterString));
+    if (parameterValue != null) {
+      for (String brokerIdAndLogdir : parameterValue.split(",")) {
+        if (brokerIdAndLogdir.isEmpty()) {
+          continue;
+        }
+        int index = brokerIdAndLogdir.indexOf(DELIMITER_BETWEEN_BROKER_ID_AND_LOGDIR);
+        String logdir = index < 0 ? "" : brokerIdAndLogdir.substring(index + 1);
+        int brokerId = -1;
+        if (index > 0) {
+          try {
+            brokerId = Integer.parseInt(brokerIdAndLogdir.substring(0, index));
+          } catch (NumberFormatException nfe) {
+            // Reported below.
+          }
+        }
+        if (brokerId < 0 || logdir.isEmpty()) {
+          throw new UserRequestException(String.format("Invalid %s pair '%s': expected a broker id and a logdir separated by '%s' "
+                                                       + "(e.g. 101-/tmp/kafka-logs-1).", BROKER_ID_AND_LOGDIRS_PARAM,
+                                                       brokerIdAndLogdir, DELIMITER_BETWEEN_BROKER_ID_AND_LOGDIR));
+        }
+        brokerIdAndLogdirs.computeIfAbsent(brokerId, id -> new HashSet<>()).add(logdir);
+      }
     }
     return Collections.unmodifiableMap(brokerIdAndLogdirs);
   }

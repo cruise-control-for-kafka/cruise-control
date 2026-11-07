@@ -21,3 +21,15 @@ ExecutionProposal:
       items:
         type: integer
         format: int32
+    oldReplicaLogdirs:
+      description: Logdir of each old replica, keyed by broker id. A replica whose logdir is not known (e.g. on a dead broker) is
+        left out. Only present for intra-broker (disk) movements.
+      type: object
+      additionalProperties:
+        type: string
+    newReplicaLogdirs:
+      description: Logdir of each new replica, keyed by broker id. A replica whose logdir is not known (e.g. on a dead broker) is
+        left out. Only present for intra-broker (disk) movements.
+      type: object
+      additionalProperties:
+        type: string

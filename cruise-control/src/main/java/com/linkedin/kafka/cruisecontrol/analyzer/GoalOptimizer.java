@@ -407,7 +407,10 @@ public class GoalOptimizer implements Runnable {
    * Depending on the existence of dead/broken/decommissioned brokers in the given cluster:
    * (1) Re-balance: Generates proposals to update the state of the cluster to achieve a final balanced state.
    * (2) Self-healing: Generates proposals to move replicas away from decommissioned brokers and broken disks.
-   * Returns a map from goal names to stats. Initial stats are returned under goal name "init".
+   * The result contains the stats after each goal, as well as the stats before the optimization (see
+   * {@link OptimizerResult#clusterModelStatsBeforeOptimization()}). The stats after a goal are the stats of the cluster once this
+   * goal and all the goals before it are optimized, not the changes made by this goal alone (see
+   * {@link OptimizerResult#statsByGoalName()}).
    *
    * Assumptions:
    * <ul>
@@ -438,8 +441,44 @@ public class GoalOptimizer implements Runnable {
                                        Map<TopicPartition, List<ReplicaPlacementInfo>> initReplicaDistributionForProposalGeneration,
                                        OptimizationOptions optimizationOptions)
       throws KafkaCruiseControlException {
+    return optimizations(clusterModel, goalsByPriority, operationProgress, initReplicaDistributionForProposalGeneration,
+                         optimizationOptions, null, null);
+  }
+
+  /**
+   * See {@link GoalOptimizer#optimizations(ClusterModel, List, OperationProgress, Map, OptimizationOptions)}.
+   *
+   * @param clusterModel The state of the cluster over which the balancing proposal will be applied. Function execution
+   *                     updates the cluster state with balancing proposals.
+   * @param goalsByPriority the goals ordered by priority.
+   * @param operationProgress to report the job progress.
+   * @param initReplicaDistributionForProposalGeneration The initial replica distribution of the cluster, if the passed in
+   *                                                     clusterModel is not the original cluster model, otherwise it is null.
+   * @param optimizationOptions Optimization options.
+   * @param initBrokerStats The broker stats of the initial cluster state, to report as the load before optimization. This is
+   *                        only needed if the passed in clusterModel has been modified in a way that is not supposed to be
+   *                        reflected in the load before optimization, otherwise it is null. One case explicitly specifying the
+   *                        initial broker stats is to remove disks, in which case the disks to remove are marked for removal
+   *                        (i.e. their capacity is dropped) in cluster model before passing it in to generate proposals.
+   * @param initClusterModelStats The cluster model stats of the initial cluster state, to report as the stats before optimization.
+   *                              Similar to initBrokerStats, this is only needed if the passed in clusterModel has been modified
+   *                              in a way that is not supposed to be reflected in the stats before optimization, otherwise it is
+   *                              null.
+   * @return Results of optimization containing the proposals and stats.
+   */
+  public OptimizerResult optimizations(ClusterModel clusterModel,
+                                       List<Goal> goalsByPriority,
+                                       OperationProgress operationProgress,
+                                       Map<TopicPartition, List<ReplicaPlacementInfo>> initReplicaDistributionForProposalGeneration,
+                                       OptimizationOptions optimizationOptions,
+                                       BrokerStats initBrokerStats,
+                                       ClusterModelStats initClusterModelStats)
+      throws KafkaCruiseControlException {
     LOG.trace("Cluster before optimization is {}", clusterModel);
-    BrokerStats brokerStatsBeforeOptimization = clusterModel.brokerStats(null);
+    BrokerStats brokerStatsBeforeOptimization = initBrokerStats != null ? initBrokerStats : clusterModel.brokerStats(null);
+    ClusterModelStats statsBeforeOptimization = initClusterModelStats != null
+                                                ? initClusterModelStats
+                                                : clusterModel.getClusterStats(_balancingConstraint, optimizationOptions);
     Map<TopicPartition, List<ReplicaPlacementInfo>> initReplicaDistribution = clusterModel.getReplicaDistribution();
     Map<TopicPartition, ReplicaPlacementInfo> initLeaderDistribution = clusterModel.getLeaderDistribution();
     boolean isSelfHealing = !clusterModel.selfHealingEligibleReplicas().isEmpty();
@@ -516,6 +555,7 @@ public class GoalOptimizer implements Runnable {
                                violatedGoalNamesAfterOptimization,
                                proposals,
                                brokerStatsBeforeOptimization,
+                               statsBeforeOptimization,
                                clusterModel,
                                optimizationOptions,
                                balancednessCostByGoal(goalsByPriority, _priorityWeight, _strictnessWeight),

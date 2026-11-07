@@ -23,6 +23,7 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.MAX_LOAD_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.MIN_VALID_PARTITION_RATIO_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.PARTITION_PARAM;
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.POPULATE_DISK_INFO_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REASON_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.RESOURCE_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.START_MS_PARAM;
@@ -38,6 +39,7 @@ import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils
  *    &amp;entries=[number-of-entries-to-show]&amp;topic=[topic]&amp;partition=[partition/start_partition-end_partition]
  *    &amp;min_valid_partition_ratio=[min_valid_partition_ratio]&amp;allow_capacity_estimation=[true/false]
  *    &amp;max_load=[true/false]&amp;avg_load=[true/false]&amp;json=[true/false]&amp;brokerid=[brokerid]
+ *    &amp;populate_disk_info=[true/false]
  *    &amp;get_response_schema=[true/false]&amp;doAs=[user]&amp;reason=[reason-for-request]
  * </pre>
  */
@@ -57,6 +59,7 @@ public class PartitionLoadParameters extends AbstractParameters {
     validParameterNames.add(AVG_LOAD_PARAM);
     validParameterNames.add(BROKER_ID_PARAM);
     validParameterNames.add(REASON_PARAM);
+    validParameterNames.add(POPULATE_DISK_INFO_PARAM);
     validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
     CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
   }
@@ -72,6 +75,7 @@ public class PartitionLoadParameters extends AbstractParameters {
   protected boolean _wantMaxLoad;
   protected boolean _wantAvgLoad;
   protected Set<Integer> _brokerIds;
+  protected boolean _populateDiskInfo;
 
   public PartitionLoadParameters() {
     super();
@@ -100,6 +104,7 @@ public class PartitionLoadParameters extends AbstractParameters {
     _minValidPartitionRatio = ParameterUtils.minValidPartitionRatio(_requestContext);
     _allowCapacityEstimation = ParameterUtils.allowCapacityEstimation(_requestContext);
     _brokerIds = ParameterUtils.brokerIds(_requestContext, true);
+    _populateDiskInfo = ParameterUtils.populateDiskInfo(_requestContext);
     _startMs = ParameterUtils.startMsOrDefault(_requestContext, ParameterUtils.DEFAULT_START_TIME_FOR_CLUSTER_MODEL);
     _endMs = ParameterUtils.endMsOrDefault(_requestContext, System.currentTimeMillis());
     ParameterUtils.validateTimeRange(_startMs, _endMs);
@@ -151,6 +156,14 @@ public class PartitionLoadParameters extends AbstractParameters {
 
   public Set<Integer> brokerIds() {
     return Collections.unmodifiableSet(_brokerIds);
+  }
+
+  /**
+   * @return {@code true} to report the logdir of the replicas of each partition (requires a JBOD Kafka deployment),
+   * {@code false} otherwise.
+   */
+  public boolean populateDiskInfo() {
+    return _populateDiskInfo;
   }
 
   @Override

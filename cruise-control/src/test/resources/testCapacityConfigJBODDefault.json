@@ -1,0 +1,14 @@
+{
+  "brokerCapacities": [
+    {
+      "brokerId": "-1",
+      "capacity": {
+        "DISK": {"/tmp/kafka-logs": "500000", "/tmp/kafka-logs-1": "500000", "/tmp/kafka-logs-2": "500000"},
+        "CPU": "100",
+        "NW_IN": "100000",
+        "NW_OUT": "100000"
+      },
+      "doc": "The only broker capacity: every broker is estimated from it, with the log dirs of both brokers of the test cluster."
+    }
+  ]
+}

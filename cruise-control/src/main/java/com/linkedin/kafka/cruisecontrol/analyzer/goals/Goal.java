@@ -124,6 +124,17 @@ public interface Goal extends CruiseControlConfigurable {
   boolean isHardGoal();
 
   /**
+   * An intra-broker goal only moves replicas between the disks of the same broker (e.g. the goals in
+   * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#INTRA_BROKER_GOALS_CONFIG}), hence it never changes
+   * the load of a broker: only the disk-level stats of its result are relevant.
+   *
+   * @return {@code true} if this is an intra-broker goal, {@code false} otherwise.
+   */
+  default boolean isIntraBrokerGoal() {
+    return false;
+  }
+
+  /**
    * @return The {@link ProvisionStatus} of this goal.
    * @deprecated Will be removed in a future release -- please use {@link #provisionResponse()}.
    */

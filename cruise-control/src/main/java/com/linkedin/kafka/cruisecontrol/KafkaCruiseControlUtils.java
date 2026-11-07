@@ -442,6 +442,17 @@ public final class KafkaCruiseControlUtils {
   }
 
   /**
+   * Get the configured intra-broker goals.
+   *
+   * @param config The configurations for Cruise Control.
+   * @return The names of the intra-broker goals, in the order of priority.
+   */
+  public static List<String> intraBrokerGoals(KafkaCruiseControlConfig config) {
+    return config.getList(AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG).stream()
+                 .map(goalName -> goalName.substring(goalName.lastIndexOf(".") + 1)).collect(Collectors.toList());
+  }
+
+  /**
    * Check to ensure that if requested cluster model completeness requires non-zero number of valid windows in cluster model,
    * load monitor should have already finished loading all the samples.
    * Note that even if only one valid window is required, we still need to wait load monitor finish loading all samples. This
