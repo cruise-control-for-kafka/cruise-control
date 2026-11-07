@@ -20,6 +20,7 @@ Fill in **every section** of the template meaningfully — do not leave placehol
 | **Known Workarounds** | Note any workarounds if applicable; otherwise remove the section or write "None". |
 | **Additional Evidence** | Attach relevant logs, screenshots, or environment details. |
 | **Categorization** | Check all applicable boxes. |
+| **Generative AI disclosure** | Check the box when generative AI tools prepared any part of the change. Leave it unchecked when they did not. |
 
 ### Link to an Existing Issue
 
