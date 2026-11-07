@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.detector;
 
+import com.codahale.metrics.Counter;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
@@ -59,7 +60,12 @@ public class AnomalyDetectorState {
   private static final String BALANCEDNESS_SCORE = "balancednessScore";
   private static final double INITIAL_BALANCEDNESS_SCORE = 100.0;
   static final String NUM_SELF_HEALING_STARTED = "numSelfHealingStarted";
+  // Sensor names per anomaly type, formatted with the lower case anomaly type.
+  static final String NUM_SELF_HEALING_STARTED_FOR_ANOMALY_TYPE = "num-of-self-healing-started-for-%s";
+  static final String NUM_SELF_HEALING_ENDED_FOR_ANOMALY_TYPE = "num-of-self-healing-ended-for-%s";
+  static final String ONGOING_SELF_HEALING_DURATION_MS_FOR_ANOMALY_TYPE = "ongoing-self-healing-duration-ms-for-%s";
   private static final long NO_ONGOING_ANOMALY_FLAG = -1L;
+  private static final long NO_ONGOING_SELF_HEALING_FLAG = -1L;
 
   // Recent anomalies with anomaly state by the anomaly type.
   private final Map<AnomalyType, Map<String, AnomalyState>> _recentAnomaliesByType;
@@ -81,6 +87,11 @@ public class AnomalyDetectorState {
   private double _balancednessScore;
   private boolean _hasUnfixableGoals;
   private final Map<AnomalyType, Timer> _anomalyDetectToFixCompleteTimer;
+  private final Map<AnomalyType, Counter> _numSelfHealingStartedByType;
+  private final Map<AnomalyType, Counter> _numSelfHealingEndedByType;
+  // The type and the start time of the ongoing self-healing, which gauge sensors read without synchronization.
+  private volatile AnomalyType _ongoingSelfHealingAnomalyType;
+  private volatile long _ongoingSelfHealingStartMs;
 
   public AnomalyDetectorState(Time time,
                               AnomalyNotifier anomalyNotifier,
@@ -100,6 +111,8 @@ public class AnomalyDetectorState {
     _anomalyNotifier = anomalyNotifier;
     _selfHealingEnabledRatio = null;
     _ongoingSelfHealingAnomaly = null;
+    _ongoingSelfHealingAnomalyType = null;
+    _ongoingSelfHealingStartMs = NO_ONGOING_SELF_HEALING_FLAG;
     _ongoingAnomalyDetectionTimeMs = NO_ONGOING_ANOMALY_FLAG;
     _ongoingAnomalyCount = 0L;
     _ongoingAnomalyDurationSumForAverageMs = 0;
@@ -112,6 +125,8 @@ public class AnomalyDetectorState {
     }
     _metrics = new AnomalyMetrics(meanTimeBetweenAnomaliesMs, 0.0, 0L, 0L, 0L);
     _anomalyDetectToFixCompleteTimer = new HashMap<>();
+    _numSelfHealingStartedByType = new HashMap<>();
+    _numSelfHealingEndedByType = new HashMap<>();
     if (dropwizardMetricRegistry != null) {
       dropwizardMetricRegistry.register(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, "mean-time-to-start-fix-ms"),
                                         (Gauge<Double>) this::meanTimeToStartFixMs);
@@ -138,13 +153,24 @@ public class AnomalyDetectorState {
       _anomalyRateByType.put(MAINTENANCE_EVENT,
                              dropwizardMetricRegistry.meter(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, "maintenance-event-rate")));
       for (KafkaAnomalyType anomalyType : KafkaAnomalyType.cachedValues()) {
+        String type = anomalyType.toString().toLowerCase();
         Timer timer = dropwizardMetricRegistry.timer(
-            MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, String.format("%s-detect-to-fix-complete-timer", anomalyType.toString().toLowerCase())));
+            MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, String.format("%s-detect-to-fix-complete-timer", type)));
         _anomalyDetectToFixCompleteTimer.put(anomalyType, timer);
+        _numSelfHealingStartedByType.put(anomalyType, dropwizardMetricRegistry.counter(
+            MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, String.format(NUM_SELF_HEALING_STARTED_FOR_ANOMALY_TYPE, type))));
+        _numSelfHealingEndedByType.put(anomalyType, dropwizardMetricRegistry.counter(
+            MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, String.format(NUM_SELF_HEALING_ENDED_FOR_ANOMALY_TYPE, type))));
+        dropwizardMetricRegistry.register(
+            MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, String.format(ONGOING_SELF_HEALING_DURATION_MS_FOR_ANOMALY_TYPE, type)),
+            (Gauge<Long>) () -> ongoingSelfHealingDurationMs(anomalyType));
       }
     } else {
       _anomalyRateByType = new HashMap<>();
       KafkaAnomalyType.cachedValues().forEach(anomalyType -> _anomalyRateByType.put(anomalyType, new Meter()));
+      KafkaAnomalyType.cachedValues().forEach(anomalyType -> _anomalyDetectToFixCompleteTimer.put(anomalyType, new Timer()));
+      KafkaAnomalyType.cachedValues().forEach(anomalyType -> _numSelfHealingStartedByType.put(anomalyType, new Counter()));
+      KafkaAnomalyType.cachedValues().forEach(anomalyType -> _numSelfHealingEndedByType.put(anomalyType, new Counter()));
     }
     _balancednessScore = INITIAL_BALANCEDNESS_SCORE;
     _hasUnfixableGoals = false;
@@ -217,6 +243,17 @@ public class AnomalyDetectorState {
   }
 
   /**
+   * @param anomalyType Type of anomaly.
+   * @return Duration of the ongoing self-healing in ms if there is one for the given anomaly type, 0 otherwise. This method is
+   * intentionally not thread-safe to avoid the synchronization latency; hence, it can potentially be stale.
+   */
+  private long ongoingSelfHealingDurationMs(AnomalyType anomalyType) {
+    long ongoingSelfHealingStartMs = _ongoingSelfHealingStartMs;
+    return ongoingSelfHealingStartMs != NO_ONGOING_SELF_HEALING_FLAG && anomalyType == _ongoingSelfHealingAnomalyType
+           ? _time.milliseconds() - ongoingSelfHealingStartMs : 0L;
+  }
+
+  /**
    * @return Mean time to start a fix in ms. This method is intentionally not thread-safe to avoid the synchronization
    * latency; hence, it can potentially be stale.
    */
@@ -258,10 +295,31 @@ public class AnomalyDetectorState {
   }
 
   /**
-   * Increment the number of self healing actions started successfully.
+   * Package private for unit tests.
+   * @param anomalyType Type of anomaly.
+   * @return Number of anomaly fixes started by the anomaly detector for self healing of the given anomaly type.
    */
-  void incrementNumSelfHealingStarted() {
+  long numSelfHealingStarted(AnomalyType anomalyType) {
+    return _numSelfHealingStartedByType.get(anomalyType).getCount();
+  }
+
+  /**
+   * Package private for unit tests.
+   * @param anomalyType Type of anomaly.
+   * @return Number of self healing of the given anomaly type that ended, either successfully or with error.
+   */
+  long numSelfHealingEnded(AnomalyType anomalyType) {
+    return _numSelfHealingEndedByType.get(anomalyType).getCount();
+  }
+
+  /**
+   * Increment the number of self healing actions started successfully, in total and for the given anomaly type.
+   *
+   * @param anomalyType Type of the anomaly, for which self healing started.
+   */
+  void incrementNumSelfHealingStarted(AnomalyType anomalyType) {
     _numSelfHealingStarted.incrementAndGet();
+    _numSelfHealingStartedByType.get(anomalyType).inc();
   }
 
   /**
@@ -305,6 +363,8 @@ public class AnomalyDetectorState {
     long totalTime = _time.milliseconds() - _ongoingSelfHealingAnomaly.detectionTimeMs();
     LOG.info("Self-healing for anomalyId {} completed{}. Total time: {} ms", anomalyId, completeWithError
         ? " with error" : " successfully", totalTime);
+    // Count every self-healing that ended, so the self-healing started but not yet ended is the ongoing self-healing.
+    _numSelfHealingEndedByType.get(_ongoingSelfHealingAnomalyType).inc();
     if (!completeWithError) {
       // Time the duration if the self-healing is completed successfully.
       // completeWithError is true if the proposal execution is interrupted (receive stop signal) or encountered exception.
@@ -312,6 +372,8 @@ public class AnomalyDetectorState {
       _anomalyDetectToFixCompleteTimer.get(_ongoingSelfHealingAnomaly.anomalyType()).update(totalTime, TimeUnit.MILLISECONDS);
     }
     _ongoingSelfHealingAnomaly = null;
+    _ongoingSelfHealingAnomalyType = null;
+    _ongoingSelfHealingStartMs = NO_ONGOING_SELF_HEALING_FLAG;
   }
 
   /**
@@ -336,6 +398,8 @@ public class AnomalyDetectorState {
 
     if (status == AnomalyState.Status.FIX_STARTED) {
       _ongoingSelfHealingAnomaly = anomaly;
+      _ongoingSelfHealingStartMs = _time.milliseconds();
+      _ongoingSelfHealingAnomalyType = anomalyType;
     }
 
     AnomalyState recentAnomalyState = _recentAnomaliesByType.get(anomalyType).get(anomalyId);
