@@ -95,6 +95,8 @@ public class Executor {
   private static final Logger LOG = LoggerFactory.getLogger(Executor.class);
   private static final Logger OPERATION_LOG = LoggerFactory.getLogger(OPERATION_LOGGER);
   private static final long EXECUTION_PROGRESS_CHECK_INTERVAL_ADJUSTING_MS = 1000;
+  // Upon a stop, the number of progress checks to wait for the brokers that do not respond about an intra-broker replica movement.
+  private static final int MAX_PROGRESS_CHECKS_TO_WAIT_FOR_LOGDIR_RESPONSE_UPON_STOP = 3;
   // The execution progress is controlled by the ExecutionTaskManager.
   private final ExecutionTaskManager _executionTaskManager;
   private final MetadataAdminClient _metadataClient;
@@ -1302,6 +1304,7 @@ public class Executor {
     private Throwable _executionException;
     private final boolean _isTriggeredByUserRequest;
     private long _lastSlowTaskReportingTimeMs;
+    private int _numIntraBrokerProgressChecksUponStop;
     private static final boolean FORCE_PAUSE_SAMPLING = true;
     private final Timer _executionTimerInvolveBrokerRemovalOrDemotion;
 
@@ -1860,7 +1863,7 @@ public class Executor {
             if (shouldReportSlowTasks) {
               task.maybeReportExecutionTooSlow(_time.milliseconds(), slowTasksToReport);
             }
-            if (maybeMarkTaskAsDead(cluster, null, task, deadUponSubmission)) {
+            if (maybeMarkTaskAsDead(cluster, null, null, task, deadUponSubmission)) {
               deadTaskIds.add(task.executionId());
               // Add dead inter-broker replica tasks for handling.
               deadInterBrokerReplicaTasks.add(task);
@@ -1948,7 +1951,7 @@ public class Executor {
             if (shouldReportSlowTasks) {
               task.maybeReportExecutionTooSlow(_time.milliseconds(), slowTasksToReport);
             }
-            if (maybeMarkTaskAsDead(cluster, null, task, null)) {
+            if (maybeMarkTaskAsDead(cluster, null, null, task, null)) {
               deadTaskIds.add(task.executionId());
               finishedTasks.add(task);
             }
@@ -1984,9 +1987,17 @@ public class Executor {
           maybeReexecuteIntraBrokerReplicaTasks();
         }
         Cluster cluster = getClusterForExecutionProgressCheck();
+        // A task whose broker does not respond in time keeps its state -- e.g. upon a lost connection, the movement may well be
+        // ongoing -- so it holds on to its concurrency slot and is checked again in the next progress check.
+        Set<ExecutionTask> tasksWithoutLogdirResponse = new HashSet<>();
         Map<ExecutionTask, ReplicaLogDirInfo> logDirInfoByTask = getLogdirInfoForExecutionTask(
             _executionTaskManager.inExecutionTasks(Collections.singleton(INTRA_BROKER_REPLICA_ACTION)),
-            _adminClient, _config);
+            _adminClient, _config, tasksWithoutLogdirResponse);
+        boolean waitForLogdirResponseUponStop = false;
+        if (_stopSignal.get() != NO_STOP_EXECUTION) {
+          waitForLogdirResponseUponStop = _numIntraBrokerProgressChecksUponStop < MAX_PROGRESS_CHECKS_TO_WAIT_FOR_LOGDIR_RESPONSE_UPON_STOP;
+          _numIntraBrokerProgressChecksUponStop++;
+        }
 
         List<ExecutionTask> stoppedIntraBrokerReplicaTasks = new ArrayList<>();
         List<ExecutionTask> slowTasksToReport = new ArrayList<>();
@@ -1998,6 +2009,12 @@ public class Executor {
           } else if (ExecutionUtils.isIntraBrokerReplicaActionDone(logDirInfoByTask, task)) {
             handleProgressWithCompletion(task, finishedTasks);
           } else if (_stopSignal.get() != NO_STOP_EXECUTION) {
+            if (tasksWithoutLogdirResponse.contains(task) && waitForLogdirResponseUponStop) {
+              // Its broker did not respond, so whether the movement is ongoing or completed is unknown, and the rollback needs
+              // the current logdir of the replica: give the broker a few more progress checks to respond.
+              LOG.debug("Task {} waits for its broker to respond before being stopped.", task);
+              continue;
+            }
             // If the execution is stopped during an ongoing intra-broker replica movement, the executor will not silently
             // wait for the completion of the current in-progress tasks. Instead, it will mark in progress tasks as dead, and
             // rollback the ongoing movement of gracefully stopped intra-broker replica movements.
@@ -2010,7 +2027,7 @@ public class Executor {
             if (shouldReportSlowTasks) {
               task.maybeReportExecutionTooSlow(_time.milliseconds(), slowTasksToReport);
             }
-            if (maybeMarkTaskAsDead(cluster, logDirInfoByTask, task, null)) {
+            if (maybeMarkTaskAsDead(cluster, logDirInfoByTask, tasksWithoutLogdirResponse, task, null)) {
               deadTaskIds.add(task.executionId());
               finishedTasks.add(task);
             }
@@ -2150,11 +2167,15 @@ public class Executor {
      *   <li>{@code LEADER_ACTION}: Target broker/disk hosting the prospective leader is down or leadership transition
      *   took longer than the configured limit.</li>
      *   <li>{@code INTER_BROKER_REPLICA_ACTION}: Destination broker is down.</li>
-     *   <li>{@code INTRA_BROKER_REPLICA_ACTION}: Destination disk is down.</li>
+     *   <li>{@code INTRA_BROKER_REPLICA_ACTION}: The broker is down, or it responds without an online logdir for the replica
+     *   (e.g. its disk is down). A broker that does not respond in time is not evidence of either -- e.g. Cruise Control may
+     *   have lost its connection to the cluster while the movement goes on -- so the task is checked again later.</li>
      * </ul>
      *
      * @param cluster the kafka cluster
      * @param logdirInfoByTask  disk information for ongoing intra-broker replica movement tasks
+     * @param tasksWithoutLogdirResponse ongoing intra-broker replica movement tasks whose broker did not respond in time
+     *                                   with their disk information (ignored for other task types).
      * @param task the task to check
      * @param deadInterBrokerReassignments the set of partitions that were dead upon submission of the corresponding
      *                                     inter-broker replica reassignment task (ignored for other task types).
@@ -2162,6 +2183,7 @@ public class Executor {
      */
     private boolean maybeMarkTaskAsDead(Cluster cluster,
                                         Map<ExecutionTask, ReplicaLogDirInfo> logdirInfoByTask,
+                                        Set<ExecutionTask> tasksWithoutLogdirResponse,
                                         ExecutionTask task,
                                         Set<TopicPartition> deadInterBrokerReassignments) {
       // Only check tasks with IN_PROGRESS or ABORTING state.
@@ -2192,9 +2214,14 @@ public class Executor {
             break;
 
           case INTRA_BROKER_REPLICA_ACTION:
-            if (!logdirInfoByTask.containsKey(task)) {
+            if (cluster.nodeById(task.brokerId()) == null) {
               _executionTaskManager.markTaskDead(task);
-              LOG.warn("User task {}: Killing execution for task {} because the destination disk is down.", _uuid, task);
+              LOG.warn("User task {}: Killing execution for task {} because broker {} is down.", _uuid, task, task.brokerId());
+              return true;
+            } else if (!logdirInfoByTask.containsKey(task) && !tasksWithoutLogdirResponse.contains(task)) {
+              _executionTaskManager.markTaskDead(task);
+              LOG.warn("User task {}: Killing execution for task {} because broker {} does not report an online logdir for "
+                       + "the replica (e.g. its disk is down).", _uuid, task, task.brokerId());
               return true;
             }
             break;
@@ -2242,16 +2269,20 @@ public class Executor {
 
     /**
      * Identifies if there is a need for re-execution, if so, ensures re-execution of intra-broker replica reassignments
-     * -- e.g. in case there is a controller failover.
+     * -- e.g. in case there is a controller failover, or the request to execute a task got no response.
+     *
+     * Only the tasks whose broker reports that the replica is neither in nor moving to the destination logdir are executed
+     * again. A task whose broker does not respond, or does not report a current logdir for the replica, is left to the
+     * progress check.
      */
     private void maybeReexecuteIntraBrokerReplicaTasks() {
-      List<ExecutionTask> intraBrokerReplicaTasksToReexecute =
-          new ArrayList<>(_executionTaskManager.inExecutionTasks(Collections.singleton(INTRA_BROKER_REPLICA_ACTION)));
-      getLogdirInfoForExecutionTask(intraBrokerReplicaTasksToReexecute, _adminClient, _config).forEach((k, v) -> {
+      List<ExecutionTask> intraBrokerReplicaTasksToReexecute = new ArrayList<>();
+      getLogdirInfoForExecutionTask(_executionTaskManager.inExecutionTasks(Collections.singleton(INTRA_BROKER_REPLICA_ACTION)),
+                                    _adminClient, _config).forEach((k, v) -> {
         String targetLogdir = k.proposal().replicasToMoveBetweenDisksByBroker().get(k.brokerId()).logdir();
         // If task is completed or in-progress, do not reexecute the task.
-        if (targetLogdir.equals(v.getCurrentReplicaLogDir()) || targetLogdir.equals(v.getFutureReplicaLogDir())) {
-          intraBrokerReplicaTasksToReexecute.remove(k);
+        if (!targetLogdir.equals(v.getCurrentReplicaLogDir()) && !targetLogdir.equals(v.getFutureReplicaLogDir())) {
+          intraBrokerReplicaTasksToReexecute.add(k);
         }
       });
       if (!intraBrokerReplicaTasksToReexecute.isEmpty()) {

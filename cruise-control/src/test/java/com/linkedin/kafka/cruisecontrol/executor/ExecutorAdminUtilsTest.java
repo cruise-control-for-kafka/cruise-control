@@ -6,13 +6,17 @@ package com.linkedin.kafka.cruisecontrol.executor;
 
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
 import com.linkedin.kafka.cruisecontrol.model.ReplicaPlacementInfo;
 import java.lang.reflect.Constructor;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AlterReplicaLogDirsResult;
@@ -21,6 +25,8 @@ import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.TopicPartitionReplica;
 import org.apache.kafka.common.errors.KafkaStorageException;
+import org.apache.kafka.common.errors.TimeoutException;
+import org.apache.kafka.common.errors.UnknownServerException;
 import org.apache.kafka.common.internals.KafkaFutureImpl;
 import org.easymock.Capture;
 import org.easymock.EasyMock;
@@ -143,6 +149,124 @@ public class ExecutorAdminUtilsTest {
     assertEquals(Collections.singleton(taskWithOnlineLogdir), logdirInfoByTask.keySet());
     assertEquals(LOGDIR_0, logdirInfoByTask.get(taskWithOnlineLogdir).getCurrentReplicaLogDir());
     EasyMock.verify(mockAdminClient, mockResult);
+  }
+
+  @Test
+  public void testGetLogdirInfoForExecutionTaskTellsApartTasksWithoutResponse() throws Exception {
+    // Move the replicas on brokers 0-3 from d0 to d1.
+    List<ReplicaPlacementInfo> oldReplicas = new ArrayList<>();
+    List<ReplicaPlacementInfo> newReplicas = new ArrayList<>();
+    for (int brokerId = 0; brokerId < 4; brokerId++) {
+      oldReplicas.add(new ReplicaPlacementInfo(brokerId, LOGDIR_0));
+      newReplicas.add(new ReplicaPlacementInfo(brokerId, LOGDIR_1));
+    }
+    ExecutionProposal proposal = new ExecutionProposal(TP, 10, new ReplicaPlacementInfo(0, LOGDIR_0), oldReplicas, newReplicas);
+    List<ExecutionTask> tasks = new ArrayList<>();
+    Map<TopicPartitionReplica, KafkaFuture<ReplicaLogDirInfo>> futureByReplica = new HashMap<>();
+    for (int brokerId = 0; brokerId < 4; brokerId++) {
+      tasks.add(intraBrokerTask(brokerId, proposal, brokerId));
+    }
+    // Broker 0 responds with the logdirs of its replica, broker 1 responds that the logdir of its replica is offline, no
+    // response arrives in time from broker 2, and broker 3 responds with an error.
+    futureByReplica.put(new TopicPartitionReplica(TP.topic(), TP.partition(), 0), KafkaFuture.completedFuture(replicaLogDirInfo(LOGDIR_0, LOGDIR_1)));
+    futureByReplica.put(new TopicPartitionReplica(TP.topic(), TP.partition(), 1), KafkaFuture.completedFuture(offlineReplicaLogDirInfo()));
+    futureByReplica.put(new TopicPartitionReplica(TP.topic(), TP.partition(), 2),
+                        failedFuture(new TimeoutException("Timed out waiting for a node assignment. Call: describeReplicaLogDirs")));
+    futureByReplica.put(new TopicPartitionReplica(TP.topic(), TP.partition(), 3), failedFuture(new UnknownServerException("Unknown")));
+    DescribeReplicaLogDirsResult mockResult = EasyMock.mock(DescribeReplicaLogDirsResult.class);
+    EasyMock.expect(mockResult.values()).andReturn(futureByReplica);
+    Admin mockAdminClient = EasyMock.mock(Admin.class);
+    EasyMock.expect(mockAdminClient.describeReplicaLogDirs(EasyMock.anyObject())).andReturn(mockResult);
+    EasyMock.replay(mockAdminClient, mockResult);
+
+    Set<ExecutionTask> tasksWithoutResponse = new HashSet<>();
+    Map<ExecutionTask, ReplicaLogDirInfo> logdirInfoByTask =
+        ExecutorAdminUtils.getLogdirInfoForExecutionTask(tasks, mockAdminClient, CONFIG, tasksWithoutResponse);
+
+    // Only the task of broker 2 has an unknown state. The tasks of brokers 1 and 3 got a response without a current logdir.
+    assertEquals(Collections.singleton(tasks.get(0)), logdirInfoByTask.keySet());
+    assertEquals(Collections.singleton(tasks.get(2)), tasksWithoutResponse);
+    EasyMock.verify(mockAdminClient, mockResult);
+  }
+
+  @Test
+  public void testGetLogdirInfoForExecutionTaskWaitsForAllBrokersAtOnce() {
+    // Move the replicas on brokers 0-2 from d0 to d1. No broker responds.
+    List<ReplicaPlacementInfo> oldReplicas = new ArrayList<>();
+    List<ReplicaPlacementInfo> newReplicas = new ArrayList<>();
+    for (int brokerId = 0; brokerId < 3; brokerId++) {
+      oldReplicas.add(new ReplicaPlacementInfo(brokerId, LOGDIR_0));
+      newReplicas.add(new ReplicaPlacementInfo(brokerId, LOGDIR_1));
+    }
+    ExecutionProposal proposal = new ExecutionProposal(TP, 10, new ReplicaPlacementInfo(0, LOGDIR_0), oldReplicas, newReplicas);
+    List<ExecutionTask> tasks = new ArrayList<>();
+    Map<TopicPartitionReplica, KafkaFuture<ReplicaLogDirInfo>> futureByReplica = new HashMap<>();
+    for (int brokerId = 0; brokerId < 3; brokerId++) {
+      tasks.add(intraBrokerTask(brokerId, proposal, brokerId));
+      futureByReplica.put(new TopicPartitionReplica(TP.topic(), TP.partition(), brokerId), new KafkaFutureImpl<>());
+    }
+    DescribeReplicaLogDirsResult mockResult = EasyMock.mock(DescribeReplicaLogDirsResult.class);
+    EasyMock.expect(mockResult.values()).andReturn(futureByReplica);
+    Admin mockAdminClient = EasyMock.mock(Admin.class);
+    EasyMock.expect(mockAdminClient.describeReplicaLogDirs(EasyMock.anyObject())).andReturn(mockResult);
+    EasyMock.replay(mockAdminClient, mockResult);
+
+    long timeoutMs = 300L;
+    Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
+    props.setProperty(ExecutorConfig.LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG, Long.toString(timeoutMs));
+    Set<ExecutionTask> tasksWithoutResponse = new HashSet<>();
+    long startMs = System.currentTimeMillis();
+    Map<ExecutionTask, ReplicaLogDirInfo> logdirInfoByTask =
+        ExecutorAdminUtils.getLogdirInfoForExecutionTask(tasks, mockAdminClient, new KafkaCruiseControlConfig(props), tasksWithoutResponse);
+    long elapsedMs = System.currentTimeMillis() - startMs;
+
+    assertTrue(logdirInfoByTask.isEmpty());
+    assertEquals(new HashSet<>(tasks), tasksWithoutResponse);
+    // The requests to the brokers are in flight at the same time: the timeout is not waited for each broker in turn.
+    assertTrue("Waited " + elapsedMs + " ms", elapsedMs < tasks.size() * timeoutMs);
+    EasyMock.verify(mockAdminClient, mockResult);
+  }
+
+  @Test
+  public void testExecuteIntraBrokerReplicaMovementsKeepsTasksWithoutResponseInProgress() {
+    // Move the replicas on brokers 0-2 from d0 to d1.
+    ExecutionProposal proposal = new ExecutionProposal(TP, 10, new ReplicaPlacementInfo(0, LOGDIR_0),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0, LOGDIR_0),
+                                                                     new ReplicaPlacementInfo(1, LOGDIR_0),
+                                                                     new ReplicaPlacementInfo(2, LOGDIR_0)),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0, LOGDIR_1),
+                                                                     new ReplicaPlacementInfo(1, LOGDIR_1),
+                                                                     new ReplicaPlacementInfo(2, LOGDIR_1)));
+    ExecutionTask acceptedTask = intraBrokerTask(0, proposal, 0);
+    ExecutionTask taskWithoutResponse = intraBrokerTask(1, proposal, 1);
+    ExecutionTask refusedTask = intraBrokerTask(2, proposal, 2);
+
+    // Broker 0 accepts the movement, no response arrives in time from broker 1, and broker 2 refuses the movement.
+    Map<TopicPartitionReplica, KafkaFuture<Void>> futureByReplica = new HashMap<>();
+    futureByReplica.put(new TopicPartitionReplica(TP.topic(), TP.partition(), 0), KafkaFuture.completedFuture(null));
+    futureByReplica.put(new TopicPartitionReplica(TP.topic(), TP.partition(), 1),
+                        failedFuture(new TimeoutException("Timed out waiting for a node assignment. Call: alterReplicaLogDirs")));
+    futureByReplica.put(new TopicPartitionReplica(TP.topic(), TP.partition(), 2), failedFuture(new KafkaStorageException("Disk failure")));
+    AlterReplicaLogDirsResult mockResult = EasyMock.mock(AlterReplicaLogDirsResult.class);
+    EasyMock.expect(mockResult.values()).andReturn(futureByReplica);
+    Admin mockAdminClient = EasyMock.mock(Admin.class);
+    EasyMock.expect(mockAdminClient.alterReplicaLogDirs(EasyMock.anyObject())).andReturn(mockResult);
+    // Only the refused task is marked as dead: the movement of the other one may have started.
+    ExecutionTaskManager mockExecutionTaskManager = EasyMock.mock(ExecutionTaskManager.class);
+    mockExecutionTaskManager.markTaskAborting(refusedTask);
+    mockExecutionTaskManager.markTaskDead(refusedTask);
+    EasyMock.replay(mockAdminClient, mockResult, mockExecutionTaskManager);
+
+    ExecutorAdminUtils.executeIntraBrokerReplicaMovements(Arrays.asList(acceptedTask, taskWithoutResponse, refusedTask),
+                                                          mockAdminClient, mockExecutionTaskManager, CONFIG);
+
+    EasyMock.verify(mockAdminClient, mockResult, mockExecutionTaskManager);
+  }
+
+  private static <T> KafkaFuture<T> failedFuture(Throwable failure) {
+    KafkaFutureImpl<T> future = new KafkaFutureImpl<>();
+    future.completeExceptionally(failure);
+    return future;
   }
 
   private static ExecutionTask intraBrokerTask(long executionId, ExecutionProposal proposal, int brokerId) {
