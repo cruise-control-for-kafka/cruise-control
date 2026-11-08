@@ -37,6 +37,9 @@ Cruise Control metrics are useful to monitor the state of Cruise Control itself.
 | The time taken to execute proposals involving broker removal       | kafka.cruisecontrol:name=Executor.proposal_execution-time-involve-broker-removal       |
 | The time taken to execute proposals involving broker demotion      | kafka.cruisecontrol:name=Executor.proposal-execution-time-involve-broker-demotion-only |
 | The time taken to execute proposals                                | kafka.cruisecontrol:name=Executor.proposal-execution-time                              |
+| The partition data movement rate (MB/s) -- with partition movement progress tracking enabled, data moved by in-progress partition movements is marked as it is observed, rather than only when a partition movement finishes| kafka.cruisecontrol:name=Executor.partition-data-movement-rate-MB                      |
+| The average data movement rate (MB/s) of the ongoing replica movement phase, including the data moved by in-progress partition movements| kafka.cruisecontrol:name=Executor.partition-movement-MB-per-second                     |
+| The average number of partition movements finished per second during the ongoing replica movement phase| kafka.cruisecontrol:name=Executor.partition-movement-count-per-second                  |
 | Max inter-broker partition movement concurrency of all brokers     | kafka.cruisecontrol:name=inter-broker-partition-movements-max-concurrency              |
 | Min inter-broker partition movement concurrency of all brokers     | kafka.cruisecontrol:name=inter-broker-partition-movements-min-concurrency              |
 | Average inter-broker partition movement concurrency of all brokers | kafka.cruisecontrol:name=inter-broker-partition-movements-avg-concurrency              |

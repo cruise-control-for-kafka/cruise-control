@@ -161,7 +161,9 @@ public final class ExecutorConfig {
   public static final String INTER_BROKER_REPLICA_MOVEMENT_RATE_ALERTING_THRESHOLD_DOC = "Threshold of data movement rate (in MB/s) "
       + "for inter-broker replica movement task. If the task's data movement rate is lower than this and the task's execution time exceeds "
       + "the threshold set via " + TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG + ", an alert will be sent via notifier set by config "
-      + EXECUTOR_NOTIFIER_CLASS_CONFIG;
+      + EXECUTOR_NOTIFIER_CLASS_CONFIG + ". If partition.movement.progress.tracking.enabled is set, the data movement rate of an "
+      + "in-progress task is the rate observed between its last two partition movement progress checks; otherwise, it is estimated "
+      + "from the size of the partition.";
 
   /**
    * <code>intra.broker.replica.movement.rate.alerting.threshold</code>
@@ -172,7 +174,9 @@ public final class ExecutorConfig {
   public static final String INTRA_BROKER_REPLICA_MOVEMENT_RATE_ALERTING_THRESHOLD_DOC = "Threshold of data movement rate (in MB/s) "
       + "for intra-broker replica movement task. If task's data movement rate is lower than this and the task's execution time exceeds "
       + "the threshold set via " + TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG + ", an alert will be sent via notifier set by config "
-      + EXECUTOR_NOTIFIER_CLASS_CONFIG;
+      + EXECUTOR_NOTIFIER_CLASS_CONFIG + ". If partition.movement.progress.tracking.enabled is set, the data movement rate of an "
+      + "in-progress task is the rate observed between its last two partition movement progress checks; otherwise, it is estimated "
+      + "from the size of the partition.";
 
   // Put here to avoid forward reference.
   public static final String TASK_EXECUTION_ALERTING_THRESHOLD_MS_DOC = "Threshold of execution time to alert a replica/leader movement"
@@ -195,6 +199,30 @@ public final class ExecutorConfig {
   public static final String LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG = "logdir.response.timeout.ms";
   public static final long DEFAULT_LOGDIR_RESPONSE_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(10);
   public static final String LOGDIR_RESPONSE_TIMEOUT_MS_DOC = "Timeout in ms for broker logdir to respond";
+
+  /**
+   * <code>partition.movement.progress.tracking.enabled</code>
+   */
+  public static final String PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_CONFIG = "partition.movement.progress.tracking.enabled";
+  public static final boolean DEFAULT_PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED = true;
+  public static final String PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_DOC = "Enable tracking the amount of data (in MB) that has "
+      + "already been moved by in-progress inter-broker and intra-broker partition movements. If enabled, the executor periodically "
+      + "(see partition.movement.progress.check.interval.ms) sends a describeLogDirs request to the brokers involved in "
+      + "the in-progress partition movements, compares the size of the replicas being created with the size of their source "
+      + "replicas, and reports the result -- along with the observed data movement rate and the estimated remaining time -- in the "
+      + "executor state and the partition data movement metrics. The observed data movement rate is also used to detect slow (e.g. "
+      + "stuck) partition movements (see " + TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG + "). If a check fails (e.g. a broker fails "
+      + "to respond), the last known progress is kept until the next check.";
+
+  /**
+   * <code>partition.movement.progress.check.interval.ms</code>
+   */
+  public static final String PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS_CONFIG = "partition.movement.progress.check.interval.ms";
+  public static final long DEFAULT_PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS = TimeUnit.MINUTES.toMillis(1);
+  public static final String PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS_DOC = "The minimum interval in milliseconds between two "
+      + "checks of the amount of data moved by in-progress partition movements. Each check sends one describeLogDirs request to each "
+      + "broker involved in the in-progress partition movements. The check happens at the first execution progress check after this "
+      + "interval elapses; hence, 0 means checking at every execution progress check.";
 
   /**
    * <code>demotion.history.retention.time.ms</code>
@@ -605,6 +633,17 @@ public final class ExecutorConfig {
                             DEFAULT_LOGDIR_RESPONSE_TIMEOUT_MS,
                             ConfigDef.Importance.LOW,
                             LOGDIR_RESPONSE_TIMEOUT_MS_DOC)
+                    .define(PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_CONFIG,
+                            ConfigDef.Type.BOOLEAN,
+                            DEFAULT_PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED,
+                            ConfigDef.Importance.LOW,
+                            PARTITION_MOVEMENT_PROGRESS_TRACKING_ENABLED_DOC)
+                    .define(PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS_CONFIG,
+                            ConfigDef.Type.LONG,
+                            DEFAULT_PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS,
+                            atLeast(0),
+                            ConfigDef.Importance.LOW,
+                            PARTITION_MOVEMENT_PROGRESS_CHECK_INTERVAL_MS_DOC)
                     .define(DEMOTION_HISTORY_RETENTION_TIME_MS_CONFIG,
                             ConfigDef.Type.LONG,
                             DEFAULT_DEMOTION_HISTORY_RETENTION_TIME_MS,
