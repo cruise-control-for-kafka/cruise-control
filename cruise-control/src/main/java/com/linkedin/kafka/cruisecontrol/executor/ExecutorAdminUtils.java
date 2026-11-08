@@ -114,6 +114,68 @@ public final class ExecutorAdminUtils {
   }
 
   /**
+   * Request the destination brokers of replicas to add to create them in the given logdirs. This is expected to be called before
+   * submitting the replica reassignments that add these replicas. Since the replicas do not exist yet, the destination brokers
+   * record their logdirs and respond with {@link ReplicaNotAvailableException}. Then, the replicas are created in the recorded
+   * logdirs upon the corresponding replica reassignments.
+   *
+   * This is a best-effort operation: if the logdir of a replica cannot be recorded, the destination broker picks the logdir to
+   * create the replica in. A replica that its destination broker already hosts is skipped: requesting a logdir for an existing
+   * replica would start moving it to that logdir, which no execution task tracks.
+   *
+   * @param logdirByReplica The logdir to create each replica to add in.
+   * @param adminClient The adminClient to send describeReplicaLogDirs and alterReplicaLogDirs requests.
+   * @param config The config object that holds all the Cruise Control related configs
+   * @return The replicas whose logdirs the destination brokers recorded.
+   */
+  static Set<TopicPartitionReplica> pinLogdirsOfReplicasToAdd(Map<TopicPartitionReplica, String> logdirByReplica,
+                                                              Admin adminClient,
+                                                              KafkaCruiseControlConfig config) {
+    Set<TopicPartitionReplica> recordedReplicas = new HashSet<>();
+    if (logdirByReplica.isEmpty()) {
+      return recordedReplicas;
+    }
+    Map<TopicPartitionReplica, String> logdirToRecordByReplica = new HashMap<>(logdirByReplica);
+    long timeoutMs = config.getLong(LOGDIR_RESPONSE_TIMEOUT_MS_CONFIG);
+    for (Map.Entry<TopicPartitionReplica, KafkaFuture<ReplicaLogDirInfo>> entry
+        : adminClient.describeReplicaLogDirs(logdirToRecordByReplica.keySet()).values().entrySet()) {
+      try {
+        ReplicaLogDirInfo info = entry.getValue().get(timeoutMs, TimeUnit.MILLISECONDS);
+        if (info.getCurrentReplicaLogDir() != null) {
+          LOG.warn("Replica {} already exists in logdir {} of its destination broker, hence its logdir is not set to {}.",
+                   entry.getKey(), info.getCurrentReplicaLogDir(), logdirToRecordByReplica.remove(entry.getKey()));
+        }
+      } catch (InterruptedException | ExecutionException | TimeoutException e) {
+        LOG.warn("Failed to check whether replica {} exists on its destination broker, hence its logdir is not set to {}.",
+                 entry.getKey(), logdirToRecordByReplica.remove(entry.getKey()), e);
+      }
+    }
+    if (logdirToRecordByReplica.isEmpty()) {
+      return recordedReplicas;
+    }
+    for (Map.Entry<TopicPartitionReplica, KafkaFuture<Void>> entry
+        : adminClient.alterReplicaLogDirs(logdirToRecordByReplica).values().entrySet()) {
+      try {
+        entry.getValue().get(timeoutMs, TimeUnit.MILLISECONDS);
+        LOG.warn("Replica {} was created on its destination broker before its logdir was set to {}.", entry.getKey(),
+                 logdirToRecordByReplica.get(entry.getKey()));
+      } catch (ExecutionException e) {
+        if (e.getCause() instanceof ReplicaNotAvailableException) {
+          // The replica does not exist yet, hence the destination broker recorded the logdir to create it in.
+          recordedReplicas.add(entry.getKey());
+        } else {
+          LOG.warn("Failed to set the logdir of replica {} to {}, the broker will pick the logdir.", entry.getKey(),
+                   logdirToRecordByReplica.get(entry.getKey()), e.getCause());
+        }
+      } catch (InterruptedException | TimeoutException e) {
+        LOG.warn("Failed to set the logdir of replica {} to {}, the broker will pick the logdir.", entry.getKey(),
+                 logdirToRecordByReplica.get(entry.getKey()), e);
+      }
+    }
+    return recordedReplicas;
+  }
+
+  /**
    * Check whether there is ongoing intra-broker replica movement.
    * @param adminClient The adminClient to send describeLogDirs request.
    * @param config The config object that holds all the Cruise Control related configs
