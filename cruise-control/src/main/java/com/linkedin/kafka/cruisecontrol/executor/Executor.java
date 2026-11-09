@@ -825,10 +825,69 @@ public class Executor {
                                             String uuid,
                                             boolean isKafkaAssignerMode,
                                             boolean skipInterBrokerReplicaConcurrencyAdjustment) throws OngoingExecutionException {
+    executeProposals(proposals, unthrottledBrokers, removedBrokers, loadMonitor, requestedInterBrokerPartitionMovementConcurrency,
+                     requestedMaxClusterPartitionMovements, requestedIntraBrokerPartitionMovementConcurrency,
+                     requestedClusterLeadershipMovementConcurrency, requestedBrokerLeadershipMovementConcurrency,
+                     requestedExecutionProgressCheckIntervalMs, replicaMovementStrategy, replicationThrottle, isTriggeredByUserRequest,
+                     uuid, isKafkaAssignerMode, skipInterBrokerReplicaConcurrencyAdjustment, false);
+  }
+
+  /**
+   * Initialize proposal execution and start execution.
+   * Same as {@link #executeProposals(Collection, Set, Set, LoadMonitor, Integer, Integer, Integer, Integer, Integer, Long,
+   * ReplicaMovementStrategy, Long, boolean, String, boolean, boolean)}, but additionally allows executing intra-broker
+   * replica movements one broker at a time.
+   *
+   * @param proposals Proposals to be executed.
+   * @param unthrottledBrokers Brokers that are not throttled in terms of the number of in/out replica movements.
+   * @param removedBrokers Removed brokers, null if no brokers has been removed.
+   * @param loadMonitor Load monitor.
+   * @param requestedInterBrokerPartitionMovementConcurrency The maximum number of concurrent inter-broker partition movements
+   *                                                         per broker(if null, use num.concurrent.partition.movements.per.broker).
+   * @param requestedMaxClusterPartitionMovements The upper bound of concurrent inter broker partition movements in cluster
+   *                                              (if null, use max.num.cluster.partition.movements).
+   * @param requestedIntraBrokerPartitionMovementConcurrency The maximum number of concurrent intra-broker partition movements
+   *                                                         (if null, use num.concurrent.intra.broker.partition.movements).
+   * @param requestedClusterLeadershipMovementConcurrency The maximum number of concurrent leader movements in a cluster
+   *                                               (if null, use num.concurrent.leader.movements).
+   * @param requestedBrokerLeadershipMovementConcurrency The maximum number of concurrent leader movements involved in a broker
+   *                                               (if null, use num.concurrent.leader.movements.per.broker).
+   * @param requestedExecutionProgressCheckIntervalMs The interval between checking and updating the progress of an initiated
+   *                                                  execution (if null, use execution.progress.check.interval.ms).
+   * @param replicaMovementStrategy The strategy used to determine the execution order of generated replica movement tasks.
+   * @param replicationThrottle The replication throttle (bytes/second) to apply to both leaders and followers
+   *                            when executing a proposal (if null, no throttling is applied).
+   * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
+   * @param uuid UUID of the execution.
+   * @param isKafkaAssignerMode {@code true} if kafka assigner mode, {@code false} otherwise.
+   * @param skipInterBrokerReplicaConcurrencyAdjustment {@code true} to skip auto adjusting concurrency of inter-broker
+   * replica movements even if the concurrency adjuster is enabled, {@code false} otherwise.
+   * @param intraBrokerMovementsBrokerByBroker {@code true} to execute intra-broker replica movements one broker at a time,
+   * {@code false} to execute them on all brokers in parallel.
+   */
+  public synchronized void executeProposals(Collection<ExecutionProposal> proposals,
+                                            Set<Integer> unthrottledBrokers,
+                                            Set<Integer> removedBrokers,
+                                            LoadMonitor loadMonitor,
+                                            Integer requestedInterBrokerPartitionMovementConcurrency,
+                                            Integer requestedMaxClusterPartitionMovements,
+                                            Integer requestedIntraBrokerPartitionMovementConcurrency,
+                                            Integer requestedClusterLeadershipMovementConcurrency,
+                                            Integer requestedBrokerLeadershipMovementConcurrency,
+                                            Long requestedExecutionProgressCheckIntervalMs,
+                                            ReplicaMovementStrategy replicaMovementStrategy,
+                                            Long replicationThrottle,
+                                            boolean isTriggeredByUserRequest,
+                                            String uuid,
+                                            boolean isKafkaAssignerMode,
+                                            boolean skipInterBrokerReplicaConcurrencyAdjustment,
+                                            boolean intraBrokerMovementsBrokerByBroker) throws OngoingExecutionException {
     setExecutionMode(isKafkaAssignerMode);
     sanityCheckExecuteProposals(loadMonitor, uuid);
     _skipInterBrokerReplicaConcurrencyAdjustment = skipInterBrokerReplicaConcurrencyAdjustment;
+    _executionTaskManager.setIntraBrokerMovementsBrokerByBroker(intraBrokerMovementsBrokerByBroker);
     try {
+      sanityCheckNoOfflineLogDirs(proposals);
       initProposalExecution(proposals, unthrottledBrokers, requestedInterBrokerPartitionMovementConcurrency, requestedMaxClusterPartitionMovements,
                             requestedIntraBrokerPartitionMovementConcurrency, requestedClusterLeadershipMovementConcurrency,
                             requestedBrokerLeadershipMovementConcurrency, requestedExecutionProgressCheckIntervalMs, replicaMovementStrategy,
@@ -859,6 +918,37 @@ public class Executor {
     if (uuid == null || !uuid.equals(_uuid)) {
       throw new IllegalStateException(String.format("Attempt to initialize proposal execution with a UUID %s that differs from"
                                                     + " the UUID used for generating proposals for execution %s.", uuid, _uuid));
+    }
+  }
+
+  /**
+   * Refuse to execute replica movements between the disks of a broker that has an offline logdir. Kafka refuses every
+   * such movement (KafkaStorageException), so these tasks would only end up dead. Only the brokers that the proposals
+   * move replicas between disks on are checked, and their logdirs are read from Kafka, not from the cluster model.
+   *
+   * @param proposals Proposals to be executed.
+   */
+  private void sanityCheckNoOfflineLogDirs(Collection<ExecutionProposal> proposals) {
+    Set<Integer> brokersWithIntraBrokerMovements = proposals.stream()
+                                                            .flatMap(p -> p.replicasToMoveBetweenDisksByBroker().keySet().stream())
+                                                            .collect(Collectors.toSet());
+    if (brokersWithIntraBrokerMovements.isEmpty()) {
+      return;
+    }
+    Map<Integer, Set<String>> offlineLogDirs;
+    try {
+      offlineLogDirs = offlineLogDirsByBroker(brokersWithIntraBrokerMovements, _adminClient, _config);
+    } catch (TimeoutException | InterruptedException | ExecutionException e) {
+      // This may indicate transient (e.g. network) issues.
+      throw new IllegalStateException(String.format("Failed to retrieve the logdirs of brokers %s, which have replica movements"
+                                                    + " between their disks.", brokersWithIntraBrokerMovements), e);
+    }
+    if (!offlineLogDirs.isEmpty()) {
+      throw new IllegalStateException(String.format(
+          "Cannot move replicas between the disks of brokers %s: they have offline logdirs %s. Kafka refuses every replica"
+          + " movement between the disks of a broker with an offline logdir. Replace the failed disk, or remove it from the"
+          + " broker's log.dirs and restart the broker, then retry. To rebalance the disks of the other brokers now, leave"
+          + " these brokers out via destination_broker_ids.", offlineLogDirs.keySet(), offlineLogDirs));
     }
   }
 

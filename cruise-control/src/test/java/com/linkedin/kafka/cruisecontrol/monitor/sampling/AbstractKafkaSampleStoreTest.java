@@ -11,10 +11,6 @@ import org.apache.kafka.common.KafkaFuture;
 import org.apache.kafka.common.Node;
 import org.easymock.EasyMock;
 import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.junit4.PowerMockRunner;
 import org.powermock.reflect.Whitebox;
 import java.util.Arrays;
 import java.util.Collection;
@@ -31,9 +27,6 @@ import static org.junit.Assert.assertThrows;
 /**
  * Unit test for {@link AbstractKafkaSampleStore}
  */
-@RunWith(PowerMockRunner.class)
-@PowerMockIgnore("javax.management.*")
-@PrepareForTest(AbstractKafkaSampleStore.class)
 public class AbstractKafkaSampleStoreTest {
 
     @Test

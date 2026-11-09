@@ -121,6 +121,7 @@ public class RemoveDisksRunnable extends GoalBasedOperationRunnable {
                     _kafkaCruiseControl.config().getLong(ExecutorConfig.DEFAULT_REPLICATION_THROTTLE_CONFIG),
                     _isTriggeredByUserRequest,
                     _uuid,
+                    false,
                     false
             );
         }
