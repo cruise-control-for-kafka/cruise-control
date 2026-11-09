@@ -10,8 +10,12 @@ import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlRequestHandler;
 import com.linkedin.kafka.cruisecontrol.async.AsyncKafkaCruiseControl;
 import io.vertx.ext.web.RoutingContext;
 import java.io.IOException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class VertxRequestHandler {
+
+    private static final Logger LOG = LoggerFactory.getLogger(VertxRequestHandler.class);
 
     private final KafkaCruiseControlRequestHandler _requestHandler;
 
@@ -34,7 +38,7 @@ public class VertxRequestHandler {
         try {
             _requestHandler.doGetOrPost(new VertxRequestContext(context, cruiseControlEndPoints().config()));
         } catch (IOException e) {
-            e.printStackTrace();
+            LOG.error("Failed to handle Cruise Control request.", e);
         }
     }
 
