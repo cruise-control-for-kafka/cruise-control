@@ -1,5 +1,17 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.config;
@@ -345,6 +357,7 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
    *   <li>{@link AnalyzerConfig#TOPIC_REPLICA_COUNT_BALANCE_MIN_GAP_CONFIG} <=
    *   {@link AnalyzerConfig#TOPIC_REPLICA_COUNT_BALANCE_MIN_GAP_CONFIG}</li>
    *   <li>{@link AnalyzerConfig#OVERPROVISIONED_MAX_REPLICAS_PER_BROKER_CONFIG} <= {@link AnalyzerConfig#MAX_REPLICAS_PER_BROKER_CONFIG}</li>
+   *   <li>{@link AnalyzerConfig#INTRA_BROKER_DISK_BALANCE_THRESHOLD_CONFIG} >= 1, if set</li>
    * </ul>
    */
   private void sanityCheckBalancingConstraints() {
@@ -363,6 +376,13 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
       throw new ConfigException(String.format("Maximum replicas per broker [%d] cannot be smaller than the "
                                               + "overprovisioned maximum replicas per broker [%d].",
                                               maxReplicasPerBroker, overprovisionedMaxReplicasPerBroker));
+    }
+
+    // Ensure that intra-broker disk balance threshold, if set, is not smaller than 1 -- if unset, disk balance threshold is used.
+    Double intraBrokerDiskBalanceThreshold = getDouble(AnalyzerConfig.INTRA_BROKER_DISK_BALANCE_THRESHOLD_CONFIG);
+    if (intraBrokerDiskBalanceThreshold != null && intraBrokerDiskBalanceThreshold < 1) {
+      throw new ConfigException(AnalyzerConfig.INTRA_BROKER_DISK_BALANCE_THRESHOLD_CONFIG, intraBrokerDiskBalanceThreshold,
+                                "Value must be at least 1");
     }
   }
 
