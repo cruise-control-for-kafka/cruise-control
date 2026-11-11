@@ -6,6 +6,7 @@ package com.linkedin.kafka.cruisecontrol.detector;
 
 import com.linkedin.cruisecontrol.detector.Anomaly;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
+import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnomalyDetectorConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.MonitorConfig;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
@@ -63,12 +64,40 @@ public final class AnomalyDetectorUtils {
    * @return A list of names for goals {@link AnomalyDetectorConfig#SELF_HEALING_GOALS_CONFIG} in the order of priority.
    */
   public static List<String> getSelfHealingGoalNames(KafkaCruiseControlConfig config) {
-    List<Goal> goals = config.getConfiguredInstances(AnomalyDetectorConfig.SELF_HEALING_GOALS_CONFIG, Goal.class);
-    List<String> selfHealingGoalNames = new ArrayList<>(goals.size());
-    for (Goal goal : goals) {
-      selfHealingGoalNames.add(goal.name());
+    return goalNames(config.getConfiguredInstances(AnomalyDetectorConfig.SELF_HEALING_GOALS_CONFIG, Goal.class));
+  }
+
+  /**
+   * @param config The configurations for Cruise Control.
+   * @return A list of names for intra-broker goals {@link AnomalyDetectorConfig#SELF_HEALING_INTRA_BROKER_GOALS_CONFIG} in the order
+   * of priority, or {@link AnalyzerConfig#INTRA_BROKER_GOALS_CONFIG} if the former is empty.
+   */
+  public static List<String> getSelfHealingIntraBrokerGoalNames(KafkaCruiseControlConfig config) {
+    List<Goal> goals = config.getConfiguredInstances(AnomalyDetectorConfig.SELF_HEALING_INTRA_BROKER_GOALS_CONFIG, Goal.class);
+    if (goals.isEmpty()) {
+      goals = config.getConfiguredInstances(AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG, Goal.class);
     }
-    return selfHealingGoalNames;
+    return goalNames(goals);
+  }
+
+  /**
+   * @param config The configurations for Cruise Control.
+   * @return Intra-broker goals {@link AnomalyDetectorConfig#ANOMALY_DETECTION_INTRA_BROKER_GOALS_CONFIG} for detecting intra-broker
+   * goal violations in the order of priority, or {@link AnalyzerConfig#INTRA_BROKER_GOALS_CONFIG} if the former is not set.
+   */
+  public static List<Goal> getIntraBrokerDetectionGoals(KafkaCruiseControlConfig config) {
+    String intraBrokerDetectionGoalsConfig = config.getList(AnomalyDetectorConfig.ANOMALY_DETECTION_INTRA_BROKER_GOALS_CONFIG) == null
+                                             ? AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG
+                                             : AnomalyDetectorConfig.ANOMALY_DETECTION_INTRA_BROKER_GOALS_CONFIG;
+    return config.getConfiguredInstances(intraBrokerDetectionGoalsConfig, Goal.class);
+  }
+
+  private static List<String> goalNames(List<Goal> goals) {
+    List<String> goalNames = new ArrayList<>(goals.size());
+    for (Goal goal : goals) {
+      goalNames.add(goal.name());
+    }
+    return goalNames;
   }
 
   /**
@@ -126,7 +155,7 @@ public final class AnomalyDetectorUtils {
    * @param goalViolations Goal violations to check whether there are unfixable goals.
    * @return {@code true} if the given goal violations contain unfixable goals, {@code false} otherwise.
    */
-  public static boolean hasUnfixableGoals(GoalViolations goalViolations) {
+  public static boolean hasUnfixableGoals(AbstractGoalViolations goalViolations) {
     List<String> unfixableGoals = goalViolations.violatedGoalsByFixability().get(false);
     return unfixableGoals != null && !unfixableGoals.isEmpty();
   }

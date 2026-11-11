@@ -427,6 +427,35 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
   }
 
   @Test
+  public void testUpdateOngoingExecutionReplicationThrottle() {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getExecutorProperties());
+    Executor executor = new Executor(config, null, new MetricRegistry(), null, EasyMock.mock(MetadataAdminClient.class),
+                                     null, EasyMock.mock(AnomalyDetectorManager.class));
+
+    // The requested replication throttle must be non-negative.
+    assertThrows(IllegalArgumentException.class, () -> executor.updateOngoingExecutionReplicationThrottle(-1L));
+    // Without an ongoing execution with inter-broker replica movements, the replication throttle cannot be updated
+    // or removed.
+    assertFalse(executor.updateOngoingExecutionReplicationThrottle(100L));
+    assertEquals(DynamicThrottleResult.NO_ONGOING_MOVEMENT, executor.removeOngoingExecutionReplicationThrottle());
+  }
+
+  @Test
+  public void testUpdateOngoingExecutionLogDirThrottle() {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getExecutorProperties());
+    Executor executor = new Executor(config, null, new MetricRegistry(), null, EasyMock.mock(MetadataAdminClient.class),
+                                     null, EasyMock.mock(AnomalyDetectorManager.class));
+
+    // The requested log dir throttle must be positive.
+    assertThrows(IllegalArgumentException.class, () -> executor.updateOngoingExecutionLogDirThrottle(0L));
+    assertThrows(IllegalArgumentException.class, () -> executor.updateOngoingExecutionLogDirThrottle(-1L));
+    // Without an ongoing execution with intra-broker replica movements, the log dir throttle cannot be updated
+    // or removed.
+    assertFalse(executor.updateOngoingExecutionLogDirThrottle(100L));
+    assertEquals(DynamicThrottleResult.NO_ONGOING_MOVEMENT, executor.removeOngoingExecutionLogDirThrottle());
+  }
+
+  @Test
   public void testExecutionKnobs() {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getExecutorProperties());
     assertThrows(IllegalStateException.class,
@@ -490,6 +519,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
                               null,
                               null,
                               null,
+                              null,
                               true,
                               RANDOM_UUID,
                               false,
@@ -525,6 +555,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
                                                  null,
                                                  null,
                                                  null,
+                                                 null,
                                                  true,
                                                  RANDOM_UUID,
                                                  false,
@@ -538,6 +569,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
                               null,
                               mockLoadMonitor,
                               null, null,
+                              null,
                               null,
                               null,
                               null,
@@ -763,7 +795,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
     executor.setGeneratingProposalsForExecution(RANDOM_UUID, ExecutorTest.class::getSimpleName, isTriggeredByUserRequest);
     executor.executeProposals(proposalsToExecute, Collections.emptySet(), null, mockLoadMonitor, null, null,
                               null, null, null, null, null,
-                              replicationThrottle, isTriggeredByUserRequest, RANDOM_UUID, false, false);
+                              replicationThrottle, null, isTriggeredByUserRequest, RANDOM_UUID, false, false);
 
     if (verifyProgress) {
       verifyOngoingPartitionReassignments(Collections.singleton(TP0));

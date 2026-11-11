@@ -24,6 +24,8 @@ import java.util.List;
  *  <li>{@link #METRIC_ANOMALY}: Abnormal changes in broker metrics.</li>
  *  <li>{@link #GOAL_VIOLATION}: Violation of anomaly detection goals.</li>
  *  <li>{@link #TOPIC_ANOMALY}: Topic violating some desired properties.</li>
+ *  <li>{@link #INTRA_BROKER_GOAL_VIOLATION}: Violation of intra-broker anomaly detection goals -- i.e. imbalance across the disks
+ *  of brokers in a JBOD deployment.</li>
  * </ul>
  */
 public enum KafkaAnomalyType implements AnomalyType {
@@ -38,7 +40,9 @@ public enum KafkaAnomalyType implements AnomalyType {
   @JsonResponseField
   GOAL_VIOLATION(4),
   @JsonResponseField
-  TOPIC_ANOMALY(5);
+  TOPIC_ANOMALY(5),
+  @JsonResponseField
+  INTRA_BROKER_GOAL_VIOLATION(6);
 
   private static final List<KafkaAnomalyType> CACHED_VALUES = List.of(values());
   private final int _priority;

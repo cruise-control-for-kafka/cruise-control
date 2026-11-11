@@ -6,6 +6,7 @@ package com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable;
 
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.analyzer.OptimizerResult;
+import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
 import com.linkedin.kafka.cruisecontrol.exception.KafkaCruiseControlException;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.ReplicaMovementStrategy;
@@ -17,6 +18,12 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_DESTINATION_BROKER_IDS;
+import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_DRYRUN;
+import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_EXCLUDED_TOPICS;
+import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_FAST_MODE;
+import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_IS_TRIGGERED_BY_USER_REQUEST;
+import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_MODEL_COMPLETENESS_REQUIREMENTS;
+import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_SKIP_HARD_GOAL_CHECK;
 import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_REPLICA_MOVEMENT_STRATEGY;
 import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_CONCURRENT_MOVEMENTS;
 import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.SELF_HEALING_EXECUTION_PROGRESS_CHECK_INTERVAL_MS;
@@ -38,6 +45,7 @@ public class RebalanceRunnable extends GoalBasedOperationRunnable {
   protected final Long _executionProgressCheckIntervalMs;
   protected final ReplicaMovementStrategy _replicaMovementStrategy;
   protected final Long _replicationThrottle;
+  protected final Long _logDirThrottle;
   protected final boolean _ignoreProposalCache;
   protected final Set<Integer> _destinationBrokerIds;
   protected final boolean _isRebalanceDiskMode;
@@ -54,8 +62,38 @@ public class RebalanceRunnable extends GoalBasedOperationRunnable {
                            String anomalyId,
                            Supplier<String> reasonSupplier,
                            boolean stopOngoingExecution) {
-    super(kafkaCruiseControl, new OperationFuture("Rebalance for Self-Healing"), selfHealingGoals, allowCapacityEstimation,
-          excludeRecentlyDemotedBrokers, excludeRecentlyRemovedBrokers, anomalyId, reasonSupplier, stopOngoingExecution);
+    this(kafkaCruiseControl, selfHealingGoals, allowCapacityEstimation, excludeRecentlyDemotedBrokers, excludeRecentlyRemovedBrokers,
+         anomalyId, reasonSupplier, stopOngoingExecution, SELF_HEALING_IS_REBALANCE_DISK_MODE);
+  }
+
+  /**
+   * Constructor to be used for creating a runnable for self-healing.
+   *
+   * @param kafkaCruiseControl The Kafka Cruise Control instance.
+   * @param selfHealingGoals The goals to be used for self-healing.
+   * @param allowCapacityEstimation Whether to allow capacity estimation in the cluster model used for self-healing.
+   * @param excludeRecentlyDemotedBrokers Whether to exclude recently demoted brokers from receiving leadership.
+   * @param excludeRecentlyRemovedBrokers Whether to exclude recently removed brokers from receiving replicas.
+   * @param anomalyId The id of the anomaly to be self-healed.
+   * @param reasonSupplier The supplier of the reason for self-healing.
+   * @param stopOngoingExecution Whether to stop the ongoing execution (if any) to start self-healing.
+   * @param isRebalanceDiskMode {@code true} to balance the disks of each broker with intra-broker goals -- i.e. moving replicas
+   *                            only between the disks of the same broker, {@code false} to balance the brokers.
+   */
+  public RebalanceRunnable(KafkaCruiseControl kafkaCruiseControl,
+                           List<String> selfHealingGoals,
+                           boolean allowCapacityEstimation,
+                           boolean excludeRecentlyDemotedBrokers,
+                           boolean excludeRecentlyRemovedBrokers,
+                           String anomalyId,
+                           Supplier<String> reasonSupplier,
+                           boolean stopOngoingExecution,
+                           boolean isRebalanceDiskMode) {
+    // Hard goals are inter-broker goals, which do not apply to balancing the disks of each broker.
+    super(kafkaCruiseControl, new OperationFuture("Rebalance for Self-Healing"), SELF_HEALING_DRYRUN, selfHealingGoals, stopOngoingExecution,
+          SELF_HEALING_MODEL_COMPLETENESS_REQUIREMENTS, SELF_HEALING_SKIP_HARD_GOAL_CHECK || isRebalanceDiskMode,
+          SELF_HEALING_EXCLUDED_TOPICS, allowCapacityEstimation, excludeRecentlyDemotedBrokers, excludeRecentlyRemovedBrokers, anomalyId,
+          reasonSupplier, SELF_HEALING_IS_TRIGGERED_BY_USER_REQUEST, SELF_HEALING_FAST_MODE);
     _concurrentInterBrokerPartitionMovements = SELF_HEALING_CONCURRENT_MOVEMENTS;
     _maxInterBrokerPartitionMovements = SELF_HEALING_CONCURRENT_MOVEMENTS;
     _concurrentIntraBrokerPartitionMovements = SELF_HEALING_CONCURRENT_MOVEMENTS;
@@ -63,10 +101,12 @@ public class RebalanceRunnable extends GoalBasedOperationRunnable {
     _brokerLeaderMovementConcurrency = SELF_HEALING_CONCURRENT_MOVEMENTS;
     _executionProgressCheckIntervalMs = SELF_HEALING_EXECUTION_PROGRESS_CHECK_INTERVAL_MS;
     _replicaMovementStrategy = SELF_HEALING_REPLICA_MOVEMENT_STRATEGY;
-    _replicationThrottle = kafkaCruiseControl.config().getLong(ExecutorConfig.DEFAULT_REPLICATION_THROTTLE_CONFIG);
+    KafkaCruiseControlConfig config = kafkaCruiseControl.config();
+    _replicationThrottle = config.getLong(ExecutorConfig.DEFAULT_REPLICATION_THROTTLE_CONFIG);
+    _logDirThrottle = config.getLong(ExecutorConfig.DEFAULT_LOG_DIR_THROTTLE_CONFIG);
     _ignoreProposalCache = SELF_HEALING_IGNORE_PROPOSAL_CACHE;
     _destinationBrokerIds = SELF_HEALING_DESTINATION_BROKER_IDS;
-    _isRebalanceDiskMode = SELF_HEALING_IS_REBALANCE_DISK_MODE;
+    _isRebalanceDiskMode = isRebalanceDiskMode;
   }
 
   public RebalanceRunnable(KafkaCruiseControl kafkaCruiseControl,
@@ -83,6 +123,7 @@ public class RebalanceRunnable extends GoalBasedOperationRunnable {
     _executionProgressCheckIntervalMs = parameters.executionProgressCheckIntervalMs();
     _replicaMovementStrategy = parameters.replicaMovementStrategy();
     _replicationThrottle = parameters.replicationThrottle();
+    _logDirThrottle = parameters.logDirThrottle();
     _ignoreProposalCache = parameters.ignoreProposalCache();
     _destinationBrokerIds = parameters.destinationBrokerIds();
     _isRebalanceDiskMode = parameters.isRebalanceDiskMode();
@@ -124,7 +165,7 @@ public class RebalanceRunnable extends GoalBasedOperationRunnable {
           _concurrentInterBrokerPartitionMovements, _maxInterBrokerPartitionMovements,
           _concurrentIntraBrokerPartitionMovements, _clusterLeaderMovementConcurrency, _brokerLeaderMovementConcurrency,
           _executionProgressCheckIntervalMs, _replicaMovementStrategy,
-          _replicationThrottle, _isTriggeredByUserRequest, _uuid, SKIP_AUTO_REFRESHING_CONCURRENCY);
+          _replicationThrottle, _logDirThrottle, _isTriggeredByUserRequest, _uuid, SKIP_AUTO_REFRESHING_CONCURRENCY);
     }
     return result;
   }

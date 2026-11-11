@@ -8,11 +8,13 @@ import com.linkedin.cruisecontrol.detector.Anomaly;
 import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnomalyDetectorConfig;
 import com.linkedin.kafka.cruisecontrol.detector.BrokerFailures;
 import com.linkedin.kafka.cruisecontrol.detector.DiskFailures;
 import com.linkedin.kafka.cruisecontrol.detector.GoalViolations;
+import com.linkedin.kafka.cruisecontrol.detector.IntraBrokerGoalViolations;
 import com.linkedin.kafka.cruisecontrol.detector.KafkaMetricAnomaly;
 import com.linkedin.kafka.cruisecontrol.detector.TopicReplicationFactorAnomaly;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.holder.BrokerEntity;
@@ -218,6 +220,73 @@ public class SelfHealingNotifierTest {
     assertTrue(anomalyNotifier.isAlertCalledFor(KafkaAnomalyType.TOPIC_ANOMALY));
     assertFalse(anomalyNotifier.isAutoFixTriggeredFor(KafkaAnomalyType.TOPIC_ANOMALY));
     EasyMock.verify(mockKafkaCruiseControl);
+  }
+
+  @Test
+  public void testOnIntraBrokerGoalViolation() {
+    Time mockTime = new MockTime(500L);
+    IntraBrokerGoalViolations fixableViolations = intraBrokerGoalViolations(true);
+    IntraBrokerGoalViolations unfixableViolations = intraBrokerGoalViolations(false);
+
+    // (1) By default, self-healing for intra-broker goal violations follows the general self-healing config.
+    TestingBrokerFailureAutoFixNotifier anomalyNotifier = new TestingBrokerFailureAutoFixNotifier(mockTime);
+    anomalyNotifier.configure(Collections.singletonMap(SelfHealingNotifier.SELF_HEALING_ENABLED_CONFIG, "true"));
+    assertTrue(anomalyNotifier.selfHealingEnabled().get(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION));
+    AnomalyNotificationResult result = anomalyNotifier.onIntraBrokerGoalViolation(fixableViolations);
+    assertEquals(AnomalyNotificationResult.Action.FIX, result.action());
+    assertTrue(anomalyNotifier.isAlertCalledFor(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION));
+    assertTrue(anomalyNotifier.isAutoFixTriggeredFor(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION));
+    assertFalse(anomalyNotifier.isAlertCalledFor(KafkaAnomalyType.GOAL_VIOLATION));
+
+    // (2) Unfixable intra-broker goal violations are not self-healed.
+    anomalyNotifier.resetAlert(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION);
+    result = anomalyNotifier.onIntraBrokerGoalViolation(unfixableViolations);
+    assertEquals(AnomalyNotificationResult.Action.IGNORE, result.action());
+    assertTrue(anomalyNotifier.isAlertCalledFor(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION));
+    assertFalse(anomalyNotifier.isAutoFixTriggeredFor(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION));
+
+    // (3) The specific config overrides the general config, independent of the config for (inter-broker) goal violations.
+    anomalyNotifier = new TestingBrokerFailureAutoFixNotifier(mockTime);
+    anomalyNotifier.configure(Map.of(SelfHealingNotifier.SELF_HEALING_ENABLED_CONFIG, "true",
+                                     SelfHealingNotifier.SELF_HEALING_INTRA_BROKER_GOAL_VIOLATION_ENABLED_CONFIG, "false"));
+    assertTrue(anomalyNotifier.selfHealingEnabled().get(KafkaAnomalyType.GOAL_VIOLATION));
+    result = anomalyNotifier.onIntraBrokerGoalViolation(fixableViolations);
+    assertEquals(AnomalyNotificationResult.Action.IGNORE, result.action());
+    assertTrue(anomalyNotifier.isAlertCalledFor(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION));
+    assertFalse(anomalyNotifier.isAutoFixTriggeredFor(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION));
+
+    anomalyNotifier = new TestingBrokerFailureAutoFixNotifier(mockTime);
+    anomalyNotifier.configure(Collections.singletonMap(SelfHealingNotifier.SELF_HEALING_INTRA_BROKER_GOAL_VIOLATION_ENABLED_CONFIG, "true"));
+    assertFalse(anomalyNotifier.selfHealingEnabled().get(KafkaAnomalyType.GOAL_VIOLATION));
+    result = anomalyNotifier.onIntraBrokerGoalViolation(fixableViolations);
+    assertEquals(AnomalyNotificationResult.Action.FIX, result.action());
+    assertTrue(anomalyNotifier.isAutoFixTriggeredFor(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION));
+
+    // (4) Self-healing is disabled unless configured otherwise.
+    anomalyNotifier = new TestingBrokerFailureAutoFixNotifier(mockTime);
+    anomalyNotifier.configure(Collections.emptyMap());
+    assertFalse(anomalyNotifier.selfHealingEnabled().get(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION));
+    result = anomalyNotifier.onIntraBrokerGoalViolation(fixableViolations);
+    assertEquals(AnomalyNotificationResult.Action.IGNORE, result.action());
+    assertTrue(anomalyNotifier.isAlertCalledFor(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION));
+    assertFalse(anomalyNotifier.isAutoFixTriggeredFor(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION));
+  }
+
+  @Test
+  public void testNotifierWithoutIntraBrokerGoalViolationSupportIgnoresIt() {
+    // NoopNotifier relies on the default implementation, like custom notifiers that predate intra-broker goal violations.
+    AnomalyNotifier anomalyNotifier = new NoopNotifier();
+    assertEquals(AnomalyNotificationResult.Action.IGNORE,
+                 anomalyNotifier.onIntraBrokerGoalViolation(intraBrokerGoalViolations(true)).action());
+  }
+
+  private static IntraBrokerGoalViolations intraBrokerGoalViolations(boolean fixable) {
+    IntraBrokerGoalViolations violations = EasyMock.createNiceMock(IntraBrokerGoalViolations.class);
+    EasyMock.expect(violations.violatedGoalsByFixability())
+            .andReturn(Collections.singletonMap(fixable, Collections.singletonList(IntraBrokerDiskUsageDistributionGoal.class.getSimpleName())))
+            .anyTimes();
+    EasyMock.replay(violations);
+    return violations;
   }
 
   private static class TestingBrokerFailureAutoFixNotifier extends SelfHealingNotifier {

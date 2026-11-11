@@ -91,6 +91,11 @@ public final class ParameterUtils {
   public static final String THROTTLE_ADDED_BROKER_PARAM = "throttle_added_broker";
   public static final String THROTTLE_REMOVED_BROKER_PARAM = "throttle_removed_broker";
   public static final String REPLICATION_THROTTLE_PARAM = "replication_throttle";
+  public static final String LOG_DIR_THROTTLE_PARAM = "log_dir_throttle";
+  // The value that asks for a throttle to be REMOVED from the ongoing execution, as opposed to an absent parameter, which
+  // asks for no change. `null` already means "unset, fall back to the configured default" inside the executor (see
+  // ExecutionConcurrencyManager); this is how a request says it.
+  public static final String UNSET_PARAMETER_VALUE = "null";
   public static final String IGNORE_PROPOSAL_CACHE_PARAM = "ignore_proposal_cache";
   public static final String USE_READY_DEFAULT_GOALS_PARAM = "use_ready_default_goals";
   public static final String EXECUTION_PROGRESS_CHECK_INTERVAL_MS_PARAM = "execution_progress_check_interval_ms";
@@ -423,12 +428,106 @@ public final class ParameterUtils {
             : getBooleanParam(requestContext, THROTTLE_REMOVED_BROKER_PARAM, true);
   }
 
+  /**
+   * @param requestContext The request context.
+   * @param config The configurations for Cruise Control.
+   * @return The requested throttle (bytes/second) for intra-broker replica movements, or the value of
+   * {@link ExecutorConfig#DEFAULT_LOG_DIR_THROTTLE_CONFIG} if the request does not specify it.
+   */
+  static Long logDirThrottle(CruiseControlRequestContext requestContext, KafkaCruiseControlConfig config) {
+    Long value = getLongParam(requestContext, LOG_DIR_THROTTLE_PARAM, config.getLong(ExecutorConfig.DEFAULT_LOG_DIR_THROTTLE_CONFIG));
+    if (value != null && value < 1) {
+      throw new UserRequestException(String.format("Requested log dir throttle must be positive (Requested: %s).", value));
+    }
+    return value;
+  }
+
   static Long replicationThrottle(CruiseControlRequestContext requestContext, KafkaCruiseControlConfig config) {
     Long value = getLongParam(requestContext, REPLICATION_THROTTLE_PARAM, config.getLong(ExecutorConfig.DEFAULT_REPLICATION_THROTTLE_CONFIG));
     if (value != null && value < 0) {
       throw new UserRequestException(String.format("Requested rebalance throttle must be non-negative (Requested: %s).", value));
     }
     return value;
+  }
+
+  /**
+   * @param requestContext The request context.
+   * @param parameter The name of the throttle parameter.
+   * @return The raw value of the given throttle parameter, or {@code null} if it is absent.
+   */
+  private static String rawThrottleValue(CruiseControlRequestContext requestContext, String parameter) {
+    String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), parameter);
+    return parameterString == null ? null : requestContext.getParameter(parameterString).trim();
+  }
+
+  /**
+   * @param requestContext The request context.
+   * @param parameter The name of the throttle parameter.
+   * @return {@code true} if the request asks for this throttle to be removed -- i.e. the parameter is present with the value
+   * {@link #UNSET_PARAMETER_VALUE}.
+   */
+  private static boolean isUnsetRequested(CruiseControlRequestContext requestContext, String parameter) {
+    return UNSET_PARAMETER_VALUE.equalsIgnoreCase(rawThrottleValue(requestContext, parameter));
+  }
+
+  /**
+   * @param requestContext The request context.
+   * @return {@code true} if the request asks for the replication throttle of the ongoing execution to be removed.
+   */
+  static boolean removeRequestedReplicationThrottle(CruiseControlRequestContext requestContext) {
+    return isUnsetRequested(requestContext, REPLICATION_THROTTLE_PARAM);
+  }
+
+  /**
+   * @param requestContext The request context.
+   * @return {@code true} if the request asks for the log dir throttle of the ongoing execution to be removed.
+   */
+  static boolean removeRequestedLogDirThrottle(CruiseControlRequestContext requestContext) {
+    return isUnsetRequested(requestContext, LOG_DIR_THROTTLE_PARAM);
+  }
+
+  /**
+   * Get the requested replication throttle from the request, without falling back to
+   * {@link ExecutorConfig#DEFAULT_REPLICATION_THROTTLE_CONFIG} -- i.e. an absent parameter indicates no requested change.
+   *
+   * @param requestContext The request context.
+   * @return The value of {@link #REPLICATION_THROTTLE_PARAM} parameter, or {@code null} if the parameter is absent or asks
+   * for the throttle to be removed (see {@link #removeRequestedReplicationThrottle}).
+   */
+  static Long requestedReplicationThrottle(CruiseControlRequestContext requestContext) {
+    String value = rawThrottleValue(requestContext, REPLICATION_THROTTLE_PARAM);
+    if (value == null || UNSET_PARAMETER_VALUE.equalsIgnoreCase(value)) {
+      // Absent means no change requested; the unset value asks for a removal rather than for a rate -- see
+      // #removeRequestedReplicationThrottle.
+      return null;
+    }
+    long throttle = Long.parseLong(value);
+    if (throttle < 0) {
+      throw new UserRequestException(String.format("Requested replication throttle must be non-negative (Requested: %s).", throttle));
+    }
+    return throttle;
+  }
+
+  /**
+   * Get the requested log dir throttle from the request, without falling back to
+   * {@link ExecutorConfig#DEFAULT_LOG_DIR_THROTTLE_CONFIG} -- i.e. an absent parameter indicates no requested change.
+   *
+   * @param requestContext The request context.
+   * @return The value of {@link #LOG_DIR_THROTTLE_PARAM} parameter, or {@code null} if the parameter is absent or asks for
+   * the throttle to be removed (see {@link #removeRequestedLogDirThrottle}).
+   */
+  static Long requestedLogDirThrottle(CruiseControlRequestContext requestContext) {
+    String value = rawThrottleValue(requestContext, LOG_DIR_THROTTLE_PARAM);
+    if (value == null || UNSET_PARAMETER_VALUE.equalsIgnoreCase(value)) {
+      // Absent means no change requested; the unset value asks for a removal rather than for a rate -- see
+      // #removeRequestedLogDirThrottle.
+      return null;
+    }
+    long throttle = Long.parseLong(value);
+    if (throttle < 1) {
+      throw new UserRequestException(String.format("Requested log dir throttle must be positive (Requested: %s).", throttle));
+    }
+    return throttle;
   }
 
   static Long time(CruiseControlRequestContext requestContext) {

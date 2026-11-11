@@ -30,6 +30,16 @@ ExecutorState:
       items:
         type: integer
         format: int32
+    # the throttles in force for the ongoing execution, absent when it is not throttled
+    ongoingReplicationThrottle:
+      type: integer
+      format: int64
+      description: Replication throttle (bytes/second) in force for the ongoing inter-broker replica movements.
+    ongoingLogDirThrottleByBroker:
+      type: object
+      description: Log dir throttle (bytes/second) in force on each broker with ongoing intra-broker replica movements.
+      additionalProperties:
+        type: string
     # leadership information
     numTotalLeadershipMovements:
       type: integer

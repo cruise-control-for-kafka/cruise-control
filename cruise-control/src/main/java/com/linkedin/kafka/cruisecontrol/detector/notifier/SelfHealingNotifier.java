@@ -8,7 +8,9 @@ import com.linkedin.cruisecontrol.detector.Anomaly;
 import com.linkedin.cruisecontrol.detector.AnomalyType;
 import com.linkedin.kafka.cruisecontrol.detector.BrokerFailures;
 import com.linkedin.kafka.cruisecontrol.detector.DiskFailures;
+import com.linkedin.kafka.cruisecontrol.detector.AbstractGoalViolations;
 import com.linkedin.kafka.cruisecontrol.detector.GoalViolations;
+import com.linkedin.kafka.cruisecontrol.detector.IntraBrokerGoalViolations;
 import com.linkedin.kafka.cruisecontrol.detector.KafkaMetricAnomaly;
 import com.linkedin.kafka.cruisecontrol.detector.MaintenanceEvent;
 import com.linkedin.kafka.cruisecontrol.detector.TopicAnomaly;
@@ -49,6 +51,7 @@ import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.has
  * anomaly detector is explicitly disabled.</li>
  * <li>{@link #SELF_HEALING_BROKER_FAILURE_ENABLED_CONFIG}: Enable self healing for broker failure detector.</li>
  * <li>{@link #SELF_HEALING_GOAL_VIOLATION_ENABLED_CONFIG}: Enable self healing for goal violation detector.</li>
+ * <li>{@link #SELF_HEALING_INTRA_BROKER_GOAL_VIOLATION_ENABLED_CONFIG}: Enable self healing for intra-broker goal violations.</li>
  * <li>{@link #SELF_HEALING_METRIC_ANOMALY_ENABLED_CONFIG}: Enable self healing for metric anomaly detector.</li>
  * <li>{@link #SELF_HEALING_DISK_FAILURE_ENABLED_CONFIG}: Enable self healing for disk failure detector.</li>
  * <li>{@link #SELF_HEALING_TOPIC_ANOMALY_ENABLED_CONFIG}: Enable self healing for topic anomaly detector.</li>
@@ -60,6 +63,7 @@ public class SelfHealingNotifier implements AnomalyNotifier {
   public static final String SELF_HEALING_ENABLED_CONFIG = "self.healing.enabled";
   public static final String SELF_HEALING_BROKER_FAILURE_ENABLED_CONFIG = "self.healing.broker.failure.enabled";
   public static final String SELF_HEALING_GOAL_VIOLATION_ENABLED_CONFIG = "self.healing.goal.violation.enabled";
+  public static final String SELF_HEALING_INTRA_BROKER_GOAL_VIOLATION_ENABLED_CONFIG = "self.healing.intra.broker.goal.violation.enabled";
   public static final String SELF_HEALING_METRIC_ANOMALY_ENABLED_CONFIG = "self.healing.metric.anomaly.enabled";
   public static final String SELF_HEALING_DISK_FAILURE_ENABLED_CONFIG = "self.healing.disk.failure.enabled";
   public static final String SELF_HEALING_TOPIC_ANOMALY_ENABLED_CONFIG = "self.healing.topic.anomaly.enabled";
@@ -104,9 +108,18 @@ public class SelfHealingNotifier implements AnomalyNotifier {
 
   @Override
   public AnomalyNotificationResult onGoalViolation(GoalViolations goalViolations) {
-    boolean autoFixTriggered = _selfHealingEnabled.get(KafkaAnomalyType.GOAL_VIOLATION);
+    return onGoalViolations(goalViolations, KafkaAnomalyType.GOAL_VIOLATION);
+  }
+
+  @Override
+  public AnomalyNotificationResult onIntraBrokerGoalViolation(IntraBrokerGoalViolations intraBrokerGoalViolations) {
+    return onGoalViolations(intraBrokerGoalViolations, KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION);
+  }
+
+  private AnomalyNotificationResult onGoalViolations(AbstractGoalViolations goalViolations, KafkaAnomalyType anomalyType) {
+    boolean autoFixTriggered = _selfHealingEnabled.get(anomalyType);
     boolean selfHealingTriggered = autoFixTriggered && !hasUnfixableGoals(goalViolations);
-    alert(goalViolations, selfHealingTriggered, _time.milliseconds(), KafkaAnomalyType.GOAL_VIOLATION);
+    alert(goalViolations, selfHealingTriggered, _time.milliseconds(), anomalyType);
 
     if (autoFixTriggered) {
       if (selfHealingTriggered) {
@@ -296,6 +309,10 @@ public class SelfHealingNotifier implements AnomalyNotifier {
     _selfHealingEnabled.put(KafkaAnomalyType.GOAL_VIOLATION, selfHealingGoalViolationEnabledString == null
                                                              ? selfHealingAllEnabled
                                                              : Boolean.parseBoolean(selfHealingGoalViolationEnabledString));
+    String selfHealingIntraBrokerGoalViolationEnabledString = (String) config.get(SELF_HEALING_INTRA_BROKER_GOAL_VIOLATION_ENABLED_CONFIG);
+    _selfHealingEnabled.put(KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION, selfHealingIntraBrokerGoalViolationEnabledString == null
+                                                                          ? selfHealingAllEnabled
+                                                                          : Boolean.parseBoolean(selfHealingIntraBrokerGoalViolationEnabledString));
     String selfHealingMetricAnomalyEnabledString = (String) config.get(SELF_HEALING_METRIC_ANOMALY_ENABLED_CONFIG);
     _selfHealingEnabled.put(KafkaAnomalyType.METRIC_ANOMALY, selfHealingMetricAnomalyEnabledString == null
                                                              ? selfHealingAllEnabled

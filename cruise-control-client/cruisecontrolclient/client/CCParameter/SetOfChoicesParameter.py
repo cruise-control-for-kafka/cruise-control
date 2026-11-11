@@ -18,8 +18,8 @@ class AbstractSetOfChoicesParameter(AbstractParameter):
 
 class DisableSelfHealingForParameter(AbstractSetOfChoicesParameter):
     """disable_self_healing_for=[Set-of-{@link AnomalyType}]"""
-    lowercase_set_of_choices = {'broker_failure', 'disk_failure', 'goal_violation', 'maintenance_event',
-                                'metric_anomaly', 'topic_anomaly'}
+    lowercase_set_of_choices = {'broker_failure', 'disk_failure', 'goal_violation', 'intra_broker_goal_violation',
+                                'maintenance_event', 'metric_anomaly', 'topic_anomaly'}
     name = 'disable_self_healing_for'
     description = "The anomaly detectors for which to disable self-healing"
     argparse_properties = {
@@ -33,8 +33,8 @@ class DisableSelfHealingForParameter(AbstractSetOfChoicesParameter):
 
 class EnableSelfHealingForParameter(AbstractSetOfChoicesParameter):
     """enable_self_healing_for=[Set-of-{@link AnomalyType}]"""
-    lowercase_set_of_choices = {'broker_failure', 'disk_failure', 'goal_violation', 'maintenance_event',
-                                'metric_anomaly', 'topic_anomaly'}
+    lowercase_set_of_choices = {'broker_failure', 'disk_failure', 'goal_violation', 'intra_broker_goal_violation',
+                                'maintenance_event', 'metric_anomaly', 'topic_anomaly'}
     name = 'enable_self_healing_for'
     description = "The anomaly detectors for which to enable self-healing"
     argparse_properties = {

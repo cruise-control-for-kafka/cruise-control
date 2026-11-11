@@ -64,6 +64,7 @@ The anomaly notifier is a communication channel between Cruise Control and users
 It notifies users about the anomalies detected in the cluster as well as actions taken about the anomaly. Anomalies include:
 * Broker failure
 * Goal violation
+* Intra-broker goal violation
 * Metric Anomaly
 * Disk failure
 * Topic Anomaly
