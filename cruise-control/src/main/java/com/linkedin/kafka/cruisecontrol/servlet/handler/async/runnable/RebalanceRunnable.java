@@ -114,8 +114,9 @@ public class RebalanceRunnable extends GoalBasedOperationRunnable {
   @Override
   protected OptimizerResult workWithoutClusterModel() throws KafkaCruiseControlException {
     ProposalsRunnable proposalsRunnable = new ProposalsRunnable(_kafkaCruiseControl, _future, _goals, _modelCompletenessRequirements,
-                                                                _allowCapacityEstimation, _excludedTopics, _excludeRecentlyDemotedBrokers,
-                                                                _excludeRecentlyRemovedBrokers, _ignoreProposalCache, _destinationBrokerIds,
+                                                                _allowCapacityEstimation, _excludedTopics, _includedTopics,
+                                                                _excludeRecentlyDemotedBrokers, _excludeRecentlyRemovedBrokers,
+                                                                _ignoreProposalCache, _destinationBrokerIds,
                                                                 _isRebalanceDiskMode, _skipHardGoalCheck, !_isTriggeredByUserRequest,
                                                                 _fastMode);
     OptimizerResult result = proposalsRunnable.computeResult();

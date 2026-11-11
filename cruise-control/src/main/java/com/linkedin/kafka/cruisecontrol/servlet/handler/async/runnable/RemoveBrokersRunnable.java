@@ -119,6 +119,7 @@ public class RemoveBrokersRunnable extends GoalBasedOperationRunnable {
                                                                          _excludeRecentlyDemotedBrokers,
                                                                          _excludeRecentlyRemovedBrokers,
                                                                          _excludedTopics,
+                                                                         _includedTopics,
                                                                          _destinationBrokerIds,
                                                                          false,
                                                                          _fastMode);

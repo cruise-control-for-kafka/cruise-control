@@ -104,6 +104,7 @@ public final class ParameterUtils {
   public static final String MIN_VALID_PARTITION_RATIO_PARAM = "min_valid_partition_ratio";
   public static final String SKIP_HARD_GOAL_CHECK_PARAM = "skip_hard_goal_check";
   public static final String EXCLUDED_TOPICS_PARAM = "excluded_topics";
+  public static final String INCLUDED_TOPICS_PARAM = "included_topics";
   public static final String USER_TASK_IDS_PARAM = "user_task_ids";
   public static final String CLIENT_IDS_PARAM = "client_ids";
   public static final String ENDPOINTS_PARAM = "endpoints";
@@ -901,6 +902,33 @@ public final class ParameterUtils {
   static Pattern excludedTopics(CruiseControlRequestContext requestContext) {
     String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), EXCLUDED_TOPICS_PARAM);
     return parameterString == null ? null : Pattern.compile(requestContext.getParameter(parameterString));
+  }
+
+  /**
+   * Get the pattern of topics that are the only ones allowed to move. Every topic that does not match this pattern is
+   * excluded from replica and leadership movement. This parameter is mutually exclusive with {@link #EXCLUDED_TOPICS_PARAM}.
+   *
+   * @param requestContext Http servlet request.
+   * @return The value of {@link #INCLUDED_TOPICS_PARAM} parameter, or {@code null} if it is not specified.
+   * @throws UserRequestException if {@link #EXCLUDED_TOPICS_PARAM} is also specified, or the pattern is empty.
+   */
+  static Pattern includedTopics(CruiseControlRequestContext requestContext) {
+    String parameterString = caseSensitiveParameterName(requestContext.getParameterMap(), INCLUDED_TOPICS_PARAM);
+    if (parameterString == null) {
+      return null;
+    }
+
+    if (caseSensitiveParameterName(requestContext.getParameterMap(), EXCLUDED_TOPICS_PARAM) != null) {
+      throw new UserRequestException(String.format("Parameter %s and parameter %s are mutually exclusive and should "
+                                                   + "not be specified in the same request.", INCLUDED_TOPICS_PARAM,
+                                                   EXCLUDED_TOPICS_PARAM));
+    }
+
+    String includedTopics = requestContext.getParameter(parameterString);
+    if (includedTopics == null || includedTopics.isEmpty()) {
+      throw new UserRequestException(String.format("Parameter %s cannot be empty.", INCLUDED_TOPICS_PARAM));
+    }
+    return Pattern.compile(includedTopics);
   }
 
   /**

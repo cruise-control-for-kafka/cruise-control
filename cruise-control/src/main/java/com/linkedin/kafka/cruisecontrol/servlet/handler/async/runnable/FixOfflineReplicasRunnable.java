@@ -94,6 +94,7 @@ public class FixOfflineReplicasRunnable extends GoalBasedOperationRunnable {
                                                                          _excludeRecentlyDemotedBrokers,
                                                                          _excludeRecentlyRemovedBrokers,
                                                                          _excludedTopics,
+                                                                         _includedTopics,
                                                                          Collections.emptySet(),
                                                                          false,
                                                                          _fastMode);

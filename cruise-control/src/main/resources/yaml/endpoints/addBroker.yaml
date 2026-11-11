@@ -88,6 +88,14 @@ AddBrokerEndpoint:
           type: string
           default: null
           example: "__CruiseControl.%2A"
+      - name: included_topics
+        in: query
+        description: Specify the only topics whose partitions are allowed to move. Topics not matching this regex are excluded from
+          replica and leadership movement. Mutually exclusive with excluded_topics.
+        schema:
+          type: string # topics regex
+          default: null
+          example: "topic1|topic2"
       - name: kafka_assigner
         in: query
         description: Whether to use Kafka assigner mode to generate proposals.
