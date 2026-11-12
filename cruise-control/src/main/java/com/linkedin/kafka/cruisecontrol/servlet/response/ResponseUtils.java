@@ -11,12 +11,11 @@ import com.google.gson.JsonParser;
 import com.linkedin.cruisecontrol.http.CruiseControlRequestContext;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.WebServerConfig;
+import com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils;
 import io.vertx.ext.web.RoutingContext;
 import org.apache.kafka.common.config.AbstractConfig;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Iterator;
 import java.util.Map;
@@ -81,40 +80,22 @@ public final class ResponseUtils {
   }
 
   /**
-   * Retrieve stack trace (if any).
-   *
-   * @param e Exception from which the stack trace will be retrieved.
-   * @return Stack trace if the given exception is not {@code null}, empty string otherwise.
-   */
-  private static String stackTrace(Exception e) {
-    if (e == null) {
-      return "";
-    }
-
-    StringWriter sw = new StringWriter();
-    e.printStackTrace(new PrintWriter(sw));
-    return sw.toString();
-  }
-
-  /**
    * Write error response to the output stream.
    *
    * @param requestContext The request context
-   * @param e Exception (if any) corresponding to the error, {@code null} otherwise.
    * @param errorMessage Error message to return in the response message.
    * @param responseCode HTTP Status code to indicate the error.
    * @param json {@code true} if json, {@code false} otherwise.
    * @param wantJsonSchema {@code true} for json error response, {@code false} otherwise.
    */
   public static void writeErrorResponse(CruiseControlRequestContext requestContext,
-                                        Exception e,
                                         String errorMessage,
                                         int responseCode,
                                         boolean json,
                                         boolean wantJsonSchema)
       throws IOException {
     String responseMessage;
-    ErrorResponse errorResponse = new ErrorResponse(e, errorMessage);
+    ErrorResponse errorResponse = new ErrorResponse(errorMessage);
     if (json) {
       Gson gson = new Gson();
       responseMessage = gson.toJson(errorResponse.getJsonStructure());
@@ -123,6 +104,19 @@ public final class ResponseUtils {
     }
     // Send the CORS Task ID header as part of this error response if 2-step verification is enabled.
     requestContext.writeResponseToOutputStream(responseCode, json, wantJsonSchema, responseMessage);
+  }
+
+  /**
+   * Write error response to the output stream, using the JSON and JSON schema preferences of the given request.
+   *
+   * @param requestContext The request context
+   * @param errorMessage Error message to return in the response message.
+   * @param responseCode HTTP Status code to indicate the error.
+   */
+  public static void writeErrorResponse(CruiseControlRequestContext requestContext, String errorMessage, int responseCode)
+      throws IOException {
+    writeErrorResponse(requestContext, errorMessage, responseCode, ParameterUtils.wantJSON(requestContext),
+                       ParameterUtils.wantResponseSchema(requestContext));
   }
 
   /**
@@ -187,12 +181,10 @@ public final class ResponseUtils {
     private static final String STACK_TRACE = "stackTrace";
     @JsonResponseField
     private static final String ERROR_MESSAGE = "errorMessage";
-    private final Exception _exception;
     private final String _errorMessage;
 
-    ErrorResponse(Exception exception, String errorMessage) {
+    ErrorResponse(String errorMessage) {
       _errorMessage = errorMessage;
-      _exception = exception;
     }
 
     @Override
@@ -204,7 +196,7 @@ public final class ResponseUtils {
      * @return The map describing the error.
      */
     public Map<String, Object> getJsonStructure() {
-      return Map.of(VERSION, JSON_VERSION, STACK_TRACE, stackTrace(_exception), ERROR_MESSAGE, _errorMessage);
+      return Map.of(VERSION, JSON_VERSION, STACK_TRACE, "", ERROR_MESSAGE, _errorMessage);
     }
   }
 }

@@ -207,7 +207,7 @@ public final class KafkaCruiseControlServletUtils {
                                           requestContext.getPathInfo(), method, method.equals(GET_METHOD)
                                                                          ? CruiseControlEndPoint.getEndpoints()
                                                                          : CruiseControlEndPoint.postEndpoints());
-      writeErrorResponse(requestContext, null, errorMessage, SC_NOT_FOUND, wantJSON(requestContext), wantResponseSchema(requestContext));
+      writeErrorResponse(requestContext, errorMessage, SC_NOT_FOUND);
       return null;
     }
     return endPoint;
@@ -224,7 +224,7 @@ public final class KafkaCruiseControlServletUtils {
       throws IOException {
     String errorMessage = String.format("Bad %s request '%s' due to '%s'.", requestContext.getMethod(),
             requestContext.getPathInfo(), ure.getMessage());
-    writeErrorResponse(requestContext, ure, errorMessage, SC_BAD_REQUEST, wantJSON(requestContext), wantResponseSchema(requestContext));
+    writeErrorResponse(requestContext, errorMessage, SC_BAD_REQUEST);
     return errorMessage;
   }
   /**
@@ -238,7 +238,7 @@ public final class KafkaCruiseControlServletUtils {
       throws IOException {
     String errorMessage = String.format("Cannot process %s request '%s' due to: '%s'.",
                                         requestContext.getMethod(), requestContext.getPathInfo(), ce.getMessage());
-    writeErrorResponse(requestContext, ce, errorMessage, SC_FORBIDDEN, wantJSON(requestContext), wantResponseSchema(requestContext));
+    writeErrorResponse(requestContext, errorMessage, SC_FORBIDDEN);
     return errorMessage;
   }
 
@@ -253,7 +253,7 @@ public final class KafkaCruiseControlServletUtils {
       throws IOException {
     String errorMessage = String.format("Error processing %s request '%s' due to: '%s'.",
                                         requestContext.getMethod(), requestContext.getPathInfo(), e.getMessage());
-    writeErrorResponse(requestContext, e, errorMessage, SC_INTERNAL_SERVER_ERROR, wantJSON(requestContext), wantResponseSchema(requestContext));
+    writeErrorResponse(requestContext, errorMessage, SC_INTERNAL_SERVER_ERROR);
     return errorMessage;
   }
 

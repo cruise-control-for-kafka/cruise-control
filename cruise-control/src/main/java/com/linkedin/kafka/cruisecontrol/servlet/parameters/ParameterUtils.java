@@ -197,12 +197,11 @@ public final class ParameterUtils {
     return null;
   }
 
-  static void handleParameterParseException(Exception e,
-                                            CruiseControlRequestContext requestContext,
+  static void handleParameterParseException(CruiseControlRequestContext requestContext,
                                             String errorMessage,
                                             boolean json,
                                             boolean wantJsonSchema) throws IOException {
-    writeErrorResponse(requestContext, e, errorMessage, SC_BAD_REQUEST, json, wantJsonSchema);
+    writeErrorResponse(requestContext, errorMessage, SC_BAD_REQUEST, json, wantJsonSchema);
   }
 
   /**
@@ -227,7 +226,7 @@ public final class ParameterUtils {
       // User request specifies parameters that are not a subset of the valid parameters.
       String errorMessage = String.format("Unrecognized endpoint parameters in %s %s request: %s.",
               endPoint, requestContext.getMethod(), userParams);
-      writeErrorResponse(requestContext, null, errorMessage, SC_BAD_REQUEST, wantJSON(requestContext), wantResponseSchema(requestContext));
+      writeErrorResponse(requestContext, errorMessage, SC_BAD_REQUEST);
       return false;
     }
     return true;
