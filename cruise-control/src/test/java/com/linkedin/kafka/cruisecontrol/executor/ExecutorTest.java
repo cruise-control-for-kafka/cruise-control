@@ -49,11 +49,15 @@ import java.util.HashSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.clients.admin.AdminClientConfig;
+import org.apache.kafka.clients.admin.AlterConfigOp;
 import org.apache.kafka.clients.admin.AlterPartitionReassignmentsResult;
+import org.apache.kafka.clients.admin.Config;
+import org.apache.kafka.clients.admin.ConfigEntry;
 import org.apache.kafka.clients.admin.ElectLeadersResult;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.clients.admin.TopicDescription;
@@ -65,6 +69,7 @@ import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.TopicPartitionInfo;
+import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.protocol.Errors;
 import org.apache.kafka.common.utils.MockTime;
 import org.apache.kafka.common.utils.Time;
@@ -90,6 +95,15 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
   private static final TopicPartition TP3 = new TopicPartition(TOPIC3, PARTITION);
   private static final int BROKER_ID_0 = 0;
   private static final int BROKER_ID_1 = 1;
+  private static final int BROKER_ID_2 = 2;
+  // Moving SLOW_MOVEMENT_NUM_RECORDS records of SLOW_MOVEMENT_RECORD_SIZE_IN_BYTES under this throttle takes at least tens of
+  // seconds: Kafka 4.3.1 brokers copy up to replica.fetch.max.bytes (1 MB) per quota window (~11 seconds), 4.3.2 brokers copied
+  // none of it in over two minutes.
+  private static final long SLOW_MOVEMENT_REPLICATION_THROTTLE = 1L;
+  private static final int SLOW_MOVEMENT_RECORD_SIZE_IN_BYTES = 100 * 1024;
+  private static final int SLOW_MOVEMENT_NUM_RECORDS = 30;
+  // Lets the slow movement complete within seconds.
+  private static final long RAISED_REPLICATION_THROTTLE = 100L * 1024 * 1024;
   private static final Random RANDOM = new Random(0xDEADBEEF);
   private static final int MOCK_BROKER_ID_TO_DROP = 1;
   private static final long MOCK_CURRENT_TIME = 1596842708000L;
@@ -559,6 +573,194 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
                   "Proposal execution did not finish within the time limit",
                   EXECUTION_DEADLINE_MS, EXECUTION_REGULAR_CHECK_MS);
     EasyMock.verify(mockMetadataClient, mockLoadMonitor, mockAnomalyDetectorManager, mockUserTaskInfo, mockUserTaskManager);
+  }
+
+  @Test
+  public void testStopRightAfterProgressCheckRollsBackInProgressMovementsAndRemovesTheirThrottles() throws Exception {
+    createTopicsWithSlowAndFastPartitionMovements();
+    AtomicReference<Executor> executorRef = new AtomicReference<>();
+    // The first progress check finds the fast movement completed and the slow movement still in progress. Stop the
+    // execution right after the check, i.e. before the executor gets back to the beginning of the replica movement loop.
+    Executor executor = executeSlowAndFastPartitionMovements(() -> executorRef.get().userTriggeredStopExecution(false), executorRef);
+    try {
+      waitUntilTrue(() -> !executor.hasOngoingExecution() && executor.state().state() == ExecutorState.State.NO_TASK_IN_PROGRESS,
+                    "Proposal execution did not finish within the time limit", EXECUTION_DEADLINE_MS, EXECUTION_REGULAR_CHECK_MS);
+      // The slow movement must have been rolled back, and the throttles of both movements must have been removed.
+      assertFalse("The in-progress movement was not rolled back upon stop",
+                  ExecutionUtils.partitionsBeingReassigned(_cluster.adminClient()).contains(TP0));
+      assertNoReplicationThrottles();
+    } finally {
+      executor.shutdown();
+    }
+  }
+
+  @Test
+  public void testThrottlesAreRemovedAfterExecutionFailsWithInProgressMovements() throws Exception {
+    createTopicsWithSlowAndFastPartitionMovements();
+    AtomicReference<Executor> executorRef = new AtomicReference<>();
+    // Fail the execution while the slow movement is still in progress (e.g. like an admin client request timing out).
+    Executor executor = executeSlowAndFastPartitionMovements(() -> {
+      throw new IllegalStateException("Injected failure");
+    }, executorRef);
+    try {
+      waitUntilTrue(() -> !executor.hasOngoingExecution() && executor.state().state() == ExecutorState.State.NO_TASK_IN_PROGRESS,
+                    "Proposal execution did not finish within the time limit", EXECUTION_DEADLINE_MS, EXECUTION_REGULAR_CHECK_MS);
+      // The throttles of the completed movement are removed when the execution finishes.
+      assertFalse("Broker " + BROKER_ID_2 + " is still throttled", hasThrottledRate(BROKER_ID_2));
+      assertFalse("Replicas of " + TOPIC1 + " are still throttled", hasThrottledReplicas(TOPIC1));
+      // The throttles of the slow movement, which Kafka carries on with, are removed once it completes. Raise its throttled rate,
+      // so that it completes within the time limit. Skip that if it has completed already: its throttles may be removed already,
+      // and nothing would remove the raised rate.
+      if (ExecutionUtils.partitionsBeingReassigned(_cluster.adminClient()).contains(TP0)) {
+        setThrottledRate(BROKER_ID_0, RAISED_REPLICATION_THROTTLE);
+        setThrottledRate(BROKER_ID_1, RAISED_REPLICATION_THROTTLE);
+      }
+      waitUntilTrue(this::hasNoReplicationThrottles, "Replication throttles were not removed after the movement completed",
+                    EXECUTION_DEADLINE_MS, EXECUTION_REGULAR_CHECK_MS);
+    } finally {
+      executor.shutdown();
+    }
+  }
+
+  @Test
+  public void testShutdownDuringInterBrokerReplicaMovementRemovesThrottles() throws Exception {
+    createTopicsWithSlowAndFastPartitionMovements();
+    AtomicReference<Executor> executorRef = new AtomicReference<>();
+    Executor executor = executeSlowAndFastPartitionMovements(() -> { }, executorRef);
+    verifyOngoingPartitionReassignments(Collections.singleton(TP0));
+
+    Thread shutdownThread = new Thread(executor::shutdown);
+    shutdownThread.start();
+    shutdownThread.join(EXECUTION_DEADLINE_MS);
+    assertFalse("Executor did not shut down within the time limit", shutdownThread.isAlive());
+    assertFalse("The in-progress movement was not rolled back upon shutdown",
+                ExecutionUtils.partitionsBeingReassigned(_cluster.adminClient()).contains(TP0));
+    assertNoReplicationThrottles();
+  }
+
+  /**
+   * Creates {@link com.linkedin.kafka.cruisecontrol.common.TestConstants#TOPIC0 topic0} and
+   * {@link com.linkedin.kafka.cruisecontrol.common.TestConstants#TOPIC1 topic1} with a single replica on broker 0, and
+   * produces enough data to topic0 for moving it under {@link #SLOW_MOVEMENT_REPLICATION_THROTTLE} to take a while.
+   */
+  private void createTopicsWithSlowAndFastPartitionMovements() throws Exception {
+    _cluster.adminClient().createTopics(Arrays.asList(new NewTopic(TOPIC0, Collections.singletonMap(0, Collections.singletonList(BROKER_ID_0))),
+                                            new NewTopic(TOPIC1, Collections.singletonMap(0, Collections.singletonList(BROKER_ID_0)))))
+                .all().get();
+    _cluster.waitForTopicMetadata(List.of(TOPIC0, TOPIC1), Duration.ofSeconds(15), Duration.ofSeconds(60),
+                                  topicDescription -> topicDescription.partitions().stream().allMatch(p -> p.leader() != null));
+    // Separate batches, so that the throttled follower fetches only a part of the data at a time.
+    Properties props = new Properties();
+    props.setProperty(ProducerConfig.ACKS_CONFIG, "-1");
+    String record = "x".repeat(SLOW_MOVEMENT_RECORD_SIZE_IN_BYTES);
+    try (Producer<String, String> producer = createProducer(props)) {
+      for (int i = 0; i < SLOW_MOVEMENT_NUM_RECORDS; i++) {
+        producer.send(new ProducerRecord<>(TOPIC0, record)).get();
+      }
+    }
+  }
+
+  /**
+   * Starts a throttled execution that moves topic0 from broker 0 to broker 1, which is slow, and topic1 from broker 0 to
+   * broker 2, which completes before the first execution progress check. The given action runs upon the alert about the
+   * slow movement, which is sent in the first execution progress check.
+   *
+   * @param onSlowTaskAlert Action to run upon the alert about the slow movement.
+   * @param executorRef Reference to set to the executor before the execution starts.
+   * @return The executor running the execution.
+   */
+  private Executor executeSlowAndFastPartitionMovements(Runnable onSlowTaskAlert, AtomicReference<Executor> executorRef)
+      throws OngoingExecutionException {
+    Properties props = getExecutorProperties();
+    props.setProperty(ExecutorConfig.EXECUTION_PROGRESS_CHECK_INTERVAL_MS_CONFIG, "5000");
+    props.setProperty(ExecutorConfig.TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG, "1000");
+    KafkaCruiseControlConfig configs = new KafkaCruiseControlConfig(props);
+    UserTaskManager.UserTaskInfo mockUserTaskInfo = getMockUserTaskInfo();
+    UserTaskManager mockUserTaskManager = EasyMock.mock(UserTaskManager.class);
+    EasyMock.expect(mockUserTaskManager.markTaskExecutionBegan(RANDOM_UUID)).andReturn(mockUserTaskInfo).once();
+    mockUserTaskManager.markTaskExecutionFinished(RANDOM_UUID, true);
+    expectLastCall().once();
+    LoadMonitor mockLoadMonitor = getMockLoadMonitor();
+    AnomalyDetectorManager mockAnomalyDetectorManager = getMockAnomalyDetector(RANDOM_UUID, true);
+    EasyMock.replay(mockUserTaskInfo, mockUserTaskManager, mockLoadMonitor, mockAnomalyDetectorManager);
+
+    ExecutorNotifier notifier = new ExecutorNotifier() {
+      @Override
+      public void sendNotification(String message) {
+      }
+
+      @Override
+      public void sendAlert(String alertMessage) {
+        if (alertMessage.startsWith("Slow tasks are detected")) {
+          onSlowTaskAlert.run();
+        }
+      }
+
+      @Override
+      public void configure(Map<String, ?> configs) {
+      }
+    };
+    // The executor closes its admin client upon shutdown.
+    Admin adminClient = KafkaCruiseControlUtils.createAdminClient(Collections.singletonMap(
+        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers()));
+    Executor executor = new Executor(configs, Time.SYSTEM, new MetricRegistry(), adminClient, new MetadataAdminClient(adminClient),
+                                     notifier, mockAnomalyDetectorManager);
+    executorRef.set(executor);
+    executor.setUserTaskManager(mockUserTaskManager);
+    ExecutionProposal slowMovement = new ExecutionProposal(TP0, 0, new ReplicaPlacementInfo(BROKER_ID_0),
+                                                           Collections.singletonList(new ReplicaPlacementInfo(BROKER_ID_0)),
+                                                           Collections.singletonList(new ReplicaPlacementInfo(BROKER_ID_1)));
+    ExecutionProposal fastMovement = new ExecutionProposal(TP1, 0, new ReplicaPlacementInfo(BROKER_ID_0),
+                                                           Collections.singletonList(new ReplicaPlacementInfo(BROKER_ID_0)),
+                                                           Collections.singletonList(new ReplicaPlacementInfo(BROKER_ID_2)));
+    executor.setGeneratingProposalsForExecution(RANDOM_UUID, ExecutorTest.class::getSimpleName, true);
+    executor.executeProposals(Arrays.asList(slowMovement, fastMovement), Collections.emptySet(), null, mockLoadMonitor, null, null,
+                              null, null, null, null, null, SLOW_MOVEMENT_REPLICATION_THROTTLE, true, RANDOM_UUID, false, false);
+    return executor;
+  }
+
+  private void setThrottledRate(int brokerId, long throttledRate) throws ExecutionException, InterruptedException {
+    ConfigResource cf = new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(brokerId));
+    String rate = String.valueOf(throttledRate);
+    _cluster.adminClient().incrementalAlterConfigs(Collections.singletonMap(cf, Arrays.asList(
+        new AlterConfigOp(new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_RATE_CONFIG, rate), AlterConfigOp.OpType.SET),
+        new AlterConfigOp(new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_RATE_CONFIG, rate), AlterConfigOp.OpType.SET))))
+                .all().get();
+  }
+
+  private boolean hasThrottledRate(int brokerId) throws ExecutionException, InterruptedException {
+    ConfigResource cf = new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(brokerId));
+    Config config = _cluster.adminClient().describeConfigs(Collections.singletonList(cf)).all().get().get(cf);
+    return config.get(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_RATE_CONFIG) != null
+           || config.get(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_RATE_CONFIG) != null;
+  }
+
+  private boolean hasThrottledReplicas(String topic) throws ExecutionException, InterruptedException {
+    ConfigResource cf = new ConfigResource(ConfigResource.Type.TOPIC, topic);
+    Config config = _cluster.adminClient().describeConfigs(Collections.singletonList(cf)).all().get().get(cf);
+    return !config.get(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG).value().isEmpty()
+           || !config.get(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG).value().isEmpty();
+  }
+
+  private boolean hasNoReplicationThrottles() {
+    try {
+      for (int brokerId = 0; brokerId < clusterSize(); brokerId++) {
+        if (hasThrottledRate(brokerId)) {
+          return false;
+        }
+      }
+      return !hasThrottledReplicas(TOPIC0) && !hasThrottledReplicas(TOPIC1);
+    } catch (ExecutionException | InterruptedException e) {
+      throw new IllegalStateException("Failed to describe configs.", e);
+    }
+  }
+
+  private void assertNoReplicationThrottles() throws ExecutionException, InterruptedException {
+    for (int brokerId = 0; brokerId < clusterSize(); brokerId++) {
+      assertFalse("Broker " + brokerId + " is still throttled", hasThrottledRate(brokerId));
+    }
+    assertFalse("Replicas of " + TOPIC0 + " are still throttled", hasThrottledReplicas(TOPIC0));
+    assertFalse("Replicas of " + TOPIC1 + " are still throttled", hasThrottledReplicas(TOPIC1));
   }
 
   /**
