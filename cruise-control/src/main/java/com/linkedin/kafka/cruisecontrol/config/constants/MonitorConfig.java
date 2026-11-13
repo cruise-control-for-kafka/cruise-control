@@ -1,5 +1,17 @@
 /*
  * Copyright 2019 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.config.constants;
@@ -93,6 +105,13 @@ public final class MonitorConfig {
   public static final String RECONNECT_BACKOFF_MS_CONFIG = CommonClientConfigs.RECONNECT_BACKOFF_MS_CONFIG;
   public static final long DEFAULT_RECONNECT_BACKOFF_MS = 50L;
   public static final String RECONNECT_BACKOFF_MS_DOC = CommonClientConfigs.RECONNECT_BACKOFF_MS_DOC;
+
+  /**
+   * <code>reconnect.backoff.max.ms</code>
+   */
+  public static final String RECONNECT_BACKOFF_MAX_MS_CONFIG = CommonClientConfigs.RECONNECT_BACKOFF_MAX_MS_CONFIG;
+  public static final long DEFAULT_RECONNECT_BACKOFF_MAX_MS = 1000L;
+  public static final String RECONNECT_BACKOFF_MAX_MS_DOC = CommonClientConfigs.RECONNECT_BACKOFF_MAX_MS_DOC;
 
   /**
    * <code>request.timeout.ms</code>
@@ -418,6 +437,12 @@ public final class MonitorConfig {
                             atLeast(0L),
                             ConfigDef.Importance.LOW,
                             RECONNECT_BACKOFF_MS_DOC)
+                    .define(RECONNECT_BACKOFF_MAX_MS_CONFIG,
+                            ConfigDef.Type.LONG,
+                            DEFAULT_RECONNECT_BACKOFF_MAX_MS,
+                            atLeast(0L),
+                            ConfigDef.Importance.LOW,
+                            RECONNECT_BACKOFF_MAX_MS_DOC)
                     .define(REQUEST_TIMEOUT_MS_CONFIG,
                             ConfigDef.Type.INT,
                             DEFAULT_REQUEST_TIMEOUT_MS,
