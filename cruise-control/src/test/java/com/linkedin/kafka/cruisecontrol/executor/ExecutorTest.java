@@ -115,7 +115,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
     KafkaCruiseControlConfig kafkaCruiseControlConfig = new KafkaCruiseControlConfig(getExecutorProperties());
     Map<String, Object> adminClientConfigs = KafkaCruiseControlUtils.parseAdminClientConfigs(kafkaCruiseControlConfig);
     adminClientConfigs.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
-    Admin adminClient = KafkaCruiseControlUtils.createAdminClient(adminClientConfigs);
+    Admin adminClient = KafkaCruiseControlUtils.createAdminClient(adminClientConfigs, "test");
 
     try {
       List<ExecutionProposal> proposalsToExecute = new ArrayList<>();
@@ -164,7 +164,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
   public void testSubmitReplicaReassignmentTasksWithDeadTaskAndNoReassignmentInProgress() throws InterruptedException {
     createTopics(0);
     Admin adminClient = KafkaCruiseControlUtils.createAdminClient(Collections.singletonMap(
-        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, _cluster.getBrokerAddressList()));
+        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, _cluster.getBrokerAddressList()), "test");
 
     TopicPartition tp = new TopicPartition(TOPIC0, 0);
     ExecutionProposal proposal = new ExecutionProposal(tp,
@@ -190,7 +190,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
   public void testSubmitPreferredLeaderElection() throws InterruptedException, ExecutionException {
     Map<String, TopicDescription> topicDescriptions = createTopics(0);
     Admin adminClient = KafkaCruiseControlUtils.createAdminClient(Collections.singletonMap(
-        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, _cluster.getBrokerAddressList()));
+        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, _cluster.getBrokerAddressList()), "test");
 
     // Case 1: Handle the successful case.
     ReplicaPlacementInfo oldLeader = new ReplicaPlacementInfo(topicDescriptions.get(TP1.topic()).partitions().get(PARTITION).leader().id());
@@ -270,7 +270,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
   @Test
   public void testSubmitReplicaReassignmentTasksWithInProgressTaskAndNonExistingTopic() throws InterruptedException {
     Admin adminClient = KafkaCruiseControlUtils.createAdminClient(Collections.singletonMap(
-        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, _cluster.getBrokerAddressList()));
+        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, _cluster.getBrokerAddressList()), "test");
 
     ExecutionProposal proposal = new ExecutionProposal(TP0,
                                                        100,
@@ -302,7 +302,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
                               Collections.singletonList(new ReplicaPlacementInfo(initialLeader0 == 0 ? 1 : 0)));
 
     Admin adminClient = KafkaCruiseControlUtils.createAdminClient(Collections.singletonMap(
-        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, _cluster.getBrokerAddressList()));
+        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, _cluster.getBrokerAddressList()), "test");
 
     ExecutionTask task = new ExecutionTask(0,
                                            proposal0,
@@ -638,7 +638,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
 
   private void verifyOngoingPartitionReassignments(Set<TopicPartition> partitions) {
     Admin adminClient = KafkaCruiseControlUtils.createAdminClient(Collections.singletonMap(
-        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, _cluster.getBrokerAddressList()));
+        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, _cluster.getBrokerAddressList()), "test");
 
     try {
       waitUntilTrue(() -> {

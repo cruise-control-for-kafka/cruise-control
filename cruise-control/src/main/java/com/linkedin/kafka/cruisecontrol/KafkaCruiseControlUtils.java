@@ -1,5 +1,17 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol;
@@ -41,15 +53,12 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.ConfigResource;
-import org.apache.kafka.common.config.SaslConfigs;
-import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.ReassignmentInProgressException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.message.MetadataResponseData;
 import org.apache.kafka.common.requests.AbstractResponse;
 import org.apache.kafka.common.requests.MetadataResponse;
-import org.apache.kafka.common.security.auth.SecurityProtocol;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -501,13 +510,21 @@ public final class KafkaCruiseControlUtils {
   }
 
   /**
-   * Create an instance of Admin using the given configurations.
+   * Create an instance of Admin for the given Cruise Control component, using the given configurations. If the given
+   * configurations have a client.id, the client.id of the Admin is {@code <client.id>-admin-<componentName>}, so that the
+   * admin clients of different components do not share an id.
    *
-   * @param adminClientConfigs Configurations used for the Admin client.
+   * @param adminClientConfigs Configurations used for the Admin client, e.g. from {@link #parseAdminClientConfigs(KafkaCruiseControlConfig)}.
+   * @param componentName Name of the Cruise Control component that uses the Admin client, e.g. "executor".
    * @return A new instance of Admin.
    */
-  public static Admin createAdminClient(Map<String, Object> adminClientConfigs) {
-    return Admin.create(adminClientConfigs);
+  public static Admin createAdminClient(Map<String, Object> adminClientConfigs, String componentName) {
+    Map<String, Object> componentAdminClientConfigs = new HashMap<>(adminClientConfigs);
+    Object clientId = adminClientConfigs.get(AdminClientConfig.CLIENT_ID_CONFIG);
+    if (clientId != null) {
+      componentAdminClientConfigs.put(AdminClientConfig.CLIENT_ID_CONFIG, clientId + "-admin-" + componentName);
+    }
+    return Admin.create(componentAdminClientConfigs);
   }
 
   /**
@@ -536,51 +553,24 @@ public final class KafkaCruiseControlUtils {
   }
 
   /**
-   * Parse Admin configs based on the given {@link KafkaCruiseControlConfig configs}.
+   * Parse Admin configs based on the given {@link KafkaCruiseControlConfig configs}. The Admin configs are the AdminClient
+   * configs among {@link KafkaCruiseControlConfig#mergedConfigValues()}, with the request timeout taken from
+   * {@link ExecutorConfig#ADMIN_CLIENT_REQUEST_TIMEOUT_MS_CONFIG}.
    *
    * @param configs Configs to be used for parsing Admin configs.
    * @return Admin configs.
    */
   public static Map<String, Object> parseAdminClientConfigs(KafkaCruiseControlConfig configs) {
+    Set<String> adminClientConfigNames = AdminClientConfig.configNames();
     Map<String, Object> adminClientConfigs = new HashMap<>();
-    // Add bootstrap server.
-    List<String> bootstrapServers = configs.getList(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG);
-    String bootstrapServersString = bootstrapServers.toString()
-                                                    .replace(" ", "")
-                                                    .replace("[", "")
-                                                    .replace("]", "");
-    adminClientConfigs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServersString);
-    adminClientConfigs.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, configs.getInt(ExecutorConfig.ADMIN_CLIENT_REQUEST_TIMEOUT_MS_CONFIG));
-    adminClientConfigs.put(AdminClientConfig.RECONNECT_BACKOFF_MS_CONFIG, configs.getLong(RECONNECT_BACKOFF_MS_CONFIG));
-
-    // Add security protocol (if specified).
-    try {
-      String securityProtocol = configs.getString(AdminClientConfig.SECURITY_PROTOCOL_CONFIG);
-      adminClientConfigs.put(AdminClientConfig.SECURITY_PROTOCOL_CONFIG, securityProtocol);
-      setStringConfigIfExists(configs, adminClientConfigs, SaslConfigs.SASL_MECHANISM);
-      setClassConfigIfExists(configs, adminClientConfigs, SaslConfigs.SASL_LOGIN_CALLBACK_HANDLER_CLASS);
-      setClassConfigIfExists(configs, adminClientConfigs, SaslConfigs.SASL_CLIENT_CALLBACK_HANDLER_CLASS);
-      setPasswordConfigIfExists(configs, adminClientConfigs, SaslConfigs.SASL_JAAS_CONFIG);
-      setStringConfigIfExists(configs, adminClientConfigs, SaslConfigs.SASL_OAUTHBEARER_TOKEN_ENDPOINT_URL);
-
-      // Configure SSL configs (if security protocol is SSL or SASL_SSL)
-      if (securityProtocol.equals(SecurityProtocol.SSL.name) || securityProtocol.equals(SecurityProtocol.SASL_SSL.name)) {
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_TRUSTMANAGER_ALGORITHM_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_KEYMANAGER_ALGORITHM_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_KEYSTORE_TYPE_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG);
-        setPasswordConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG);
-        setPasswordConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_KEY_PASSWORD_CONFIG);
-        setPasswordConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG);
+    configs.mergedConfigValues().forEach((name, value) -> {
+      if (adminClientConfigNames.contains(name)) {
+        adminClientConfigs.put(name, value);
       }
-    } catch (ConfigException ce) {
-      // let it go.
-    }
-
+    });
+    // The admin clients use admin.client.request.timeout.ms instead of request.timeout.ms. It is a Cruise Control config
+    // rather than an AdminClient config, so the loop above does not copy it.
+    adminClientConfigs.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, configs.getInt(ExecutorConfig.ADMIN_CLIENT_REQUEST_TIMEOUT_MS_CONFIG));
     return adminClientConfigs;
   }
 
@@ -677,30 +667,6 @@ public final class KafkaCruiseControlUtils {
     }
 
     return metadataResponseTopic;
-  }
-
-  private static void setPasswordConfigIfExists(KafkaCruiseControlConfig configs, Map<String, Object> props, String name) {
-    try {
-      props.put(name, configs.getPassword(name));
-    } catch (ConfigException ce) {
-      // let it go.
-    }
-  }
-
-  private static void setStringConfigIfExists(KafkaCruiseControlConfig configs, Map<String, Object> props, String name) {
-    try {
-      props.put(name, configs.getString(name));
-    } catch (ConfigException ce) {
-      // let it go.
-    }
-  }
-
-  private static void setClassConfigIfExists(KafkaCruiseControlConfig configs, Map<String, Object> props, String name) {
-    try {
-      props.put(name, configs.getClass(name));
-    } catch (ConfigException ce) {
-      // let it go.
-    }
   }
 
   /**

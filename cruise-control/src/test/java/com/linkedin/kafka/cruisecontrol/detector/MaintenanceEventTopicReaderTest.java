@@ -159,9 +159,9 @@ public class MaintenanceEventTopicReaderTest extends CruiseControlIntegrationTes
     Config topicConfig1;
     ConfigResource topicResource = new ConfigResource(ConfigResource.Type.TOPIC, TEST_TOPIC);
     Admin adminClient0 = KafkaCruiseControlUtils.createAdminClient(Collections.singletonMap(
-        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers()));
+        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers()), "test");
     Admin adminClient1 = KafkaCruiseControlUtils.createAdminClient(Collections.singletonMap(
-        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers()));
+        AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers()), "test");
     try {
       while (true) {
         description0 = adminClient0.describeTopics(Collections.singleton(TEST_TOPIC)).topicNameValues().get(TEST_TOPIC).get();
@@ -226,7 +226,7 @@ public class MaintenanceEventTopicReaderTest extends CruiseControlIntegrationTes
     long currentMockTime = TEST_REBALANCE_PLAN_TIME + DEFAULT_MAINTENANCE_PLAN_EXPIRATION_MS;
     EasyMock.expect(mockKafkaCruiseControl.timeMs()).andReturn(currentMockTime).anyTimes();
     EasyMock.expect(mockKafkaCruiseControl.adminClient())
-            .andReturn(createAdminClient(KafkaCruiseControlUtils.parseAdminClientConfigs(_config))).anyTimes();
+            .andReturn(createAdminClient(KafkaCruiseControlUtils.parseAdminClientConfigs(_config), "test")).anyTimes();
     EasyMock.expect(mockKafkaCruiseControl.config()).andReturn(_config).anyTimes();
 
     EasyMock.replay(mockKafkaCruiseControl);
