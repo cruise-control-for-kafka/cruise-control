@@ -503,7 +503,8 @@ public class MaintenanceEventTest {
                                                           EasyMock.anyObject(),
                                                           EasyMock.anyObject(),
                                                           EasyMock.anyObject(),
-                                                          EasyMock.anyObject()))
+                                                          EasyMock.anyObject(),
+                                                          EasyMock.notNull()))
             .andReturn(_optimizerResult);
     EasyMock.expect(_optimizerResult.goalProposals()).andReturn(Collections.singleton(EasyMock.mock(ExecutionProposal.class))).times(2);
     _mockKafkaCruiseControl.executeProposals(EasyMock.anyObject(),

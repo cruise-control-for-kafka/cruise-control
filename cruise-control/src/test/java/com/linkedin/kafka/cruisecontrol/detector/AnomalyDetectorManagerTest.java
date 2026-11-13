@@ -402,7 +402,8 @@ public class AnomalyDetectorManagerTest {
                                                            EasyMock.anyObject(),
                                                            EasyMock.anyObject(),
                                                            EasyMock.anyObject(),
-                                                           EasyMock.anyObject()))
+                                                           EasyMock.anyObject(),
+                                                           EasyMock.notNull()))
               .andReturn(mockOptimizerResult);
 
       mockKafkaCruiseControl.executeProposals(EasyMock.anyObject(),

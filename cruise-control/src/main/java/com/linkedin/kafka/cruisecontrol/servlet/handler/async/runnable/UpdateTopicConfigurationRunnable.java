@@ -17,6 +17,7 @@ import com.linkedin.kafka.cruisecontrol.model.ReplicaPlacementInfo;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.TopicConfigurationParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.TopicReplicationFactorChangeParameters;
 import com.linkedin.kafka.cruisecontrol.servlet.response.OptimizationResult;
+import com.linkedin.kafka.cruisecontrol.servlet.response.stats.BrokerStats;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -199,12 +200,15 @@ public class UpdateTopicConfigurationRunnable extends GoalBasedOperationRunnable
     populateRackInfoForReplicationFactorChange(_topicsToChangeByReplicationFactor, _cluster,
                                                _skipRackAwarenessCheck, brokersByRack, rackByBroker);
     Map<TopicPartition, List<ReplicaPlacementInfo>> initReplicaDistribution = clusterModel.getReplicaDistribution();
+    // Adding and removing replicas changes the load of the brokers, hence the load before the change is taken beforehand.
+    BrokerStats brokerStatsBeforeChange = clusterModel.brokerStats(null);
     // First try to add and remove replicas to achieve the replication factor for topics of interest.
     clusterModel.createOrDeleteReplicas(_topicsToChangeByReplicationFactor, brokersByRack, rackByBroker, _cluster);
     // Then further optimize the location of newly added replicas based on goals. Here we restrict the replica movement to
     // only considering newly added replicas, in order to minimize the total bytes to move.
     OptimizerResult result = _kafkaCruiseControl.optimizations(clusterModel, _goalsByPriority, _operationProgress,
-                                                               initReplicaDistribution, optimizationOptions);
+                                                               initReplicaDistribution, optimizationOptions,
+                                                               brokerStatsBeforeChange);
     if (!_dryRun) {
       _kafkaCruiseControl.executeProposals(result.goalProposals(), Collections.emptySet(), false, _concurrentInterBrokerPartitionMovements,
           _maxInterBrokerPartitionMovements,
