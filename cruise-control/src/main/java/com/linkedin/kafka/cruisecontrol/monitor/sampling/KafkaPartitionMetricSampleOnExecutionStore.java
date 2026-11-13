@@ -1,10 +1,23 @@
 /*
  * Copyright 2021 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.monitor.sampling;
 
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils;
+import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -71,9 +84,9 @@ public class KafkaPartitionMetricSampleOnExecutionStore extends AbstractKafkaSam
     ensureTopicCreated(config, partitionSampleStoreTopicPartitionCount, partitionSampleStoreTopicRetentionTimeMs);
   }
 
-  @SuppressWarnings("unchecked")
   protected void ensureTopicCreated(Map<String, ?> config, int topicPartitionCount, long topicRetentionTimeMs) {
-    Admin adminClient = KafkaCruiseControlUtils.createAdminClient((Map<String, Object>) config);
+    KafkaCruiseControlConfig parsedConfig = new KafkaCruiseControlConfig(config);
+    Admin adminClient = KafkaCruiseControlUtils.createAdminClient(KafkaCruiseControlUtils.parseAdminClientConfigs(parsedConfig));
     try {
       short replicationFactor = sampleStoreTopicReplicationFactor(config, adminClient);
 

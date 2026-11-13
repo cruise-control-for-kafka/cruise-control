@@ -53,15 +53,12 @@ import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.AbstractConfig;
 import org.apache.kafka.common.config.ConfigException;
 import org.apache.kafka.common.config.ConfigResource;
-import org.apache.kafka.common.config.SaslConfigs;
-import org.apache.kafka.common.config.SslConfigs;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.errors.ReassignmentInProgressException;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.message.MetadataResponseData;
 import org.apache.kafka.common.requests.AbstractResponse;
 import org.apache.kafka.common.requests.MetadataResponse;
-import org.apache.kafka.common.security.auth.SecurityProtocol;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -86,7 +83,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 
-import static com.linkedin.kafka.cruisecontrol.config.constants.MonitorConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.config.constants.MonitorConfig.RECONNECT_BACKOFF_MS_CONFIG;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.SKIP_HARD_GOAL_CHECK_PARAM;
 
@@ -549,52 +545,27 @@ public final class KafkaCruiseControlUtils {
   }
 
   /**
-   * Parse Admin configs based on the given {@link KafkaCruiseControlConfig configs}.
+   * Parse Admin configs based on the given {@link KafkaCruiseControlConfig configs}. The Admin configs are the AdminClient
+   * configs among {@link KafkaCruiseControlConfig#mergedConfigValues()}, with the request timeout taken from
+   * {@link ExecutorConfig#ADMIN_CLIENT_REQUEST_TIMEOUT_MS_CONFIG}.
    *
    * @param configs Configs to be used for parsing Admin configs.
    * @return Admin configs.
    */
   public static Map<String, Object> parseAdminClientConfigs(KafkaCruiseControlConfig configs) {
+    Set<String> adminClientConfigNames = AdminClientConfig.configNames();
     Map<String, Object> adminClientConfigs = new HashMap<>();
-    // Add bootstrap server.
-    List<String> bootstrapServers = configs.getList(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG);
-    String bootstrapServersString = bootstrapServers.toString()
-                                                    .replace(" ", "")
-                                                    .replace("[", "")
-                                                    .replace("]", "");
-    adminClientConfigs.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServersString);
-    adminClientConfigs.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, configs.getInt(ExecutorConfig.ADMIN_CLIENT_REQUEST_TIMEOUT_MS_CONFIG));
-    adminClientConfigs.put(AdminClientConfig.RECONNECT_BACKOFF_MS_CONFIG, configs.getLong(RECONNECT_BACKOFF_MS_CONFIG));
-    adminClientConfigs.put(AdminClientConfig.RECONNECT_BACKOFF_MAX_MS_CONFIG, configs.getLong(RECONNECT_BACKOFF_MAX_MS_CONFIG));
-
-    // Add security protocol (if specified).
-    try {
-      String securityProtocol = configs.getString(AdminClientConfig.SECURITY_PROTOCOL_CONFIG);
-      adminClientConfigs.put(AdminClientConfig.SECURITY_PROTOCOL_CONFIG, securityProtocol);
-      setStringConfigIfExists(configs, adminClientConfigs, SaslConfigs.SASL_MECHANISM);
-      setClassConfigIfExists(configs, adminClientConfigs, SaslConfigs.SASL_LOGIN_CALLBACK_HANDLER_CLASS);
-      setClassConfigIfExists(configs, adminClientConfigs, SaslConfigs.SASL_CLIENT_CALLBACK_HANDLER_CLASS);
-      setPasswordConfigIfExists(configs, adminClientConfigs, SaslConfigs.SASL_JAAS_CONFIG);
-      setStringConfigIfExists(configs, adminClientConfigs, SaslConfigs.SASL_OAUTHBEARER_TOKEN_ENDPOINT_URL);
-
-      // Configure SSL configs (if security protocol is SSL or SASL_SSL)
-      if (securityProtocol.equals(SecurityProtocol.SSL.name) || securityProtocol.equals(SecurityProtocol.SASL_SSL.name)) {
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_TRUSTMANAGER_ALGORITHM_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_KEYMANAGER_ALGORITHM_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_KEYSTORE_TYPE_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG);
-        setStringConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_ENDPOINT_IDENTIFICATION_ALGORITHM_CONFIG);
-        setPasswordConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG);
-        setPasswordConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_KEY_PASSWORD_CONFIG);
-        setPasswordConfigIfExists(configs, adminClientConfigs, SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG);
+    configs.mergedConfigValues().forEach((name, value) -> {
+      if (adminClientConfigNames.contains(name)) {
+        adminClientConfigs.put(name, value);
       }
-    } catch (ConfigException ce) {
-      // let it go.
-    }
-
+    });
+    // Several admin clients live at the same time, and a shared client.id clashes on JMX app-info and metrics.
+    // Leave it unset, so that each admin client gets its own default id.
+    adminClientConfigs.remove(AdminClientConfig.CLIENT_ID_CONFIG);
+    // The admin clients use admin.client.request.timeout.ms instead of request.timeout.ms. It is a Cruise Control config
+    // rather than an AdminClient config, so the loop above does not copy it.
+    adminClientConfigs.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, configs.getInt(ExecutorConfig.ADMIN_CLIENT_REQUEST_TIMEOUT_MS_CONFIG));
     return adminClientConfigs;
   }
 
@@ -691,30 +662,6 @@ public final class KafkaCruiseControlUtils {
     }
 
     return metadataResponseTopic;
-  }
-
-  private static void setPasswordConfigIfExists(KafkaCruiseControlConfig configs, Map<String, Object> props, String name) {
-    try {
-      props.put(name, configs.getPassword(name));
-    } catch (ConfigException ce) {
-      // let it go.
-    }
-  }
-
-  private static void setStringConfigIfExists(KafkaCruiseControlConfig configs, Map<String, Object> props, String name) {
-    try {
-      props.put(name, configs.getString(name));
-    } catch (ConfigException ce) {
-      // let it go.
-    }
-  }
-
-  private static void setClassConfigIfExists(KafkaCruiseControlConfig configs, Map<String, Object> props, String name) {
-    try {
-      props.put(name, configs.getClass(name));
-    } catch (ConfigException ce) {
-      // let it go.
-    }
   }
 
   /**
