@@ -197,7 +197,7 @@ public class Executor {
 
     _time = time;
     _adminClient = adminClient != null ? adminClient
-      : KafkaCruiseControlUtils.createAdminClient(KafkaCruiseControlUtils.parseAdminClientConfigs(config));
+      : KafkaCruiseControlUtils.createAdminClient(KafkaCruiseControlUtils.parseAdminClientConfigs(config), "executor");
     _executionTaskManager = new ExecutionTaskManager(_adminClient, dropwizardMetricRegistry, time, config);
     // Register gauge sensors.
     registerGaugeSensors(dropwizardMetricRegistry);

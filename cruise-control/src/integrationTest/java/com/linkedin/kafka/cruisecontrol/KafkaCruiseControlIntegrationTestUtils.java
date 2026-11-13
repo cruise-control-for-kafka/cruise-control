@@ -229,7 +229,7 @@ public final class KafkaCruiseControlIntegrationTestUtils {
    */
   public static void createTopic(String brokerAddress, List<NewTopic> topics) {
     Admin adminClient = KafkaCruiseControlUtils.createAdminClient(Collections
-        .singletonMap(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress));
+        .singletonMap(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, brokerAddress), "test");
     try {
       try {
         adminClient.createTopics(topics).all().get();

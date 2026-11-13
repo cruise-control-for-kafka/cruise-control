@@ -510,13 +510,21 @@ public final class KafkaCruiseControlUtils {
   }
 
   /**
-   * Create an instance of Admin using the given configurations.
+   * Create an instance of Admin for the given Cruise Control component, using the given configurations. If the given
+   * configurations have a client.id, the client.id of the Admin is {@code <client.id>-admin-<componentName>}, so that the
+   * admin clients of different components do not share an id.
    *
-   * @param adminClientConfigs Configurations used for the Admin client.
+   * @param adminClientConfigs Configurations used for the Admin client, e.g. from {@link #parseAdminClientConfigs(KafkaCruiseControlConfig)}.
+   * @param componentName Name of the Cruise Control component that uses the Admin client, e.g. "executor".
    * @return A new instance of Admin.
    */
-  public static Admin createAdminClient(Map<String, Object> adminClientConfigs) {
-    return Admin.create(adminClientConfigs);
+  public static Admin createAdminClient(Map<String, Object> adminClientConfigs, String componentName) {
+    Map<String, Object> componentAdminClientConfigs = new HashMap<>(adminClientConfigs);
+    Object clientId = adminClientConfigs.get(AdminClientConfig.CLIENT_ID_CONFIG);
+    if (clientId != null) {
+      componentAdminClientConfigs.put(AdminClientConfig.CLIENT_ID_CONFIG, clientId + "-admin-" + componentName);
+    }
+    return Admin.create(componentAdminClientConfigs);
   }
 
   /**
@@ -560,9 +568,6 @@ public final class KafkaCruiseControlUtils {
         adminClientConfigs.put(name, value);
       }
     });
-    // Several admin clients live at the same time, and a shared client.id clashes on JMX app-info and metrics.
-    // Leave it unset, so that each admin client gets its own default id.
-    adminClientConfigs.remove(AdminClientConfig.CLIENT_ID_CONFIG);
     // The admin clients use admin.client.request.timeout.ms instead of request.timeout.ms. It is a Cruise Control config
     // rather than an AdminClient config, so the loop above does not copy it.
     adminClientConfigs.put(AdminClientConfig.REQUEST_TIMEOUT_MS_CONFIG, configs.getInt(ExecutorConfig.ADMIN_CLIENT_REQUEST_TIMEOUT_MS_CONFIG));

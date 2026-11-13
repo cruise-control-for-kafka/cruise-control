@@ -156,7 +156,8 @@ public class KafkaSampleStore extends AbstractKafkaSampleStore {
 
   protected void ensureTopicsCreated(Map<String, ?> config) {
     KafkaCruiseControlConfig parsedConfig = new KafkaCruiseControlConfig(config);
-    Admin adminClient = KafkaCruiseControlUtils.createAdminClient(KafkaCruiseControlUtils.parseAdminClientConfigs(parsedConfig));
+    Admin adminClient = KafkaCruiseControlUtils.createAdminClient(KafkaCruiseControlUtils.parseAdminClientConfigs(parsedConfig),
+                                                                  "kafkasamplestore");
     try {
       short replicationFactor = sampleStoreTopicReplicationFactor(config, adminClient);
 

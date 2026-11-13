@@ -86,7 +86,8 @@ public class KafkaPartitionMetricSampleOnExecutionStore extends AbstractKafkaSam
 
   protected void ensureTopicCreated(Map<String, ?> config, int topicPartitionCount, long topicRetentionTimeMs) {
     KafkaCruiseControlConfig parsedConfig = new KafkaCruiseControlConfig(config);
-    Admin adminClient = KafkaCruiseControlUtils.createAdminClient(KafkaCruiseControlUtils.parseAdminClientConfigs(parsedConfig));
+    Admin adminClient = KafkaCruiseControlUtils.createAdminClient(KafkaCruiseControlUtils.parseAdminClientConfigs(parsedConfig),
+                                                                  "kafkapartitionmetricsampleonexecutionstore");
     try {
       short replicationFactor = sampleStoreTopicReplicationFactor(config, adminClient);
 

@@ -185,7 +185,7 @@ public class BrokerFailureDetectorTest extends CCKafkaIntegrationTestHarness {
     KafkaCruiseControlConfig kafkaCruiseControlConfig = new KafkaCruiseControlConfig(props);
     Map<String, Object> adminClientConfigs = KafkaCruiseControlUtils.parseAdminClientConfigs(kafkaCruiseControlConfig);
     adminClientConfigs.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers());
-    Admin adminClient = KafkaCruiseControlUtils.createAdminClient(adminClientConfigs);
+    Admin adminClient = KafkaCruiseControlUtils.createAdminClient(adminClientConfigs, "test");
     EasyMock.expect(mockKafkaCruiseControl.adminClient()).andReturn(adminClient);
     EasyMock.expect(mockKafkaCruiseControl.config()).andReturn(kafkaCruiseControlConfig).atLeastOnce();
     EasyMock.expect(mockKafkaCruiseControl.loadMonitor()).andReturn(mockLoadMonitor).atLeastOnce();
