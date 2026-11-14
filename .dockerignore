@@ -1,0 +1,6 @@
+# Keep .git: the Gradle build needs it (semantic versioning plugin, commit id).
+.idea
+**/.gradle
+build
+*/build
+fileStore
