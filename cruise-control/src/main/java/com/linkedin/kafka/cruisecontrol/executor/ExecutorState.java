@@ -26,6 +26,11 @@ public final class ExecutorState {
   private static final String TRIGGERED_TASK_REASON = "triggeredTaskReason";
   @JsonResponseField
   private static final String STATE = "state";
+  // The throttles in force for the ongoing execution, if any.
+  @JsonResponseField(required = false)
+  private static final String ONGOING_REPLICATION_THROTTLE = "ongoingReplicationThrottle";
+  @JsonResponseField(required = false)
+  private static final String ONGOING_LOG_DIR_THROTTLE_BY_BROKER = "ongoingLogDirThrottleByBroker";
   @JsonResponseField(required = false)
   private static final String RECENTLY_DEMOTED_BROKERS = "recentlyDemotedBrokers";
   @JsonResponseField(required = false)
@@ -156,6 +161,13 @@ public final class ExecutorState {
   private final boolean _isTriggeredByUserRequest;
   private final Set<Integer> _recentlyDemotedBrokers;
   private final Set<Integer> _recentlyRemovedBrokers;
+  // The replication throttle (bytes/sec) in force for the ongoing inter-broker replica movements, null if they are not
+  // throttled or none is in progress. A single value today; it becomes per broker and per direction if the throttle is
+  // adjusted per broker (see the dynamic adjustment work), at which point this should become a map like the one below.
+  private final Long _ongoingReplicationThrottle;
+  // The log dir throttle (bytes/sec) in force on each broker with ongoing intra-broker replica movements, empty or null if
+  // they are not throttled or none is in progress.
+  private final Map<Integer, String> _ongoingLogDirThrottleByBroker;
 
   private ExecutorState(State state,
                         ExecutionTasksSummary executionTasksSummary,
@@ -164,7 +176,9 @@ public final class ExecutorState {
                         String reason,
                         Set<Integer> recentlyDemotedBrokers,
                         Set<Integer> recentlyRemovedBrokers,
-                        boolean isTriggeredByUserRequest) {
+                        boolean isTriggeredByUserRequest,
+                        Long ongoingReplicationThrottle,
+                        Map<Integer, String> ongoingLogDirThrottleByBroker) {
     _state = state;
     _executionTasksSummary = executionTasksSummary;
     _executionConcurrencySummary = executionConcurrencySummary;
@@ -173,6 +187,23 @@ public final class ExecutorState {
     _recentlyDemotedBrokers = recentlyDemotedBrokers;
     _recentlyRemovedBrokers = recentlyRemovedBrokers;
     _isTriggeredByUserRequest = isTriggeredByUserRequest;
+    _ongoingReplicationThrottle = ongoingReplicationThrottle;
+    _ongoingLogDirThrottleByBroker = ongoingLogDirThrottleByBroker;
+  }
+
+  /**
+   * @param ongoingReplicationThrottle The replication throttle in force, or null if there is none.
+   * @param ongoingLogDirThrottleByBroker The log dir throttle in force per broker, or null if there is none.
+   * @return A copy of this state reporting the given throttles. The executor attaches them when its state is read, so that a
+   * throttle changed by an {@code admin} request is reported immediately rather than at the next progress check.
+   */
+  public ExecutorState withThrottles(Long ongoingReplicationThrottle, Map<Integer, String> ongoingLogDirThrottleByBroker) {
+    if (ongoingReplicationThrottle == null && (ongoingLogDirThrottleByBroker == null || ongoingLogDirThrottleByBroker.isEmpty())) {
+      return this;
+    }
+    return new ExecutorState(_state, _executionTasksSummary, _executionConcurrencySummary, _uuid, _reason,
+                             _recentlyDemotedBrokers, _recentlyRemovedBrokers, _isTriggeredByUserRequest,
+                             ongoingReplicationThrottle, ongoingLogDirThrottleByBroker);
   }
 
   /**
@@ -189,7 +220,9 @@ public final class ExecutorState {
                              "",
                              recentlyDemotedBrokers,
                              recentlyRemovedBrokers,
-                             false);
+                             false,
+                             null,
+                             null);
   }
 
   /**
@@ -212,7 +245,9 @@ public final class ExecutorState {
                              reason,
                              recentlyDemotedBrokers,
                              recentlyRemovedBrokers,
-                             isTriggeredByUserRequest);
+                             isTriggeredByUserRequest,
+                             null,
+                             null);
   }
 
   /**
@@ -235,7 +270,9 @@ public final class ExecutorState {
                              reason,
                              recentlyDemotedBrokers,
                              recentlyRemovedBrokers,
-                             isTriggeredByUserRequest);
+                             isTriggeredByUserRequest,
+                             null,
+                             null);
   }
 
   /**
@@ -258,7 +295,9 @@ public final class ExecutorState {
                              reason,
                              recentlyDemotedBrokers,
                              recentlyRemovedBrokers,
-                             isTriggeredByUserRequest);
+                             isTriggeredByUserRequest,
+                             null,
+                             null);
   }
 
   /**
@@ -290,7 +329,9 @@ public final class ExecutorState {
                              reason,
                              recentlyDemotedBrokers,
                              recentlyRemovedBrokers,
-                             isTriggeredByUserRequest);
+                             isTriggeredByUserRequest,
+                             null,
+                             null);
   }
 
   /**
@@ -378,6 +419,12 @@ public final class ExecutorState {
     }
     if (_recentlyRemovedBrokers != null && !_recentlyRemovedBrokers.isEmpty()) {
       execState.put(RECENTLY_REMOVED_BROKERS, _recentlyRemovedBrokers);
+    }
+    if (_ongoingReplicationThrottle != null) {
+      execState.put(ONGOING_REPLICATION_THROTTLE, _ongoingReplicationThrottle);
+    }
+    if (_ongoingLogDirThrottleByBroker != null && !_ongoingLogDirThrottleByBroker.isEmpty()) {
+      execState.put(ONGOING_LOG_DIR_THROTTLE_BY_BROKER, _ongoingLogDirThrottleByBroker);
     }
     Map<ExecutionTaskState, Integer> interBrokerPartitionMovementStats;
     Map<ExecutionTaskState, Integer> intraBrokerPartitionMovementStats;

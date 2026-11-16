@@ -131,6 +131,9 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
    *   <li>{@link AnalyzerConfig#HARD_GOALS_CONFIG} is a subset of {@link AnalyzerConfig#DEFAULT_GOALS_CONFIG}.</li>
    *   <li>{@link AnomalyDetectorConfig#SELF_HEALING_GOALS_CONFIG} is a subset of {@link AnalyzerConfig#DEFAULT_GOALS_CONFIG}.</li>
    *   <li>{@link AnomalyDetectorConfig#ANOMALY_DETECTION_GOALS_CONFIG} is a sublist of {@link AnalyzerConfig#DEFAULT_GOALS_CONFIG} otherwise.</li>
+   *   <li>{@link AnomalyDetectorConfig#ANOMALY_DETECTION_INTRA_BROKER_GOALS_CONFIG} and
+   *   {@link AnomalyDetectorConfig#SELF_HEALING_INTRA_BROKER_GOALS_CONFIG} (if set) are subsets of
+   *   {@link AnalyzerConfig#INTRA_BROKER_GOALS_CONFIG}.</li>
    * </ul>
    */
   private void sanityCheckGoalNames() {
@@ -194,6 +197,17 @@ public class KafkaCruiseControlConfig extends AbstractConfig {
       throw new ConfigException(String.format("Attempt to configure self healing goals with unsupported goals (%s:%s and %s:%s).",
                                               AnomalyDetectorConfig.SELF_HEALING_GOALS_CONFIG, selfHealingGoalNames,
                                               AnalyzerConfig.DEFAULT_GOALS_CONFIG, defaultGoalNames));
+    }
+
+    // Ensure that intra-broker goals used for anomaly detection and self-healing are contained in intra-broker goals.
+    for (String intraBrokerGoalsConfig : List.of(AnomalyDetectorConfig.ANOMALY_DETECTION_INTRA_BROKER_GOALS_CONFIG,
+                                                 AnomalyDetectorConfig.SELF_HEALING_INTRA_BROKER_GOALS_CONFIG)) {
+      List<String> goalNames = getList(intraBrokerGoalsConfig);
+      if (goalNames != null && goalNames.stream().anyMatch(g -> !intraBrokerGoalNames.contains(g))) {
+        throw new ConfigException(String.format("Attempt to configure %s with unsupported goals (%s:%s and %s:%s).", intraBrokerGoalsConfig,
+                                                intraBrokerGoalsConfig, goalNames, AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG,
+                                                intraBrokerGoalNames));
+      }
     }
   }
 
