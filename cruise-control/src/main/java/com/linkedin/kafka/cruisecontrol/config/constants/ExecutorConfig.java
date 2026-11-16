@@ -497,6 +497,18 @@ public final class ExecutorConfig {
   public static final String AUTO_STOP_EXTERNAL_AGENT_DOC = "When starting a new proposal execution while external agent is reassigning partitions,"
       + " automatically stop the external agent and start the execution."
       + " Set to false to keep the external agent reassignment and skip starting the execution.";
+
+  /**
+   * <code>clear.replication.throttles.before.execution</code>
+   */
+  public static final String CLEAR_REPLICATION_THROTTLES_BEFORE_EXECUTION_CONFIG = "clear.replication.throttles.before.execution";
+  public static final boolean DEFAULT_CLEAR_REPLICATION_THROTTLES_BEFORE_EXECUTION = false;
+  public static final String CLEAR_REPLICATION_THROTTLES_BEFORE_EXECUTION_DOC = "Remove every replication throttle in the cluster "
+      + "before starting an execution: the leader/follower.replication.throttled.replicas of every topic and the "
+      + "leader/follower.replication.throttled.rate set on each broker, e.g. left by an execution that a crash or forced restart "
+      + "interrupted, or set by other tools. The throttles of partitions that are still being reassigned, the throttled rates of the "
+      + "brokers hosting them, the cluster-wide default throttled rates and the rates of unavailable brokers are retained. If a "
+      + "throttle cannot be removed, the execution fails before moving anything. Set to false to keep existing throttles.";
   private ExecutorConfig() {
   }
 
@@ -797,6 +809,11 @@ public final class ExecutorConfig {
                             ConfigDef.Type.BOOLEAN,
                             DEFAULT_AUTO_STOP_EXTERNAL_AGENT,
                             ConfigDef.Importance.MEDIUM,
-                            AUTO_STOP_EXTERNAL_AGENT_DOC);
+                            AUTO_STOP_EXTERNAL_AGENT_DOC)
+                    .define(CLEAR_REPLICATION_THROTTLES_BEFORE_EXECUTION_CONFIG,
+                            ConfigDef.Type.BOOLEAN,
+                            DEFAULT_CLEAR_REPLICATION_THROTTLES_BEFORE_EXECUTION,
+                            ConfigDef.Importance.LOW,
+                            CLEAR_REPLICATION_THROTTLES_BEFORE_EXECUTION_DOC);
   }
 }
