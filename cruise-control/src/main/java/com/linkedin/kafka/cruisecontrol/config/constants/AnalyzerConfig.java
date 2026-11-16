@@ -1,5 +1,17 @@
 /*
  * Copyright 2019 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.config.constants;
@@ -68,6 +80,16 @@ public final class AnalyzerConfig {
   public static final String DISK_BALANCE_THRESHOLD_DOC = "The maximum allowed extent of unbalance for disk utilization. "
       + "For example, 1.10 means the highest disk usage of a broker should not be above 1.10x of average disk utilization"
       + " of all the brokers.";
+
+  /**
+   * <code>intra.broker.disk.balance.threshold</code>
+   */
+  public static final String INTRA_BROKER_DISK_BALANCE_THRESHOLD_CONFIG = "intra.broker.disk.balance.threshold";
+  public static final Double DEFAULT_INTRA_BROKER_DISK_BALANCE_THRESHOLD = null;
+  public static final String INTRA_BROKER_DISK_BALANCE_THRESHOLD_DOC = "The maximum allowed extent of unbalance for disk utilization "
+      + "across the disks of the same broker, used by intra-broker disk goals (e.g. IntraBrokerDiskUsageDistributionGoal). "
+      + "For example, 1.10 means the highest disk usage of a disk should not be above 1.10x of average disk utilization of "
+      + "all the disks of its broker. If not set, the value of " + DISK_BALANCE_THRESHOLD_CONFIG + " is used.";
 
   /**
    * <code>network.inbound.balance.threshold</code>
@@ -482,6 +504,11 @@ public final class AnalyzerConfig {
                             atLeast(1),
                             ConfigDef.Importance.HIGH,
                             DISK_BALANCE_THRESHOLD_DOC)
+                    .define(INTRA_BROKER_DISK_BALANCE_THRESHOLD_CONFIG,
+                            ConfigDef.Type.DOUBLE,
+                            DEFAULT_INTRA_BROKER_DISK_BALANCE_THRESHOLD,
+                            ConfigDef.Importance.MEDIUM,
+                            INTRA_BROKER_DISK_BALANCE_THRESHOLD_DOC)
                     .define(NETWORK_INBOUND_BALANCE_THRESHOLD_CONFIG,
                             ConfigDef.Type.DOUBLE,
                             DEFAULT_NETWORK_INBOUND_BALANCE_THRESHOLD,

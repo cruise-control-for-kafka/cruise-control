@@ -1,11 +1,24 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.model;
 
 import com.linkedin.kafka.cruisecontrol.analyzer.OptimizationOptions;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.ResourceDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.analyzer.BalancingConstraint;
@@ -213,7 +226,8 @@ public class ClusterModelStats {
    * Get the number of unbalanced disk in this cluster model;
    * A disk is taken as unbalanced if its utilization percentage is out of the range centered at its broker utilization
    * percentage with boundary determined by
-   * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#DISK_BALANCE_THRESHOLD_CONFIG}.
+   * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#INTRA_BROKER_DISK_BALANCE_THRESHOLD_CONFIG},
+   * with the same balance margin as {@link IntraBrokerDiskUsageDistributionGoal}.
    *
    * @return The number of unbalanced disk in this cluster model.
    */
@@ -479,7 +493,8 @@ public class ClusterModelStats {
    * Generate statistics for disks in the given cluster.
    * For each alive disk on disk broker in the cluster, check whether its utilization percentage is within the range centered
    * at its broker utilization percentage with boundary determined by
-   * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#DISK_BALANCE_THRESHOLD_CONFIG}.
+   * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#INTRA_BROKER_DISK_BALANCE_THRESHOLD_CONFIG},
+   * with the same balance margin as {@link IntraBrokerDiskUsageDistributionGoal}.
    * If the disk utilization percentage is out of the boundary, the disk is counted as unbalanced.
    * Also sum up the variance of utilization for each alive disk and get an aggregated standard deviation.
    *
@@ -489,10 +504,12 @@ public class ClusterModelStats {
   private void populateStatsForDisks(BalancingConstraint balancingConstraint, Set<Broker> aliveBrokers) {
     double totalDiskUtilizationVariance = 0;
     int numAliveDisks = 0;
+    double balancePercentageWithMargin = (balancingConstraint.intraBrokerDiskBalancePercentage() - 1)
+                                         * IntraBrokerDiskUsageDistributionGoal.BALANCE_MARGIN;
     for (Broker broker : aliveBrokers) {
       double brokerDiskUtilization = averageDiskUtilizationPercentage(broker);
-      double upperLimit = brokerDiskUtilization * balancingConstraint.resourceBalancePercentage(Resource.DISK);
-      double lowerLimit = brokerDiskUtilization * Math.max(0, (2 - balancingConstraint.resourceBalancePercentage(Resource.DISK)));
+      double upperLimit = brokerDiskUtilization * (1 + balancePercentageWithMargin);
+      double lowerLimit = brokerDiskUtilization * Math.max(0, (1 - balancePercentageWithMargin));
       for (Disk disk : broker.disks()) {
         if (!disk.isAlive()) {
           continue;
