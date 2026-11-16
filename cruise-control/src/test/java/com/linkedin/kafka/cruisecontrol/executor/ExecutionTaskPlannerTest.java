@@ -42,6 +42,7 @@ import org.junit.Test;
 import static org.apache.kafka.common.KafkaFuture.completedFuture;
 import static org.easymock.EasyMock.anyObject;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC1;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC2;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC3;
@@ -471,6 +472,61 @@ public class ExecutionTaskPlannerTest {
     planner.clear();
     assertEquals(0, planner.remainingLeadershipMovements().size());
     assertEquals(0, planner.remainingIntraBrokerReplicaMovements().size());
+    EasyMock.verify(mockAdminClient);
+  }
+
+  @Test
+  public void testIntraBrokerPartitionMovementAlertingThreshold() {
+    ReplicaPlacementInfo r0d0 = new ReplicaPlacementInfo(0, "d0");
+    ReplicaPlacementInfo r0d1 = new ReplicaPlacementInfo(0, "d1");
+
+    // 4 MB to move at an alerting rate of 1 MB/s is expected to yield an alerting threshold of 4000 ms.
+    ExecutionProposal proposal = new ExecutionProposal(new TopicPartition(TOPIC2, 0), 4, r0d0,
+                                                       Collections.singletonList(r0d0), Collections.singletonList(r0d1));
+    TopicPartitionReplica tpr0 = new TopicPartitionReplica(TOPIC2, 0, 0);
+
+    //Mock adminClient
+    Admin mockAdminClient = EasyMock.mock(Admin.class);
+    try {
+      // Reflectively set constructors from package private to public.
+      Constructor<DescribeReplicaLogDirsResult> constructor1 = DescribeReplicaLogDirsResult.class.getDeclaredConstructor(Map.class);
+      constructor1.setAccessible(true);
+      Constructor<ReplicaLogDirInfo> constructor2 =
+          ReplicaLogDirInfo.class.getDeclaredConstructor(String.class, long.class, String.class, long.class);
+      constructor2.setAccessible(true);
+
+      Map<TopicPartitionReplica, KafkaFuture<ReplicaLogDirInfo>> futureByReplica = new HashMap<>();
+      futureByReplica.put(tpr0, completedFuture(constructor2.newInstance("d0", 0L, null, -1L)));
+
+      EasyMock.expect(mockAdminClient.describeReplicaLogDirs(anyObject()))
+              .andReturn(constructor1.newInstance(futureByReplica))
+              .anyTimes();
+      EasyMock.replay(mockAdminClient);
+    } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+      // Let it go.
+    }
+
+    Set<PartitionInfo> partitions = new HashSet<>();
+    Node[] isrArray = generateExpectedReplicas(proposal);
+    partitions.add(new PartitionInfo(proposal.topicPartition().topic(), proposal.topicPartition().partition(),
+                                     isrArray[0], isrArray, isrArray));
+    Cluster expectedCluster = new Cluster(null, _expectedNodes, partitions, Collections.emptySet(), Collections.emptySet());
+    StrategyOptions strategyOptions = new StrategyOptions.Builder(expectedCluster).build();
+
+    Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
+    props.setProperty(ExecutorConfig.TASK_EXECUTION_ALERTING_THRESHOLD_MS_CONFIG, "1000");
+    props.setProperty(ExecutorConfig.INTRA_BROKER_REPLICA_MOVEMENT_RATE_ALERTING_THRESHOLD_CONFIG, "1.0");
+    ExecutionTaskPlanner planner = new ExecutionTaskPlanner(mockAdminClient, new KafkaCruiseControlConfig(props));
+    planner.addExecutionProposals(Collections.singletonList(proposal), strategyOptions, null);
+    assertEquals(1, planner.remainingIntraBrokerReplicaMovements().size());
+
+    ExecutionTask task = planner.remainingIntraBrokerReplicaMovements().iterator().next();
+    task.inProgress(0L);
+    List<ExecutionTask> tasksToReport = new ArrayList<>();
+    task.maybeReportExecutionTooSlow(3999L, tasksToReport);
+    assertTrue("Task should not be reported before the data movement based alerting threshold", tasksToReport.isEmpty());
+    task.maybeReportExecutionTooSlow(4001L, tasksToReport);
+    assertEquals(Collections.singletonList(task), tasksToReport);
     EasyMock.verify(mockAdminClient);
   }
 

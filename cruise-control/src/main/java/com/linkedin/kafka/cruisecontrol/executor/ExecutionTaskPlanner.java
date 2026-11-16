@@ -239,9 +239,11 @@ public class ExecutionTaskPlanner {
           String currentLogdir = currentLogdirByReplica.get(new TopicPartitionReplica(proposal.topic(), proposal.partitionId(), r.brokerId()));
           if (currentLogdir != null && !currentLogdir.equals(r.logdir())) {
             long replicaActionExecutionId = _executionId++;
+            long executionAlertingThresholdMs =
+                Math.max(Math.round(proposal.dataToMoveInMB() / _intraBrokerReplicaMovementRateAlertingThreshold * 1000),
+                         _taskExecutionAlertingThresholdMs);
             ExecutionTask task = new ExecutionTask(replicaActionExecutionId, proposal, r.brokerId(), INTRA_BROKER_REPLICA_ACTION,
-                                                   Math.max(Math.round(proposal.dataToMoveInMB() / _intraBrokerReplicaMovementRateAlertingThreshold),
-                                                            _taskExecutionAlertingThresholdMs));
+                                                   executionAlertingThresholdMs);
             _intraPartMoveTasksByBrokerId.putIfAbsent(r.brokerId(), new TreeSet<>());
             _intraPartMoveTasksByBrokerId.get(r.brokerId()).add(task);
             _remainingIntraBrokerReplicaMovements.add(task);
