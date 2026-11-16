@@ -229,6 +229,57 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
   }
 
   @Test
+  public void testSetThrottleOnMixedTopicExistence() throws Exception {
+    final long throttleRate = 100L;
+    final int brokerId0 = 0;
+    final int brokerId1 = 1;
+    final int brokerId2 = 2;
+    final List<Integer> brokers = Arrays.asList(brokerId0, brokerId1, brokerId2);
+
+    // Two proposals on different topics: TOPIC0 exists, TOPIC1 does not
+    ExecutionProposal proposal0 = new ExecutionProposal(new TopicPartition(TOPIC0, 0),
+        100, new ReplicaPlacementInfo(brokerId0),
+        Arrays.asList(new ReplicaPlacementInfo(brokerId0), new ReplicaPlacementInfo(brokerId1)),
+        Arrays.asList(new ReplicaPlacementInfo(brokerId0), new ReplicaPlacementInfo(brokerId2)));
+    ExecutionProposal proposal1 = new ExecutionProposal(new TopicPartition(TOPIC1, 0),
+        100, new ReplicaPlacementInfo(brokerId0),
+        Arrays.asList(new ReplicaPlacementInfo(brokerId0), new ReplicaPlacementInfo(brokerId1)),
+        Arrays.asList(new ReplicaPlacementInfo(brokerId0), new ReplicaPlacementInfo(brokerId2)));
+
+    Admin mockAdminClient = EasyMock.mock(Admin.class);
+    ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(mockAdminClient, throttleRate);
+
+    // Batch read brokers — rates already match, no writes needed
+    expectBatchDescribeBrokerConfigs(mockAdminClient, brokers);
+
+    // Batch read topic configs via values() — TOPIC0 succeeds, TOPIC1 fails
+    String existingReplicas = "1:0,1:1";
+    Config topic0Config = new Config(Arrays.asList(
+        new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG, existingReplicas),
+        new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG, existingReplicas)));
+    expectBatchDescribeTopicConfigsMixed(mockAdminClient, TOPIC0, topic0Config, TOPIC1);
+    // listTopics for TOPIC1 non-existence check
+    expectListTopics(mockAdminClient, Collections.emptySet());
+
+    // Batch write topic configs via values() — TOPIC0 succeeds, TOPIC1 fails
+    expectBatchIncrementalTopicConfigsMixed(mockAdminClient, TOPIC0, TOPIC1);
+    // listTopics for TOPIC1 non-existence check during write
+    expectListTopics(mockAdminClient, Collections.emptySet());
+
+    // Verification for TOPIC0 only (TOPIC1 was filtered out as unsuccessful)
+    ConfigResource topic0Cf = new ConfigResource(ConfigResource.Type.TOPIC, TOPIC0);
+    Config verifyConfig = new Config(Arrays.asList(
+        new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG, "0:0,0:1,0:2,1:0,1:1"),
+        new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_REPLICAS_CONFIG, "0:0,0:1,0:2,1:0,1:1")));
+    expectBatchDescribeConfigsViaValues(mockAdminClient, Collections.singletonMap(topic0Cf, verifyConfig));
+
+    EasyMock.replay(mockAdminClient);
+    // Expect no exception — TOPIC0 throttle is applied, TOPIC1 is gracefully skipped
+    throttleHelper.setThrottles(Arrays.asList(proposal0, proposal1));
+    EasyMock.verify(mockAdminClient);
+  }
+
+  @Test
   public void testAddingThrottlesWithNoPreExistingThrottles() throws Exception {
     createTopics();
 
@@ -544,6 +595,22 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     expectBatchDescribeConfigsViaValues(mockAdminClient, matchMap);
     EasyMock.replay(mockAdminClient);
     throttleHelper.waitForBatchConfigs(allOps);
+
+    // Case 4: one resource throws ExecutionException during verification, other matches.
+    // Verification should succeed (failed resource is skipped, matching resource passes).
+    EasyMock.reset(mockAdminClient);
+    expectBatchDescribeConfigsViaValuesWithFailure(mockAdminClient, brokerCf0, matchingConfig,
+        brokerCf1, new ExecutionException(new UnknownTopicOrPartitionException()));
+    EasyMock.replay(mockAdminClient);
+    throttleHelper.waitForBatchConfigs(allOps);
+
+    // Case 5: one resource throws TimeoutException during verification, other matches.
+    // Verification should succeed (timed-out resource is skipped, matching resource passes).
+    EasyMock.reset(mockAdminClient);
+    expectBatchDescribeConfigsViaValuesWithFailure(mockAdminClient, brokerCf0, matchingConfig,
+        brokerCf1, new TimeoutException("simulated timeout"));
+    EasyMock.replay(mockAdminClient);
+    throttleHelper.waitForBatchConfigs(allOps);
   }
 
   @Test
@@ -702,6 +769,55 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     EasyMock.replay(mockAlterConfigsResult, mockFuture);
   }
 
+  // Expects a batched describeConfigs via values() for two topics: one existing, one non-existing.
+  // The existing topic returns its config; the non-existing one throws ExecutionException.
+  private void expectBatchDescribeTopicConfigsMixed(
+      Admin adminClient, String existingTopic, Config existingConfig, String missingTopic)
+  throws ExecutionException, InterruptedException, TimeoutException {
+    ConfigResource existingCf = new ConfigResource(ConfigResource.Type.TOPIC, existingTopic);
+    ConfigResource missingCf = new ConfigResource(ConfigResource.Type.TOPIC, missingTopic);
+    DescribeConfigsResult mockResult = EasyMock.mock(DescribeConfigsResult.class);
+
+    KafkaFuture<Config> existingFuture = EasyMock.mock(KafkaFuture.class);
+    EasyMock.expect(existingFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(existingConfig);
+
+    KafkaFuture<Config> missingFuture = EasyMock.mock(KafkaFuture.class);
+    EasyMock.expect(missingFuture.get(EasyMock.anyLong(), EasyMock.anyObject()))
+        .andThrow(new ExecutionException(new UnknownTopicOrPartitionException()));
+
+    Map<ConfigResource, KafkaFuture<Config>> futureMap = new HashMap<>();
+    futureMap.put(existingCf, existingFuture);
+    futureMap.put(missingCf, missingFuture);
+
+    EasyMock.expect(mockResult.values()).andReturn(futureMap);
+    EasyMock.expect(adminClient.describeConfigs(EasyMock.anyObject())).andReturn(mockResult);
+    EasyMock.replay(mockResult, existingFuture, missingFuture);
+  }
+
+  // Expects a batched incrementalAlterConfigs via values() for two topics: one succeeds, one fails.
+  private void expectBatchIncrementalTopicConfigsMixed(
+      Admin adminClient, String existingTopic, String missingTopic)
+  throws ExecutionException, InterruptedException, TimeoutException {
+    ConfigResource existingCf = new ConfigResource(ConfigResource.Type.TOPIC, existingTopic);
+    ConfigResource missingCf = new ConfigResource(ConfigResource.Type.TOPIC, missingTopic);
+    AlterConfigsResult mockResult = EasyMock.mock(AlterConfigsResult.class);
+
+    KafkaFuture<Void> existingFuture = EasyMock.mock(KafkaFuture.class);
+    EasyMock.expect(existingFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(null);
+
+    KafkaFuture<Void> missingFuture = EasyMock.mock(KafkaFuture.class);
+    EasyMock.expect(missingFuture.get(EasyMock.anyLong(), EasyMock.anyObject()))
+        .andThrow(new ExecutionException(new UnknownTopicOrPartitionException()));
+
+    Map<ConfigResource, KafkaFuture<Void>> futureMap = new HashMap<>();
+    futureMap.put(existingCf, existingFuture);
+    futureMap.put(missingCf, missingFuture);
+
+    EasyMock.expect(mockResult.values()).andReturn(futureMap);
+    EasyMock.expect(adminClient.incrementalAlterConfigs(EasyMock.anyObject())).andReturn(mockResult);
+    EasyMock.replay(mockResult, existingFuture, missingFuture);
+  }
+
   // Expects a single batched describeConfigs call for brokers returning per-resource futures via values().
   // Used for waitForBatchConfigs verification steps.
   private void expectBatchDescribeBrokerConfigsViaValues(Admin adminClient, List<Integer> brokers, Config brokerConfig)
@@ -732,6 +848,28 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     EasyMock.expect(mockDescribeConfigsResult.values()).andReturn(futureMap);
     EasyMock.expect(adminClient.describeConfigs(EasyMock.anyObject())).andReturn(mockDescribeConfigsResult);
     EasyMock.replay(mocksToReplay.toArray());
+  }
+
+  // Expects a single batched describeConfigs call where one resource succeeds and another throws.
+  // Used to test per-resource error handling in waitForBatchConfigs.
+  private void expectBatchDescribeConfigsViaValuesWithFailure(
+      Admin adminClient, ConfigResource successResource, Config successConfig,
+      ConfigResource failResource, Exception failException)
+  throws ExecutionException, InterruptedException, TimeoutException {
+    DescribeConfigsResult mockDescribeConfigsResult = EasyMock.mock(DescribeConfigsResult.class);
+    Map<ConfigResource, KafkaFuture<Config>> futureMap = new HashMap<>();
+
+    KafkaFuture<Config> successFuture = EasyMock.mock(KafkaFuture.class);
+    EasyMock.expect(successFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(successConfig);
+    futureMap.put(successResource, successFuture);
+
+    KafkaFuture<Config> failFuture = EasyMock.mock(KafkaFuture.class);
+    EasyMock.expect(failFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andThrow(failException);
+    futureMap.put(failResource, failFuture);
+
+    EasyMock.expect(mockDescribeConfigsResult.values()).andReturn(futureMap);
+    EasyMock.expect(adminClient.describeConfigs(EasyMock.anyObject())).andReturn(mockDescribeConfigsResult);
+    EasyMock.replay(mockDescribeConfigsResult, successFuture, failFuture);
   }
 
   // --- Assertion helpers ---

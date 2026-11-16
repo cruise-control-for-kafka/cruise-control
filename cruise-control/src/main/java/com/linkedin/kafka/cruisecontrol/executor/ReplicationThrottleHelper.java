@@ -368,6 +368,10 @@ class ReplicationThrottleHelper {
 
   /**
    * Batch-write broker configs and wait for verification.
+   * Uses .all() (fail-fast) rather than .values() (per-resource) because broker config failures are
+   * not expected during normal operation -- unlike topics, brokers are not deleted mid-operation.
+   * A broker failure here indicates a serious infrastructure issue that should fail the entire
+   * throttle setup rather than partially applying configs.
    *
    * @param ops the map of broker config resources to their alter operations
    */
@@ -434,15 +438,16 @@ class ReplicationThrottleHelper {
             if (!configsEqual(config, entry.getValue())) {
               return true;
             }
-          } catch (ExecutionException e) {
-            // Per-resource failure (e.g. topic deleted during verification).
+          } catch (ExecutionException | TimeoutException e) {
+            // Per-resource failure (e.g. topic deleted or network blip during verification).
             // Skip verification for this resource only; other resources continue.
             LOG.warn("Failed to verify config for {}, skipping verification for this resource", entry.getKey(), e);
           }
         }
         return false;
-      } catch (InterruptedException | TimeoutException e) {
-        LOG.warn("Error during batch config verification for {} resources, skipping verification", resources.size(), e);
+      } catch (InterruptedException e) {
+        LOG.warn("Interrupted during batch config verification for {} resources, skipping verification", resources.size(), e);
+        Thread.currentThread().interrupt();
         return false;
       }
     }, _retries);
