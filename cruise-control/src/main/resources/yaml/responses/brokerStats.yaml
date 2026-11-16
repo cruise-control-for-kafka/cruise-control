@@ -125,6 +125,38 @@ DiskStats:
     NumReplicas:
       type: integer
       format: int32
+    LeaderNwInRate:
+      description: Total inbound network rate of the leader replicas on the disk (KB/s), from Cruise Control metrics rather than measured disk I/O.
+      oneOf:
+        - type: string
+          enum:
+            - "DEAD"
+        - type: number
+          format: double
+    FollowerNwInRate:
+      description: Total inbound network rate of the follower replicas on the disk (KB/s), from Cruise Control metrics rather than measured disk I/O.
+      oneOf:
+        - type: string
+          enum:
+            - "DEAD"
+        - type: number
+          format: double
+    NwOutRate:
+      description: Total outbound network rate of the replicas on the disk (KB/s), from Cruise Control metrics rather than measured disk I/O.
+      oneOf:
+        - type: string
+          enum:
+            - "DEAD"
+        - type: number
+          format: double
+    PnwOutRate:
+      description: Total outbound network rate of the replicas on the disk if all of them were leaders (KB/s).
+      oneOf:
+        - type: string
+          enum:
+            - "DEAD"
+        - type: number
+          format: double
 
 SingleHostStats:
   type: object

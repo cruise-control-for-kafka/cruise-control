@@ -38,6 +38,9 @@ public final class ReplicaSortFunctionFactory {
   /** Select immigrant or offline replicas only */
   private static final Function<Replica, Boolean> SELECT_IMMIGRANT_OR_OFFLINE_REPLICAS = r -> r.originalBroker() != r.broker()
                                                                                               || r.isCurrentOffline();
+  /** Select the replicas of the disks marked for removal only, wherever they have been moved since */
+  private static final Function<Replica, Boolean> SELECT_REPLICAS_OF_DISKS_TO_REMOVE = r -> r.originalDisk() != null
+                                                                                            && r.originalDisk().isMarkedForRemoval();
 
   private ReplicaSortFunctionFactory() {
   }
@@ -143,6 +146,36 @@ public final class ReplicaSortFunctionFactory {
    */
   public static Function<Replica, Boolean> selectReplicasBasedOnExcludedTopics(Set<String> excludedTopics) {
     return r -> r.isOriginalOffline() || !excludedTopics.contains(r.topicPartition().topic());
+  }
+
+  /**
+   * Same as {@link #selectReplicasBasedOnExcludedTopics(Set)}, except that replicas of excluded topics are also selected while
+   * they reside on a disk marked for removal (see {@link Disk#isMarkedForRemoval()}), so that the disk can be emptied. The
+   * selection is evaluated again when a replica moves to another disk, hence a replica of an excluded topic is no longer
+   * selected once it is off the disk to remove.
+   *
+   * This is only relevant to intra-broker goals: for an inter-broker move, the disk of a replica is not updated by the time the
+   * selection is evaluated.
+   *
+   * @param excludedTopics Topics excluded from partition movements.
+   *
+   * @return A selection function that filters out replicas which are online, from topics which should be excluded, and not
+   * on a disk marked for removal.
+   */
+  public static Function<Replica, Boolean> selectReplicasBasedOnExcludedTopicsAndDisksToRemove(Set<String> excludedTopics) {
+    return r -> r.isOriginalOffline() || (r.disk() != null && r.disk().isMarkedForRemoval())
+                || !excludedTopics.contains(r.topicPartition().topic());
+  }
+
+  /**
+   * Select the replicas that resided on a disk marked for removal (see {@link Disk#isMarkedForRemoval()}) when the optimization
+   * started, wherever they have been moved since. A disk removal moves these replicas only: once the disks to remove are emptied,
+   * the other intra-broker goals may move them again, to place them on the remaining disks of their broker.
+   *
+   * @return A selection function that only includes the replicas of the disks marked for removal.
+   */
+  public static Function<Replica, Boolean> selectReplicasOfDisksToRemove() {
+    return SELECT_REPLICAS_OF_DISKS_TO_REMOVE;
   }
 
   /**

@@ -91,3 +91,7 @@ OptimizerResult:
         - UNDECIDED
     provisionRecommendation:
       type: string
+    diskStatisticsBefore:
+      $ref: './clusterModelStats.yaml#/DiskBalanceStats'
+    diskStatisticsAfter:
+      $ref: './clusterModelStats.yaml#/DiskBalanceStats'

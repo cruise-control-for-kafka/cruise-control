@@ -57,7 +57,7 @@ public abstract class GoalBasedOptimizationParameters extends KafkaOptimizationP
     _useReadyDefaultGoals = ParameterUtils.useReadyDefaultGoals(_requestContext);
     _excludedTopics = ParameterUtils.excludedTopics(_requestContext);
     _excludeRecentlyRemovedBrokers = ParameterUtils.excludeRecentlyRemovedBrokers(_requestContext);
-    List<String> goals = ParameterUtils.getGoals(_requestContext);
+    List<String> goals = ParameterUtils.getGoals(_requestContext, _config);
     _goalsAndRequirements = new GoalsAndRequirements(goals, getRequirements(_dataFrom));
     _fastMode = ParameterUtils.fastMode(_requestContext);
   }
