@@ -45,9 +45,9 @@ class ReplicationThrottleHelper {
   public static final long CLIENT_REQUEST_TIMEOUT_MS = TimeUnit.SECONDS.toMillis(30);
   static final int RETRIES = 30;
   // Backoff parameters for the config verification retry loop. The sleep before the n-th retry
-  // (n >= 1) is scale * base^n (10s, 20s, 30s, 30s, ...), capped at MAX_RETRY_SLEEP_MS so that a
-  // slow-to-verify config cannot park the executor thread for an unbounded exponential sleep.
-  static final long RETRY_BACKOFF_SCALE_MS = TimeUnit.SECONDS.toMillis(5);
+  // (n >= 1) is scale * base^n (1s, 2s, 4s, 8s, 16s, 30s, 30s, ...), capped at MAX_RETRY_SLEEP_MS so
+  // that a slow-to-verify config cannot park the executor thread for an unbounded exponential sleep.
+  static final long RETRY_BACKOFF_SCALE_MS = 500L;
   static final int RETRY_BACKOFF_BASE = 2;
   static final int MAX_RETRY_SLEEP_MS = (int) TimeUnit.SECONDS.toMillis(30);
   // Config sources that a config entry can resolve from after a successful per-entity DELETE.
@@ -100,19 +100,21 @@ class ReplicationThrottleHelper {
           _throttleRate, participatingBrokers.size(), throttledReplicas.size(), replicaMovementProposals.size());
 
       // Batch set broker throttle rates. Reads are chunked like every other AdminClient call in
-      // this class; each future is resolved eagerly and any failure is rethrown, preserving the
-      // fail-fast semantics of the previous .all() call.
+      // this class; any broker read failure is rethrown, preserving the fail-fast semantics of the
+      // previous .all() call.
       if (!participatingBrokers.isEmpty()) {
         List<ConfigResource> brokerResources = participatingBrokers.stream()
             .map(id -> new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(id)))
             .collect(Collectors.toList());
-        Map<ConfigResource, KafkaFuture<Config>> brokerFutures = describeConfigsInChunks(brokerResources);
+        DescribedConfigs brokerConfigs = describeConfigsInChunks(brokerResources);
 
         Map<ConfigResource, Collection<AlterConfigOp>> brokerOps = new HashMap<>();
-        for (int brokerId : participatingBrokers) {
-          ConfigResource cf = new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(brokerId));
-          Config config = brokerFutures.get(cf).get(CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-          List<AlterConfigOp> ops = buildSetThrottleRateOps(config, brokerId);
+        for (ConfigResource cf : brokerResources) {
+          Exception failure = brokerConfigs.failure(cf);
+          if (failure != null) {
+            rethrow(failure);
+          }
+          List<AlterConfigOp> ops = buildSetThrottleRateOps(brokerConfigs.config(cf), Integer.parseInt(cf.name()));
           if (!ops.isEmpty()) {
             brokerOps.put(cf, ops);
           }
@@ -120,7 +122,7 @@ class ReplicationThrottleHelper {
 
         if (!brokerOps.isEmpty()) {
           LOG.info("Updating throttle rate on {} out of {} brokers", brokerOps.size(), participatingBrokers.size());
-          batchAlterBrokerConfigs(brokerOps);
+          changeBrokerConfigs(brokerOps);
         }
       }
 
@@ -146,7 +148,7 @@ class ReplicationThrottleHelper {
 
         if (!topicOps.isEmpty()) {
           LOG.info("Setting throttled replicas on {} out of {} topics", topicOps.size(), throttledReplicas.size());
-          batchAlterTopicConfigs(topicOps);
+          changeTopicConfigs(topicOps);
         }
       }
 
@@ -207,61 +209,112 @@ class ReplicationThrottleHelper {
       LOG.info("Removing replica movement throttles from {} brokers in the cluster: {}",
           brokersToRemoveThrottlesFrom.size(), brokersToRemoveThrottlesFrom);
 
-      // Batch remove broker throttle rates. Read configs via per-broker futures so that a broker
-      // which became unreachable mid-execution only skips throttle removal for itself; throttles
-      // on the remaining brokers are still cleared.
-      if (!brokersToRemoveThrottlesFrom.isEmpty()) {
-        List<ConfigResource> brokerResources = brokersToRemoveThrottlesFrom.stream()
-            .map(id -> new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(id)))
-            .collect(Collectors.toList());
-        Map<ConfigResource, KafkaFuture<Config>> brokerFutures = describeConfigsInChunks(brokerResources);
-
-        Map<ConfigResource, Collection<AlterConfigOp>> brokerOps = new HashMap<>();
-        for (ConfigResource cf : brokerResources) {
-          Config config;
-          try {
-            config = brokerFutures.get(cf).get(CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-          } catch (ExecutionException | TimeoutException e) {
-            LOG.warn("Failed to read configs for broker {} while clearing throttles. Skipping throttle removal for it.",
-                cf.name(), e);
-            continue;
-          }
-          List<AlterConfigOp> ops = buildRemoveThrottleRateOps(config, Integer.parseInt(cf.name()));
-          if (!ops.isEmpty()) {
-            brokerOps.put(cf, ops);
-          }
-        }
-
-        if (!brokerOps.isEmpty()) {
-          batchAlterBrokerConfigs(brokerOps);
-        }
+      // Attempt both removals before surfacing a failure, so that brokers whose throttle removal
+      // cannot be verified do not leave the topic-level throttled replicas in place.
+      Exception firstFailure = null;
+      try {
+        removeThrottledRatesFromBrokers(brokersToRemoveThrottlesFrom);
+      } catch (ExecutionException | TimeoutException | IllegalStateException e) {
+        LOG.warn("Failed to remove throttle rates from brokers; continuing with topic-level throttled replicas", e);
+        firstFailure = e;
+      }
+      try {
+        removeThrottledReplicasFromTopics(getThrottledReplicasByTopic(completedProposals));
+      } catch (ExecutionException | TimeoutException | IllegalStateException e) {
+        LOG.warn("Failed to remove throttled replicas from topics", e);
+        firstFailure = addFailure(firstFailure, e);
       }
 
-      // Batch remove topic throttled replicas
-      Map<String, Set<String>> throttledReplicas = getThrottledReplicasByTopic(completedProposals);
-      if (!throttledReplicas.isEmpty()) {
-        Map<String, Config> topicConfigs = batchGetTopicConfigs(throttledReplicas.keySet());
-
-        Map<ConfigResource, Collection<AlterConfigOp>> topicOps = new HashMap<>();
-        for (Map.Entry<String, Set<String>> entry : throttledReplicas.entrySet()) {
-          String topic = entry.getKey();
-          Config config = topicConfigs.get(topic);
-          if (config == null) {
-            LOG.debug("Skip removing throttled replicas {} from topic {} since no configs can be read",
-                String.join(",", entry.getValue()), topic);
-            continue;
-          }
-          List<AlterConfigOp> ops = buildRemoveThrottledReplicasOps(config, topic, entry.getValue());
-          if (!ops.isEmpty()) {
-            topicOps.put(new ConfigResource(ConfigResource.Type.TOPIC, topic), ops);
-          }
-        }
-
-        if (!topicOps.isEmpty()) {
-          batchAlterTopicConfigs(topicOps);
-        }
+      if (firstFailure != null) {
+        rethrow(firstFailure);
       }
     }
+  }
+
+  /**
+   * Batch remove broker throttle rates. Broker configs are read per resource so that a broker which
+   * became unreachable mid-execution only skips throttle removal for itself; throttles on the
+   * remaining brokers are still cleared.
+   *
+   * @param brokerIds the brokers to remove throttle rates from
+   */
+  private void removeThrottledRatesFromBrokers(Set<Integer> brokerIds)
+  throws ExecutionException, InterruptedException, TimeoutException {
+    if (brokerIds.isEmpty()) {
+      return;
+    }
+    List<ConfigResource> brokerResources = brokerIds.stream()
+        .map(id -> new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(id)))
+        .collect(Collectors.toList());
+    DescribedConfigs brokerConfigs = describeConfigsInChunks(brokerResources);
+
+    Map<ConfigResource, Collection<AlterConfigOp>> brokerOps = new HashMap<>();
+    for (ConfigResource cf : brokerResources) {
+      Exception failure = brokerConfigs.failure(cf);
+      if (failure != null) {
+        LOG.warn("Failed to read configs for broker {} while clearing throttles. Skipping throttle removal for it.",
+            cf.name(), failure);
+        continue;
+      }
+      List<AlterConfigOp> ops = buildRemoveThrottleRateOps(brokerConfigs.config(cf), Integer.parseInt(cf.name()));
+      if (!ops.isEmpty()) {
+        brokerOps.put(cf, ops);
+      }
+    }
+
+    if (!brokerOps.isEmpty()) {
+      changeBrokerConfigs(brokerOps);
+    }
+  }
+
+  /**
+   * Batch remove throttled replicas from topic configs.
+   *
+   * @param throttledReplicas the throttled replicas to remove, keyed by topic
+   */
+  private void removeThrottledReplicasFromTopics(Map<String, Set<String>> throttledReplicas)
+  throws ExecutionException, InterruptedException, TimeoutException {
+    if (throttledReplicas.isEmpty()) {
+      return;
+    }
+    Map<String, Config> topicConfigs = batchGetTopicConfigs(throttledReplicas.keySet());
+
+    Map<ConfigResource, Collection<AlterConfigOp>> topicOps = new HashMap<>();
+    for (Map.Entry<String, Set<String>> entry : throttledReplicas.entrySet()) {
+      String topic = entry.getKey();
+      Config config = topicConfigs.get(topic);
+      if (config == null) {
+        LOG.debug("Skip removing throttled replicas {} from topic {} since no configs can be read",
+            String.join(",", entry.getValue()), topic);
+        continue;
+      }
+      List<AlterConfigOp> ops = buildRemoveThrottledReplicasOps(config, topic, entry.getValue());
+      if (!ops.isEmpty()) {
+        topicOps.put(new ConfigResource(ConfigResource.Type.TOPIC, topic), ops);
+      }
+    }
+
+    if (!topicOps.isEmpty()) {
+      changeTopicConfigs(topicOps);
+    }
+  }
+
+  private static Exception addFailure(Exception firstFailure, Exception failure) {
+    if (firstFailure == null) {
+      return failure;
+    }
+    firstFailure.addSuppressed(failure);
+    return firstFailure;
+  }
+
+  private static void rethrow(Exception failure) throws ExecutionException, TimeoutException {
+    if (failure instanceof ExecutionException) {
+      throw (ExecutionException) failure;
+    }
+    if (failure instanceof TimeoutException) {
+      throw (TimeoutException) failure;
+    }
+    throw (RuntimeException) failure;
   }
 
   // --- Ops builders extracted from the old single-resource methods ---
@@ -375,24 +428,28 @@ class ReplicationThrottleHelper {
         .map(t -> new ConfigResource(ConfigResource.Type.TOPIC, t))
         .collect(Collectors.toList());
 
-    Map<ConfigResource, KafkaFuture<Config>> futures = describeConfigsInChunks(resources);
+    DescribedConfigs topicConfigs = describeConfigsInChunks(resources);
     Map<String, Config> result = new HashMap<>();
     // Fetched lazily and at most once, to resolve failures without issuing one listTopics per topic.
     Set<String> existingTopics = null;
 
     for (ConfigResource cf : resources) {
       String topic = cf.name();
-      try {
-        result.put(topic, futures.get(cf).get(CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS));
-      } catch (ExecutionException e) {
+      Exception failure = topicConfigs.failure(cf);
+      if (failure == null) {
+        result.put(topic, topicConfigs.config(cf));
+        continue;
+      }
+      if (failure instanceof ExecutionException) {
         if (existingTopics == null) {
           existingTopics = listTopicNames();
         }
-        if (existingTopics.contains(topic)) {
-          throw e;
+        if (!existingTopics.contains(topic)) {
+          result.put(topic, new Config(Collections.emptyList()));
+          continue;
         }
-        result.put(topic, new Config(Collections.emptyList()));
       }
+      rethrow(failure);
     }
     return result;
   }
@@ -406,7 +463,7 @@ class ReplicationThrottleHelper {
    *
    * @param ops the map of broker config resources to their alter operations
    */
-  private void batchAlterBrokerConfigs(Map<ConfigResource, Collection<AlterConfigOp>> ops)
+  private void changeBrokerConfigs(Map<ConfigResource, Collection<AlterConfigOp>> ops)
   throws ExecutionException, InterruptedException, TimeoutException {
     for (Map<ConfigResource, Collection<AlterConfigOp>> chunkOps : partitionOps(ops)) {
       _adminClient.incrementalAlterConfigs(chunkOps)
@@ -417,33 +474,32 @@ class ReplicationThrottleHelper {
 
   /**
    * Batch-write topic configs using values() for per-topic error handling, then wait for
-   * verification on successfully written topics.
+   * verification on successfully written topics. Each chunk is resolved before the next one is
+   * sent, so chunking bounds the number of in-flight requests as well as their size.
    *
    * @param ops the map of topic config resources to their alter operations
    */
-  private void batchAlterTopicConfigs(Map<ConfigResource, Collection<AlterConfigOp>> ops)
+  private void changeTopicConfigs(Map<ConfigResource, Collection<AlterConfigOp>> ops)
   throws ExecutionException, InterruptedException, TimeoutException {
-    Map<ConfigResource, KafkaFuture<Void>> futures = new HashMap<>(ops.size());
-    for (Map<ConfigResource, Collection<AlterConfigOp>> chunkOps : partitionOps(ops)) {
-      futures.putAll(_adminClient.incrementalAlterConfigs(chunkOps).values());
-    }
     Map<ConfigResource, Collection<AlterConfigOp>> successfulOps = new HashMap<>();
     // Fetched lazily and at most once, to resolve failures without issuing one listTopics per topic.
     Set<String> existingTopics = null;
 
-    for (Map.Entry<ConfigResource, KafkaFuture<Void>> entry : futures.entrySet()) {
-      String topic = entry.getKey().name();
-      try {
-        entry.getValue().get(CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-        successfulOps.put(entry.getKey(), ops.get(entry.getKey()));
-      } catch (ExecutionException e) {
-        if (existingTopics == null) {
-          existingTopics = listTopicNames();
+    for (Map<ConfigResource, Collection<AlterConfigOp>> chunkOps : partitionOps(ops)) {
+      for (Map.Entry<ConfigResource, KafkaFuture<Void>> entry : _adminClient.incrementalAlterConfigs(chunkOps).values().entrySet()) {
+        String topic = entry.getKey().name();
+        try {
+          entry.getValue().get(CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+          successfulOps.put(entry.getKey(), chunkOps.get(entry.getKey()));
+        } catch (ExecutionException e) {
+          if (existingTopics == null) {
+            existingTopics = listTopicNames();
+          }
+          if (existingTopics.contains(topic)) {
+            throw e;
+          }
+          LOG.debug("Failed to change configs for topic {} since it does not exist", topic);
         }
-        if (existingTopics.contains(topic)) {
-          throw e;
-        }
-        LOG.debug("Failed to change configs for topic {} since it does not exist", topic);
       }
     }
 
@@ -477,7 +533,7 @@ class ReplicationThrottleHelper {
         if (pendingByResource.isEmpty()) {
           return false;
         }
-        Map<ConfigResource, KafkaFuture<Config>> futures = describeConfigsInChunks(new ArrayList<>(pendingByResource.keySet()));
+        DescribedConfigs configs = describeConfigsInChunks(new ArrayList<>(pendingByResource.keySet()));
         // Existing topic names, fetched lazily and at most once per verification attempt, shared
         // by all topics that fail verification in this attempt. Remains null if the listing fails,
         // in which case topics are conservatively treated as still existing and kept pending.
@@ -487,24 +543,24 @@ class ReplicationThrottleHelper {
         while (pendingIter.hasNext()) {
           Map.Entry<ConfigResource, Map<String, String>> entry = pendingIter.next();
           ConfigResource cf = entry.getKey();
-          try {
-            Config config = futures.get(cf).get(CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-            if (configsEqual(config, entry.getValue())) {
+          Exception failure = configs.failure(cf);
+          if (failure == null) {
+            if (configsEqual(configs.config(cf), entry.getValue())) {
               pendingIter.remove();
             }
-          } catch (ExecutionException | TimeoutException e) {
-            if (cf.type() == ConfigResource.Type.TOPIC && !topicListFetchAttempted) {
-              topicListFetchAttempted = true;
-              existingTopics = tryListTopicNames();
-            }
-            if (cf.type() == ConfigResource.Type.TOPIC && existingTopics != null && !existingTopics.contains(cf.name())) {
-              LOG.debug("Skipping config verification for topic {} since it no longer exists", cf.name());
-              pendingIter.remove();
-            } else {
-              // Keep the resource pending: a transient failure must not let an unverified
-              // (potentially unthrottled) config pass silently.
-              LOG.warn("Failed to verify config for {}; will retry", cf, e);
-            }
+            continue;
+          }
+          if (cf.type() == ConfigResource.Type.TOPIC && !topicListFetchAttempted) {
+            topicListFetchAttempted = true;
+            existingTopics = tryListTopicNames();
+          }
+          if (cf.type() == ConfigResource.Type.TOPIC && existingTopics != null && !existingTopics.contains(cf.name())) {
+            LOG.debug("Skipping config verification for topic {} since it no longer exists", cf.name());
+            pendingIter.remove();
+          } else {
+            // Keep the resource pending: a transient failure must not let an unverified
+            // (potentially unthrottled) config pass silently.
+            LOG.warn("Failed to verify config for {}; will retry", cf, failure);
           }
         }
         return !pendingByResource.isEmpty();
@@ -539,19 +595,42 @@ class ReplicationThrottleHelper {
   }
 
   /**
-   * Issue describeConfigs in chunks of at most {@link #MAX_RESOURCES_PER_ADMIN_REQUEST} resources
-   * and return the per-resource futures from all chunks.
+   * Issue describeConfigs in chunks of at most {@link #MAX_RESOURCES_PER_ADMIN_REQUEST} resources.
+   * Each chunk is resolved before the next one is sent, so chunking bounds the number of in-flight
+   * requests as well as their size. Per-resource failures are collected rather than thrown.
    *
    * @param resources the config resources to describe
-   * @return a map from each resource to its config future
+   * @return the config or failure for each resource
    */
-  private Map<ConfigResource, KafkaFuture<Config>> describeConfigsInChunks(List<ConfigResource> resources) {
-    Map<ConfigResource, KafkaFuture<Config>> futures = new HashMap<>(resources.size());
+  private DescribedConfigs describeConfigsInChunks(List<ConfigResource> resources) throws InterruptedException {
+    DescribedConfigs result = new DescribedConfigs();
     for (int i = 0; i < resources.size(); i += MAX_RESOURCES_PER_ADMIN_REQUEST) {
       List<ConfigResource> chunk = resources.subList(i, Math.min(resources.size(), i + MAX_RESOURCES_PER_ADMIN_REQUEST));
-      futures.putAll(_adminClient.describeConfigs(chunk).values());
+      for (Map.Entry<ConfigResource, KafkaFuture<Config>> entry : _adminClient.describeConfigs(chunk).values().entrySet()) {
+        try {
+          result._configs.put(entry.getKey(), entry.getValue().get(CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS));
+        } catch (ExecutionException | TimeoutException e) {
+          result._failures.put(entry.getKey(), e);
+        }
+      }
     }
-    return futures;
+    return result;
+  }
+
+  /**
+   * The outcome of a chunked describeConfigs: each requested resource has either a config or a failure.
+   */
+  private static final class DescribedConfigs {
+    private final Map<ConfigResource, Config> _configs = new HashMap<>();
+    private final Map<ConfigResource, Exception> _failures = new HashMap<>();
+
+    Config config(ConfigResource cf) {
+      return _configs.get(cf);
+    }
+
+    Exception failure(ConfigResource cf) {
+      return _failures.get(cf);
+    }
   }
 
   /**
