@@ -48,7 +48,7 @@ DemoteBrokerEndpoint:
           default: false
       - name: skip_urp_demotion
         in: query
-        description: Whether to operate on partitions which are currently under-replicated.
+        description: Whether to skip partitions which are currently under-replicated. If false, the leadership of such a partition moves only to an in-sync replica, and a partition without one is skipped.
         schema:
           type: boolean
           default: true
@@ -58,6 +58,13 @@ DemoteBrokerEndpoint:
         schema:
           type: boolean
           default: true
+      - name: excluded_topics
+        in: query
+        description: Specify topics whose partitions are skipped by the demotion, i.e. their leadership and replica order stay unchanged.
+        schema:
+          type: string # topics regex
+          default: null
+          example: "__CruiseControl.%2A"
       - name: verbose
         in: query
         description: Return detailed state information.
