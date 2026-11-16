@@ -18,11 +18,11 @@ package com.linkedin.kafka.cruisecontrol.monitor.task;
 
 import com.codahale.metrics.MetricRegistry;
 import com.linkedin.cruisecontrol.metricdef.MetricInfo;
+import com.linkedin.kafka.cruisecontrol.common.MetadataAdminClient;
 import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils;
 import com.linkedin.cruisecontrol.metricdef.MetricDef;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
-import com.linkedin.kafka.cruisecontrol.common.MetadataClient;
 import com.linkedin.kafka.cruisecontrol.config.constants.MonitorConfig;
 import com.linkedin.kafka.cruisecontrol.exception.SamplingException;
 import com.linkedin.kafka.cruisecontrol.metricsreporter.utils.CCKafkaIntegrationTestHarness;
@@ -46,20 +46,14 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Supplier;
-import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.internals.ClusterResourceListeners;
-import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
 import org.easymock.EasyMock;
 import org.junit.Before;
 import org.junit.Test;
 
-import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUnitTestUtils.METADATA_EXPIRY_MS;
-import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUnitTestUtils.METADATA_REFRESH_BACKOFF;
-import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUnitTestUtils.METADATA_REFRESH_BACKOFF_MAX;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertNotNull;
@@ -111,15 +105,10 @@ public class LoadMonitorTaskRunnerTest extends CCKafkaIntegrationTestHarness {
   @Test
   public void testSimpleFetch() throws InterruptedException {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
-    Metadata metadata = new Metadata(METADATA_REFRESH_BACKOFF,
-                                     METADATA_REFRESH_BACKOFF_MAX,
-                                     METADATA_EXPIRY_MS,
-                                     new LogContext(),
-                                     new ClusterResourceListeners());
-    MetadataClient metadataClient = new MetadataClient(config, metadata, -1L, TIME);
+    MetadataAdminClient metadataClient = new MetadataAdminClient(_cluster.adminClient());
     assertNotNull(metadataClient.cluster().clusterResource().clusterId());
     MockPartitionMetricSampleAggregator mockPartitionMetricSampleAggregator =
-        new MockPartitionMetricSampleAggregator(config, metadata);
+        new MockPartitionMetricSampleAggregator(config, metadataClient);
     KafkaBrokerMetricSampleAggregator mockBrokerMetricSampleAggregator =
         EasyMock.mock(KafkaBrokerMetricSampleAggregator.class);
     MetricRegistry dropwizardMetricRegistry = new MetricRegistry();
@@ -130,9 +119,8 @@ public class LoadMonitorTaskRunnerTest extends CCKafkaIntegrationTestHarness {
     LoadMonitorTaskRunner loadMonitorTaskRunner =
         new LoadMonitorTaskRunner(config, fetcherManager, mockPartitionMetricSampleAggregator,
                                   mockBrokerMetricSampleAggregator, metadataClient, TIME);
-    while (metadata.fetch().topics().size() < NUM_TOPICS) {
+    while (metadataClient.cluster().topics().size() < NUM_TOPICS) {
       Thread.sleep(10);
-      metadataClient.refreshMetadata();
     }
     loadMonitorTaskRunner.start(true);
 
@@ -160,17 +148,12 @@ public class LoadMonitorTaskRunnerTest extends CCKafkaIntegrationTestHarness {
   }
 
   @Test
-  public void testSamplingError() {
+  public void testSamplingError() throws InterruptedException {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
-    Metadata metadata = new Metadata(METADATA_REFRESH_BACKOFF,
-                                     METADATA_REFRESH_BACKOFF_MAX,
-                                     METADATA_EXPIRY_MS,
-                                     new LogContext(),
-                                     new ClusterResourceListeners());
-    MetadataClient metadataClient = new MetadataClient(config, metadata, -1L, TIME);
+    MetadataAdminClient metadataClient = new MetadataAdminClient(_cluster.adminClient());
     assertNotNull(metadataClient.cluster().clusterResource().clusterId());
     MockPartitionMetricSampleAggregator mockMetricSampleAggregator =
-        new MockPartitionMetricSampleAggregator(config, metadata);
+        new MockPartitionMetricSampleAggregator(config, metadataClient);
     KafkaBrokerMetricSampleAggregator mockBrokerMetricSampleAggregator =
         EasyMock.mock(KafkaBrokerMetricSampleAggregator.class);
     MetricRegistry dropwizardMetricRegistry = new MetricRegistry();
@@ -181,8 +164,8 @@ public class LoadMonitorTaskRunnerTest extends CCKafkaIntegrationTestHarness {
     LoadMonitorTaskRunner loadMonitorTaskRunner =
         new LoadMonitorTaskRunner(config, fetcherManager, mockMetricSampleAggregator, mockBrokerMetricSampleAggregator,
                                   metadataClient, TIME);
-    while (metadata.fetch().topics().size() < 100) {
-      metadataClient.refreshMetadata();
+    while (metadataClient.cluster().topics().size() < NUM_TOPICS) {
+      Thread.sleep(10);
     }
     loadMonitorTaskRunner.start(true);
 
@@ -314,10 +297,10 @@ public class LoadMonitorTaskRunnerTest extends CCKafkaIntegrationTestHarness {
     /**
      * Construct the metric sample aggregator.
      * @param config   The load monitor configurations.
-     * @param metadata The metadata of the cluster.
+     * @param metadataClient The metadata client for fetching cluster state.
      */
-    MockPartitionMetricSampleAggregator(KafkaCruiseControlConfig config, Metadata metadata) {
-      super(config, metadata);
+    MockPartitionMetricSampleAggregator(KafkaCruiseControlConfig config, MetadataAdminClient metadataClient) {
+      super(config, metadataClient);
       _partitionMetricSamples = new ArrayBlockingQueue<>(10000);
     }
 

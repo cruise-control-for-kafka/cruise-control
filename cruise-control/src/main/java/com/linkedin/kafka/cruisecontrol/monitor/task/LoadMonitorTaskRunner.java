@@ -1,11 +1,24 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.monitor.task;
 
 import com.codahale.metrics.MetricRegistry;
 import com.linkedin.cruisecontrol.metricdef.MetricDef;
+import com.linkedin.kafka.cruisecontrol.common.MetadataAdminClient;
 import com.linkedin.kafka.cruisecontrol.config.BrokerCapacityConfigResolver;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.common.KafkaCruiseControlThreadFactory;
@@ -20,6 +33,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+
+import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,7 +52,7 @@ public class LoadMonitorTaskRunner {
   private final MetricFetcherManager _metricFetcherManager;
   private final KafkaPartitionMetricSampleAggregator _partitionMetricSampleAggregator;
   private final KafkaBrokerMetricSampleAggregator _brokerMetricSampleAggregator;
-  private final MetadataClient _metadataClient;
+  private final MetadataAdminClient _metadataClient;
   private final SampleStore _sampleStore;
   private final SampleStore _sampleStoreForPartitionMetricOnExecution;
   private final ScheduledExecutorService _samplingScheduler;
@@ -73,7 +88,7 @@ public class LoadMonitorTaskRunner {
   public LoadMonitorTaskRunner(KafkaCruiseControlConfig config,
                                KafkaPartitionMetricSampleAggregator partitionMetricSampleAggregator,
                                KafkaBrokerMetricSampleAggregator brokerMetricSampleAggregator,
-                               MetadataClient metadataClient,
+                               MetadataAdminClient metadataClient,
                                MetricDef metricDef,
                                Time time,
                                MetricRegistry dropwizardMetricRegistry,
@@ -101,7 +116,7 @@ public class LoadMonitorTaskRunner {
                         MetricFetcherManager metricFetcherManager,
                         KafkaPartitionMetricSampleAggregator partitionMetricSampleAggregator,
                         KafkaBrokerMetricSampleAggregator brokerMetricSampleAggregator,
-                        MetadataClient metadataClient,
+                        MetadataAdminClient metadataClient,
                         Time time) {
     _time = time;
     _metricFetcherManager = metricFetcherManager;

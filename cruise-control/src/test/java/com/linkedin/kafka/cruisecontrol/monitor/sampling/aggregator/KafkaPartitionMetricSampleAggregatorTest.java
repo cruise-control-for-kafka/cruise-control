@@ -1,5 +1,17 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.monitor.sampling.aggregator;
@@ -45,6 +57,7 @@ import static com.linkedin.kafka.cruisecontrol.config.constants.MonitorConfig.PA
 import static com.linkedin.kafka.cruisecontrol.model.LinearRegressionModelParameters.ModelCoefficient.LEADER_BYTES_OUT;
 import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUnitTestUtils.getCluster;
 import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUnitTestUtils.getMetadata;
+import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUnitTestUtils.mockMetadataAdminClient;
 import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUnitTestUtils.NODE_0;
 import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUnitTestUtils.nodeIds;
 import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUnitTestUtils.NO_PARTITION_LEADER_EPOCH;
@@ -74,7 +87,7 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
     Metadata metadata = getMetadata(Collections.singleton(TP));
     KafkaPartitionMetricSampleAggregator
-        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, metadata);
+        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, mockMetadataAdminClient(metadata));
 
     populateSampleAggregator(NUM_WINDOWS + 1, MIN_SAMPLES_PER_WINDOW, metricSampleAggregator);
 
@@ -116,7 +129,7 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
     Metadata metadata = getMetadata(Collections.singleton(TP));
     KafkaPartitionMetricSampleAggregator
-        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, metadata);
+        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, mockMetadataAdminClient(metadata));
 
     populateSampleAggregator(NUM_WINDOWS + 1, MIN_SAMPLES_PER_WINDOW, metricSampleAggregator);
 
@@ -174,7 +187,7 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
     Metadata metadata = getMetadata(Collections.singleton(TP));
     KafkaPartitionMetricSampleAggregator
-        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, metadata);
+        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, mockMetadataAdminClient(metadata));
 
     TopicPartition tp1 = new TopicPartition(TOPIC0, 1);
     Cluster cluster = getCluster(Arrays.asList(TP, tp1));
@@ -219,7 +232,7 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
     Metadata metadata = getMetadata(Collections.singleton(TP));
     KafkaPartitionMetricSampleAggregator
-        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, metadata);
+        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, mockMetadataAdminClient(metadata));
 
     // Only give two sample to the aggregator.
     CruiseControlUnitTestUtils.populateSampleAggregator(NUM_WINDOWS - 1, MIN_SAMPLES_PER_WINDOW,
@@ -249,7 +262,7 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     PartitionEntity anotherPartitionEntity = new PartitionEntity(anotherTopicPartition);
     Metadata metadata = getMetadata(Arrays.asList(TP, anotherTopicPartition));
     KafkaPartitionMetricSampleAggregator
-        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, metadata);
+        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, mockMetadataAdminClient(metadata));
 
     // Only give one sample to the aggregator for previous period.
     populateSampleAggregator(NUM_WINDOWS, MIN_SAMPLES_PER_WINDOW, metricSampleAggregator);
@@ -284,7 +297,7 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
     Metadata metadata = getMetadata(Collections.singleton(TP));
     KafkaPartitionMetricSampleAggregator
-        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, metadata);
+        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, mockMetadataAdminClient(metadata));
 
     // Only give two samples to the aggregator.
     CruiseControlUnitTestUtils.populateSampleAggregator(NUM_WINDOWS - 2, MIN_SAMPLES_PER_WINDOW,
@@ -302,7 +315,7 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
     Metadata metadata = getMetadata(Collections.singleton(TP));
     KafkaPartitionMetricSampleAggregator
-        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, metadata);
+        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, mockMetadataAdminClient(metadata));
 
     populateSampleAggregator(NUM_WINDOWS + 1, MIN_SAMPLES_PER_WINDOW, metricSampleAggregator);
 
@@ -325,7 +338,7 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
     Metadata metadata = getMetadata(Collections.singleton(TP));
     KafkaPartitionMetricSampleAggregator
-        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, metadata);
+        metricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, mockMetadataAdminClient(metadata));
     MetricDef metricDef = KafkaMetricDef.commonMetricDef();
 
     populateSampleAggregator(NUM_WINDOWS + 1, MIN_SAMPLES_PER_WINDOW, metricSampleAggregator);
@@ -494,7 +507,7 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     List<TopicPartition> allPartitions = Arrays.asList(TP, t0p1, t1p0, t1p1);
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
     Metadata metadata = getMetadata(allPartitions);
-    KafkaPartitionMetricSampleAggregator aggregator = new KafkaPartitionMetricSampleAggregator(config, metadata);
+    KafkaPartitionMetricSampleAggregator aggregator = new KafkaPartitionMetricSampleAggregator(config, mockMetadataAdminClient(metadata));
 
     for (TopicPartition tp : allPartitions) {
       populateSampleAggregator(NUM_WINDOWS + 1, MIN_SAMPLES_PER_WINDOW, aggregator, tp);
@@ -515,7 +528,7 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     List<TopicPartition> allPartitions = Arrays.asList(TP, t0p1, t1p0, t1p1);
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
     Metadata metadata = getMetadata(allPartitions);
-    KafkaPartitionMetricSampleAggregator aggregator = new KafkaPartitionMetricSampleAggregator(config, metadata);
+    KafkaPartitionMetricSampleAggregator aggregator = new KafkaPartitionMetricSampleAggregator(config, mockMetadataAdminClient(metadata));
 
     for (TopicPartition tp : Arrays.asList(TP, t0p1, t1p0)) {
       populateSampleAggregator(NUM_WINDOWS + 1, MIN_SAMPLES_PER_WINDOW, aggregator, tp);
@@ -546,7 +559,7 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     List<TopicPartition> allPartitions = Arrays.asList(TP, t0p1, t1p0, t1p1, t2p0, t2p1);
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(getLoadMonitorProperties());
     Metadata metadata = getMetadata(allPartitions);
-    KafkaPartitionMetricSampleAggregator aggregator = new KafkaPartitionMetricSampleAggregator(config, metadata);
+    KafkaPartitionMetricSampleAggregator aggregator = new KafkaPartitionMetricSampleAggregator(config, mockMetadataAdminClient(metadata));
 
     for (TopicPartition tp : Arrays.asList(TP, t1p0, t2p0, t2p1)) {
       populateSampleAggregator(NUM_WINDOWS + 1, MIN_SAMPLES_PER_WINDOW, aggregator, tp);
@@ -584,7 +597,7 @@ public class KafkaPartitionMetricSampleAggregatorTest {
     props.setProperty(MAX_ALLOWED_EXTRAPOLATIONS_PER_PARTITION_CONFIG, "0");
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(props);
     Metadata metadata = getMetadata(allPartitions);
-    KafkaPartitionMetricSampleAggregator aggregator = new KafkaPartitionMetricSampleAggregator(config, metadata);
+    KafkaPartitionMetricSampleAggregator aggregator = new KafkaPartitionMetricSampleAggregator(config, mockMetadataAdminClient(metadata));
 
     for (TopicPartition tp : Arrays.asList(TP, t1p0, t2p0, t2p1)) {
       populateSampleAggregator(NUM_WINDOWS + 1, MIN_SAMPLES_PER_WINDOW, aggregator, tp);

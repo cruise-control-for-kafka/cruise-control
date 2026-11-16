@@ -1,10 +1,22 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.monitor.task;
 
-import com.linkedin.kafka.cruisecontrol.common.MetadataClient;
+import com.linkedin.kafka.cruisecontrol.common.MetadataAdminClient;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricFetcherManager;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricSampler;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.SampleStore;
@@ -31,7 +43,7 @@ class BootstrapTask implements Runnable {
   private final int _configuredNumSnapshots;
   private final long _configuredSnapshotWindowMs;
   //
-  private final MetadataClient _metadataClient;
+  private final MetadataAdminClient _metadataClient;
   private final KafkaPartitionMetricSampleAggregator _metricSampleAggregator;
   private final LoadMonitorTaskRunner _loadMonitorTaskRunner;
   private final MetricFetcherManager _metricFetcherManager;
@@ -42,7 +54,7 @@ class BootstrapTask implements Runnable {
 
   // Constructor for RECENT mode.
   BootstrapTask(boolean clearMetrics,
-                MetadataClient metadataClient,
+                MetadataAdminClient metadataClient,
                 KafkaPartitionMetricSampleAggregator metricSampleAggregator,
                 LoadMonitorTaskRunner loadMonitorTaskRunner,
                 MetricFetcherManager metricFetcherManager,
@@ -72,7 +84,7 @@ class BootstrapTask implements Runnable {
   // Constructor for SINCE mode.
   BootstrapTask(long startMs,
                 boolean clearMetrics,
-                MetadataClient metadataClient,
+                MetadataAdminClient metadataClient,
                 KafkaPartitionMetricSampleAggregator metricSampleAggregator,
                 LoadMonitorTaskRunner loadMonitorTaskRunner,
                 MetricFetcherManager metricFetcherManager,
@@ -106,7 +118,7 @@ class BootstrapTask implements Runnable {
   BootstrapTask(long startMs,
                 long endMs,
                 boolean clearMetrics,
-                MetadataClient metadataClient,
+                MetadataAdminClient metadataClient,
                 KafkaPartitionMetricSampleAggregator metricSampleAggregator,
                 LoadMonitorTaskRunner loadMonitorTaskRunner,
                 MetricFetcherManager metricFetcherManager,
@@ -229,7 +241,7 @@ class BootstrapTask implements Runnable {
     try {
       _loadMonitorTaskRunner.setBootstrapProgress(0.0);
 
-      _metadataClient.refreshMetadata();
+      _metadataClient.cluster();
       long now = _time.milliseconds();
       do {
         long samplingPeriodStartMs = nextSamplingPeriodStartMs(now);

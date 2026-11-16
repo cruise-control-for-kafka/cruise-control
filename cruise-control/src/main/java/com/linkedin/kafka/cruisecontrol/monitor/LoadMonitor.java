@@ -1,5 +1,17 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.monitor;
@@ -14,7 +26,7 @@ import com.linkedin.cruisecontrol.monitor.sampling.aggregator.ValuesAndExtrapola
 import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils;
 import com.linkedin.kafka.cruisecontrol.analyzer.AnalyzerUtils;
 import com.linkedin.kafka.cruisecontrol.common.KafkaCruiseControlThreadFactory;
-import com.linkedin.kafka.cruisecontrol.common.MetadataClient;
+import com.linkedin.kafka.cruisecontrol.common.MetadataAdminClient;
 import com.linkedin.kafka.cruisecontrol.config.BrokerCapacityConfigResolver;
 import com.linkedin.kafka.cruisecontrol.config.BrokerCapacityInfo;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
@@ -49,13 +61,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.internals.ClusterResourceListeners;
-import org.apache.kafka.common.utils.LogContext;
 import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -93,7 +102,7 @@ public class LoadMonitor {
   // A semaphore to help throttle the simultaneous cluster model creation
   private final Semaphore _clusterModelSemaphore;
   private final KafkaCruiseControlConfig _config;
-  private final MetadataClient _metadataClient;
+  private final MetadataAdminClient _metadataClient;
   private final Admin _adminClient;
   private final BrokerCapacityConfigResolver _brokerCapacityConfigResolver;
   private final TopicConfigProvider _topicConfigProvider;
@@ -123,33 +132,23 @@ public class LoadMonitor {
    * @param metricDef The metric definitions.
    */
   public LoadMonitor(KafkaCruiseControlConfig config, Time time, MetricRegistry dropwizardMetricRegistry, MetricDef metricDef) {
-    this(config,
-         new MetadataClient(config,
-                            new Metadata(METADATA_REFRESH_BACKOFF,
-                                         METADATA_REFRESH_BACKOFF_MAX,
-                                         config.getLong(MonitorConfig.METADATA_MAX_AGE_MS_CONFIG),
-                                         new LogContext(),
-                                         new ClusterResourceListeners()),
-                            METADATA_TTL,
-                            time),
-         KafkaCruiseControlUtils.createAdminClient(KafkaCruiseControlUtils.parseAdminClientConfigs(config)),
-         time,
-         dropwizardMetricRegistry,
-         metricDef);
+    this(config, null, null, time, dropwizardMetricRegistry, metricDef);
   }
 
   /**
    * Package private constructor for unit tests.
    */
   LoadMonitor(KafkaCruiseControlConfig config,
-              MetadataClient metadataClient,
+              MetadataAdminClient metadataClient,
               Admin adminClient,
               Time time,
               MetricRegistry dropwizardMetricRegistry,
               MetricDef metricDef) {
     _config = config;
-    _metadataClient = metadataClient;
-    _adminClient = adminClient;
+    _adminClient = adminClient != null ? adminClient
+      : KafkaCruiseControlUtils.createAdminClient(KafkaCruiseControlUtils.parseAdminClientConfigs(config));
+    _metadataClient = metadataClient != null ? metadataClient
+      : new MetadataAdminClient(_adminClient);
     _time = time;
     _brokerCapacityConfigResolver = config.getConfiguredInstance(MonitorConfig.BROKER_CAPACITY_CONFIG_RESOLVER_CLASS_CONFIG,
                                                                  BrokerCapacityConfigResolver.class);
@@ -161,7 +160,7 @@ public class LoadMonitor {
             Collections.singletonMap(KAFKA_ADMIN_CLIENT_OBJECT_CONFIG, _adminClient)
     );
 
-    _partitionMetricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, metadataClient.metadata());
+    _partitionMetricSampleAggregator = new KafkaPartitionMetricSampleAggregator(config, _metadataClient);
     _brokerMetricSampleAggregator = new KafkaBrokerMetricSampleAggregator(config);
     _acquiredClusterModelSemaphore = ThreadLocal.withInitial(() -> false);
 
@@ -227,7 +226,6 @@ public class LoadMonitor {
       LOG.warn("Received exception when closing broker capacity resolver.", e);
     }
     _loadMonitorTaskRunner.shutdown();
-    _metadataClient.close();
     KafkaCruiseControlUtils.closeAdminClientWithTimeout(_adminClient);
     LOG.info("Load Monitor shutdown completed.");
   }
@@ -490,7 +488,7 @@ public class LoadMonitor {
       throws NotEnoughValidWindowsException, TimeoutException, BrokerCapacityResolutionException {
     long startMs = _time.milliseconds();
 
-    MetadataClient.ClusterAndGeneration clusterAndGeneration = refreshClusterAndGeneration();
+    MetadataAdminClient.ClusterAndGeneration clusterAndGeneration = _metadataClient.clusterAndGeneration();
     Cluster cluster = clusterAndGeneration.cluster();
 
     // Get the metric aggregation result.
@@ -540,7 +538,7 @@ public class LoadMonitor {
    * @return Cluster capacity without cluster load.
    */
   public ClusterModel clusterCapacity() throws TimeoutException, BrokerCapacityResolutionException {
-    MetadataClient.ClusterAndGeneration clusterAndGeneration = refreshClusterAndGeneration();
+    MetadataAdminClient.ClusterAndGeneration clusterAndGeneration = _metadataClient.clusterAndGeneration();
     Cluster cluster = clusterAndGeneration.cluster();
 
     // Create an empty cluster model first.
@@ -601,7 +599,7 @@ public class LoadMonitor {
    * expensive.
    */
   public ModelGeneration clusterModelGeneration() {
-    int clusterGeneration = refreshClusterAndGeneration().generation();
+    int clusterGeneration = _metadataClient.clusterGeneration();
     return new ModelGeneration(clusterGeneration, _partitionMetricSampleAggregator.generation());
   }
 
@@ -614,7 +612,7 @@ public class LoadMonitor {
     if (_cachedBrokerLoadGeneration != null
         && (allowCapacityEstimation || !_cachedBrokerLoadStats.isBrokerStatsEstimated())
         && _partitionMetricSampleAggregator.generation() == _cachedBrokerLoadGeneration.loadGeneration()
-        && refreshClusterAndGeneration().generation() == _cachedBrokerLoadGeneration.clusterGeneration()) {
+        && _metadataClient.clusterGeneration() == _cachedBrokerLoadGeneration.clusterGeneration()) {
       return _cachedBrokerLoadStats;
     }
     return null;
@@ -627,7 +625,7 @@ public class LoadMonitor {
    * @return All the brokers in the cluster that has at least one replica assigned.
    */
   public Set<Integer> brokersWithReplicas(long timeout) {
-    Cluster kafkaCluster = _metadataClient.refreshMetadata(timeout).cluster();
+    Cluster kafkaCluster = _metadataClient.cluster();
     return MonitorUtils.brokersWithReplicas(kafkaCluster);
   }
 
@@ -636,8 +634,8 @@ public class LoadMonitor {
    *
    * @return Cluster and generation information after refreshing the cluster metadata.
    */
-  public MetadataClient.ClusterAndGeneration refreshClusterAndGeneration() {
-    return _metadataClient.refreshMetadata();
+  public Cluster refreshClusterAndGeneration() {
+    return _metadataClient.cluster();
   }
 
   /**
@@ -657,8 +655,7 @@ public class LoadMonitor {
    * @return {@code true} if the monitored load meets the load requirements, {@code false} otherwise.
    */
   public boolean meetCompletenessRequirements(ModelCompletenessRequirements requirements) {
-    MetadataClient.ClusterAndGeneration clusterAndGeneration = refreshClusterAndGeneration();
-    return meetCompletenessRequirements(clusterAndGeneration.cluster(), requirements);
+    return meetCompletenessRequirements(_metadataClient.cluster(), requirements);
   }
 
   /**
@@ -688,7 +685,7 @@ public class LoadMonitor {
    * @return All the dead brokers which host some replicas in the cluster.
    */
   public Set<Integer> deadBrokersWithReplicas(long timeout) {
-    Cluster kafkaCluster = _metadataClient.refreshMetadata(timeout).cluster();
+    Cluster kafkaCluster = _metadataClient.cluster();
     return MonitorUtils.deadBrokersWithReplicas(kafkaCluster);
   }
 
@@ -699,7 +696,7 @@ public class LoadMonitor {
    * @return All the brokers in the cluster that has at least one offline replica.
    */
   public Set<Integer> brokersWithOfflineReplicas(long timeout) {
-    Cluster kafkaCluster = _metadataClient.refreshMetadata(timeout).cluster();
+    Cluster kafkaCluster = _metadataClient.cluster();
     return MonitorUtils.brokersWithOfflineReplicas(kafkaCluster);
   }
 
@@ -750,9 +747,7 @@ public class LoadMonitor {
   }
 
   private double getMonitoredPartitionsPercentage() {
-    MetadataClient.ClusterAndGeneration clusterAndGeneration = refreshClusterAndGeneration();
-
-    Cluster kafkaCluster = clusterAndGeneration.cluster();
+    Cluster kafkaCluster = _metadataClient.cluster();
     MetricSampleAggregationResult<String, PartitionEntity> metricSampleAggregationResult;
     try {
       metricSampleAggregationResult = _partitionMetricSampleAggregator.aggregate(kafkaCluster,
@@ -781,9 +776,8 @@ public class LoadMonitor {
     @Override
     public void run() {
       try {
-        MetadataClient.ClusterAndGeneration clusterAndGeneration = _metadataClient.clusterAndGeneration();
         double minMonitoredPartitionsPercentage = _defaultModelCompletenessRequirements.minMonitoredPartitionsPercentage();
-        _numValidSnapshotWindows = _partitionMetricSampleAggregator.validWindows(clusterAndGeneration.cluster(),
+        _numValidSnapshotWindows = _partitionMetricSampleAggregator.validWindows(_metadataClient.cluster(),
                                                                                  minMonitoredPartitionsPercentage)
                                                                    .size();
         _monitoredPartitionsPercentage = getMonitoredPartitionsPercentage();
@@ -812,7 +806,7 @@ public class LoadMonitor {
     private int _refreshCount = 0;
     @Override
     public void run() {
-      _allTopics.addAll(refreshClusterAndGeneration().cluster().topics());
+      _allTopics.addAll(_metadataClient.cluster().topics());
       _refreshCount++;
       if (_refreshCount % REFRESH_LIMIT == 0) {
         _partitionMetricSampleAggregator.retainEntityGroup(_allTopics);

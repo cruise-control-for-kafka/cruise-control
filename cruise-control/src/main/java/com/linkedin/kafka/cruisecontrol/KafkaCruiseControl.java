@@ -1,5 +1,17 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol;
@@ -162,7 +174,7 @@ public class KafkaCruiseControl {
    *
    * @return Cluster and generation information after refreshing the cluster metadata.
    */
-  public MetadataClient.ClusterAndGeneration refreshClusterAndGeneration() {
+  public Cluster refreshClusterAndGeneration() {
     return _loadMonitor.refreshClusterAndGeneration();
   }
 
@@ -902,9 +914,9 @@ public class KafkaCruiseControl {
    * @return {@code true} if completeness requirements are met for the given goals, {@code false} otherwise.
    */
   public boolean meetCompletenessRequirements(List<String> goals) {
-    MetadataClient.ClusterAndGeneration clusterAndGeneration = _loadMonitor.refreshClusterAndGeneration();
+    Cluster cluster = _loadMonitor.refreshClusterAndGeneration();
     return goalsByPriority(goals, _config).stream().allMatch(g -> _loadMonitor.meetCompletenessRequirements(
-        clusterAndGeneration.cluster(), g.clusterModelCompletenessRequirements()));
+        cluster, g.clusterModelCompletenessRequirements()));
   }
 
   /**
@@ -912,7 +924,7 @@ public class KafkaCruiseControl {
    * @param brokerIds A set of broker ids.
    */
   public void sanityCheckBrokerPresence(Set<Integer> brokerIds) {
-    Cluster cluster = _loadMonitor.refreshClusterAndGeneration().cluster();
+    Cluster cluster = _loadMonitor.refreshClusterAndGeneration();
     Set<Integer> invalidBrokerIds = brokerIds.stream().filter(id -> cluster.nodeById(id) == null).collect(Collectors.toSet());
     if (!invalidBrokerIds.isEmpty()) {
       throw new IllegalArgumentException(String.format("Broker %s does not exist.", invalidBrokerIds));
