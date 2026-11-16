@@ -212,7 +212,7 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
 
     // Case 1: a situation where Topic0 does not exist. Hence no property is returned upon read.
     // Batch read brokers (rates already match 100L, so no broker writes)
-    expectBatchDescribeBrokerConfigs(mockAdminClient, brokers);
+    expectBatchDescribeBrokerConfigsViaValues(mockAdminClient, brokers);
     // Batch read topic configs (topic doesn't exist)
     expectBatchDescribeTopicConfigsViaValues(mockAdminClient, TOPIC0, EMPTY_CONFIG, false);
     expectListTopics(mockAdminClient, Collections.emptySet());
@@ -227,7 +227,7 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     // Case 2: a situation where Topic0 gets deleted after its configs were read. Change configs should not fail.
     EasyMock.reset(mockAdminClient);
     // Batch read brokers (rates already match)
-    expectBatchDescribeBrokerConfigs(mockAdminClient, brokers);
+    expectBatchDescribeBrokerConfigsViaValues(mockAdminClient, brokers);
     String throttledReplicas = brokerId0 + "," + brokerId1;
     Config topicConfigs = new Config(Arrays.asList(
       new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_REPLICAS_CONFIG, throttledReplicas),
@@ -265,7 +265,7 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
     ReplicationThrottleHelper throttleHelper = new ReplicationThrottleHelper(mockAdminClient, throttleRate);
 
     // Batch read brokers — rates already match, no writes needed
-    expectBatchDescribeBrokerConfigs(mockAdminClient, brokers);
+    expectBatchDescribeBrokerConfigsViaValues(mockAdminClient, brokers);
 
     // Batch read topic configs via values() — TOPIC0 succeeds, TOPIC1 fails
     String existingReplicas = "1:0,1:1";
@@ -687,31 +687,6 @@ public class ReplicationThrottleHelperTest extends CCKafkaIntegrationTestHarness
   }
 
   // --- Batch mock helpers (used by testSetThrottleOnNonExistentTopic and testClearThrottleOnNonExistentTopic) ---
-
-  // Expects a single batched describeConfigs call for all brokers, returning configs via all().
-  private void expectBatchDescribeBrokerConfigs(Admin adminClient, List<Integer> brokers, Config brokerConfig)
-  throws ExecutionException, InterruptedException, TimeoutException {
-    Map<ConfigResource, Config> configMap = new HashMap<>();
-    for (int id : brokers) {
-      configMap.put(new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(id)), brokerConfig);
-    }
-    DescribeConfigsResult mockDescribeConfigsResult = EasyMock.mock(DescribeConfigsResult.class);
-    KafkaFuture<Map<ConfigResource, Config>> mockFuture = EasyMock.mock(KafkaFuture.class);
-    EasyMock.expect(mockFuture.get(EasyMock.anyLong(), EasyMock.anyObject())).andReturn(configMap);
-    EasyMock.expect(mockDescribeConfigsResult.all()).andReturn(mockFuture);
-    EasyMock.expect(adminClient.describeConfigs(EasyMock.anyObject())).andReturn(mockDescribeConfigsResult);
-    EasyMock.replay(mockDescribeConfigsResult, mockFuture);
-  }
-
-  // Expects a single batched describeConfigs call for all brokers with default throttle rate configs (rate=100).
-  private void expectBatchDescribeBrokerConfigs(Admin adminClient, List<Integer> brokers)
-  throws ExecutionException, InterruptedException, TimeoutException {
-    // All participating brokers have throttled rate set already
-    Config brokerConfig = new Config(Arrays.asList(
-      new ConfigEntry(ReplicationThrottleHelper.LEADER_REPLICATION_THROTTLED_RATE_CONFIG, "100"),
-      new ConfigEntry(ReplicationThrottleHelper.FOLLOWER_REPLICATION_THROTTLED_RATE_CONFIG, "100")));
-    expectBatchDescribeBrokerConfigs(adminClient, brokers, brokerConfig);
-  }
 
   // Expects a single batched incrementalAlterConfigs call for brokers, succeeding via all().
   private void expectBatchIncrementalBrokerConfigs(Admin adminClient)

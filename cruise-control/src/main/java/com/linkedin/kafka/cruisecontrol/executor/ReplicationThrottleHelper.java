@@ -85,18 +85,19 @@ class ReplicationThrottleHelper {
       LOG.info("Setting rebalance throttle of {} bytes/sec on {} brokers for {} topics ({} replica movements)",
           _throttleRate, participatingBrokers.size(), throttledReplicas.size(), replicaMovementProposals.size());
 
-      // Batch set broker throttle rates
+      // Batch set broker throttle rates. Reads are chunked like every other AdminClient call in
+      // this class; each future is resolved eagerly and any failure is rethrown, preserving the
+      // fail-fast semantics of the previous .all() call.
       if (!participatingBrokers.isEmpty()) {
         List<ConfigResource> brokerResources = participatingBrokers.stream()
             .map(id -> new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(id)))
             .collect(Collectors.toList());
-        Map<ConfigResource, Config> brokerConfigs = _adminClient.describeConfigs(brokerResources)
-            .all().get(CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        Map<ConfigResource, KafkaFuture<Config>> brokerFutures = describeConfigsInChunks(brokerResources);
 
         Map<ConfigResource, Collection<AlterConfigOp>> brokerOps = new HashMap<>();
         for (int brokerId : participatingBrokers) {
           ConfigResource cf = new ConfigResource(ConfigResource.Type.BROKER, String.valueOf(brokerId));
-          Config config = brokerConfigs.get(cf);
+          Config config = brokerFutures.get(cf).get(CLIENT_REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
           List<AlterConfigOp> ops = buildSetThrottleRateOps(config, brokerId);
           if (!ops.isEmpty()) {
             brokerOps.put(cf, ops);
@@ -463,6 +464,11 @@ class ReplicationThrottleHelper {
           return false;
         }
         Map<ConfigResource, KafkaFuture<Config>> futures = describeConfigsInChunks(new ArrayList<>(pendingByResource.keySet()));
+        // Existing topic names, fetched lazily and at most once per verification attempt, shared
+        // by all topics that fail verification in this attempt. Remains null if the listing fails,
+        // in which case topics are conservatively treated as still existing and kept pending.
+        Set<String> existingTopics = null;
+        boolean topicListFetchAttempted = false;
         Iterator<Map.Entry<ConfigResource, Map<String, String>>> pendingIter = pendingByResource.entrySet().iterator();
         while (pendingIter.hasNext()) {
           Map.Entry<ConfigResource, Map<String, String>> entry = pendingIter.next();
@@ -473,7 +479,11 @@ class ReplicationThrottleHelper {
               pendingIter.remove();
             }
           } catch (ExecutionException | TimeoutException e) {
-            if (cf.type() == ConfigResource.Type.TOPIC && topicNoLongerExists(cf.name())) {
+            if (cf.type() == ConfigResource.Type.TOPIC && !topicListFetchAttempted) {
+              topicListFetchAttempted = true;
+              existingTopics = tryListTopicNames();
+            }
+            if (cf.type() == ConfigResource.Type.TOPIC && existingTopics != null && !existingTopics.contains(cf.name())) {
               LOG.debug("Skipping config verification for topic {} since it no longer exists", cf.name());
               pendingIter.remove();
             } else {
@@ -497,20 +507,20 @@ class ReplicationThrottleHelper {
   }
 
   /**
-   * Best-effort existence check used during verification. A failure to check is treated as
-   * "the topic still exists" so that verification keeps retrying instead of passing unverified.
+   * Best-effort topic listing used during verification. A failure to list is surfaced as
+   * {@code null} so that callers conservatively treat topics as still existing and keep
+   * retrying instead of passing unverified.
    *
-   * @param topic the topic to check
-   * @return {@code true} if the topic is confirmed to no longer exist, {@code false} otherwise
+   * @return the set of existing topic names, or {@code null} if the listing failed
    */
-  private boolean topicNoLongerExists(String topic) {
+  private Set<String> tryListTopicNames() {
     try {
-      return !topicExists(topic);
+      return listTopicNames();
     } catch (ExecutionException | TimeoutException e) {
-      return false;
+      return null;
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
-      return false;
+      return null;
     }
   }
 
@@ -588,10 +598,6 @@ class ReplicationThrottleHelper {
       LOG.error("Unable to list topics due to {}", e.getMessage());
       throw e;
     }
-  }
-
-  boolean topicExists(String topic) throws InterruptedException, TimeoutException, ExecutionException {
-    return listTopicNames().contains(topic);
   }
 
   static String removeReplicasFromConfig(String throttleConfig, Set<String> replicas) {
