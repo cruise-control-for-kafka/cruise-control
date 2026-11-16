@@ -119,6 +119,9 @@ The returned state contains the following information:
   * Intra-broker replica movement progress (if state is `INTRA_BROKER_REPLICA_MOVEMENT_IN_PROGRESS`)
   * Leadership movement progress (if state is `LEADERSHIP_MOVEMENT`)
   * movement concurrency
+  * Replication throttles in force on each broker throttled by the ongoing inter-broker replica movements (JSON only:
+    `ongoingReplicationThrottleByBroker`, e.g. `{"1": {"leader": 10485760, "follower": 20971520}}` in bytes/second), per broker
+    and direction since the concurrency adjuster may adjust them (see `concurrency.adjuster.replication.throttle.enabled`)
   * UUID triggers the execution
 * **Analyzer State**:
   * isProposalReady: Is there a proposal cached
@@ -653,6 +656,7 @@ Supported parameters are:
 | disable_concurrency_adjuster_for              | list      | disable concurrency adjuster for given concurrency types                  | N/A                   | yes       |
 | enable_concurrency_adjuster_for               | list      | enable concurrency adjuster for given concurrency types                   | N/A                   | yes       |
 | min_isr_based_concurrency_adjustment          | boolean   | enable (true) or disable (false) MinISR-based concurrency adjustment      | N/A                   | yes       |
+| replication_throttle_adjustment               | boolean   | enable (true) or disable (false) replication throttle adjustment          | N/A                   | yes       |
 | reason                                        | string    | reason for the request                                                    | "No reason provided"  | yes       | 
 
 To Enable/disable self-healing, send POST request like:

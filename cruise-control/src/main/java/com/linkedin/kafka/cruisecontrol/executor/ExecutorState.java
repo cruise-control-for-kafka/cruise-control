@@ -9,7 +9,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseField;
 import com.linkedin.kafka.cruisecontrol.servlet.response.JsonResponseClass;
 
@@ -30,6 +33,9 @@ public final class ExecutorState {
   private static final String RECENTLY_DEMOTED_BROKERS = "recentlyDemotedBrokers";
   @JsonResponseField(required = false)
   private static final String RECENTLY_REMOVED_BROKERS = "recentlyRemovedBrokers";
+  // The replication throttles in force for the ongoing inter-broker replica movements, absent when they are not throttled.
+  @JsonResponseField(required = false)
+  private static final String ONGOING_REPLICATION_THROTTLE_BY_BROKER = "ongoingReplicationThrottleByBroker";
 
   @JsonResponseField(required = false)
   private static final String NUM_TOTAL_LEADERSHIP_MOVEMENTS = "numTotalLeadershipMovements";
@@ -142,6 +148,46 @@ public final class ExecutorState {
     GENERATING_PROPOSALS_FOR_EXECUTION
   }
 
+  /**
+   * The leader and follower replication throttles (bytes/sec) in force on a broker.
+   */
+  @JsonResponseClass
+  public static final class BrokerReplicationThrottle {
+    @JsonResponseField
+    private static final String LEADER = "leader";
+    @JsonResponseField
+    private static final String FOLLOWER = "follower";
+    private final long _leader;
+    private final long _follower;
+
+    /**
+     * @param leader The leader replication throttle (bytes/sec).
+     * @param follower The follower replication throttle (bytes/sec).
+     */
+    public BrokerReplicationThrottle(long leader, long follower) {
+      _leader = leader;
+      _follower = follower;
+    }
+
+    public long leader() {
+      return _leader;
+    }
+
+    public long follower() {
+      return _follower;
+    }
+
+    /**
+     * @return An object that can be further used to encode into JSON.
+     */
+    public Map<String, Object> getJsonStructure() {
+      Map<String, Object> jsonStructure = new LinkedHashMap<>();
+      jsonStructure.put(LEADER, _leader);
+      jsonStructure.put(FOLLOWER, _follower);
+      return jsonStructure;
+    }
+  }
+
   public static final Set<State> IN_PROGRESS_STATES = Set.of(State.INTER_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS,
                                                              State.INTRA_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS,
                                                              State.LEADER_MOVEMENT_TASK_IN_PROGRESS,
@@ -156,6 +202,9 @@ public final class ExecutorState {
   private final boolean _isTriggeredByUserRequest;
   private final Set<Integer> _recentlyDemotedBrokers;
   private final Set<Integer> _recentlyRemovedBrokers;
+  // The replication throttles in force on each broker throttled by the ongoing inter-broker replica movements, by broker id --
+  // per broker, since the concurrency adjuster may set a different throttle on each broker -- null if none is throttled.
+  private final SortedMap<Integer, BrokerReplicationThrottle> _ongoingReplicationThrottleByBroker;
 
   private ExecutorState(State state,
                         ExecutionTasksSummary executionTasksSummary,
@@ -173,6 +222,30 @@ public final class ExecutorState {
     _recentlyDemotedBrokers = recentlyDemotedBrokers;
     _recentlyRemovedBrokers = recentlyRemovedBrokers;
     _isTriggeredByUserRequest = isTriggeredByUserRequest;
+    _ongoingReplicationThrottleByBroker = null;
+  }
+
+  private ExecutorState(ExecutorState executorState, SortedMap<Integer, BrokerReplicationThrottle> ongoingReplicationThrottleByBroker) {
+    _state = executorState._state;
+    _executionTasksSummary = executorState._executionTasksSummary;
+    _executionConcurrencySummary = executorState._executionConcurrencySummary;
+    _uuid = executorState._uuid;
+    _reason = executorState._reason;
+    _recentlyDemotedBrokers = executorState._recentlyDemotedBrokers;
+    _recentlyRemovedBrokers = executorState._recentlyRemovedBrokers;
+    _isTriggeredByUserRequest = executorState._isTriggeredByUserRequest;
+    _ongoingReplicationThrottleByBroker = ongoingReplicationThrottleByBroker;
+  }
+
+  /**
+   * @param ongoingReplicationThrottleByBroker The replication throttles in force on each broker throttled by the ongoing
+   * inter-broker replica movements, by broker id; empty or {@code null} if none is throttled.
+   * @return This executor state, along with the given replication throttles. The executor attaches them when its state is read,
+   * so that a throttle that the concurrency adjuster changes is reported immediately rather than at the next progress check.
+   */
+  public ExecutorState withReplicationThrottleByBroker(SortedMap<Integer, BrokerReplicationThrottle> ongoingReplicationThrottleByBroker) {
+    return ongoingReplicationThrottleByBroker == null || ongoingReplicationThrottleByBroker.isEmpty()
+           ? this : new ExecutorState(this, ongoingReplicationThrottleByBroker);
   }
 
   /**
@@ -378,6 +451,11 @@ public final class ExecutorState {
     }
     if (_recentlyRemovedBrokers != null && !_recentlyRemovedBrokers.isEmpty()) {
       execState.put(RECENTLY_REMOVED_BROKERS, _recentlyRemovedBrokers);
+    }
+    if (_ongoingReplicationThrottleByBroker != null) {
+      Map<Integer, Object> throttleByBroker = new TreeMap<>();
+      _ongoingReplicationThrottleByBroker.forEach((brokerId, throttle) -> throttleByBroker.put(brokerId, throttle.getJsonStructure()));
+      execState.put(ONGOING_REPLICATION_THROTTLE_BY_BROKER, throttleByBroker);
     }
     Map<ExecutionTaskState, Integer> interBrokerPartitionMovementStats;
     Map<ExecutionTaskState, Integer> intraBrokerPartitionMovementStats;

@@ -16,6 +16,7 @@ import java.util.TreeSet;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.DISABLE_CONCURRENCY_ADJUSTER_FOR_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.ENABLE_CONCURRENCY_ADJUSTER_FOR_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.MIN_ISR_BASED_CONCURRENCY_ADJUSTMENT_PARAM;
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.REPLICATION_THROTTLE_ADJUSTMENT_PARAM;
 
 
 /**
@@ -29,12 +30,14 @@ public class UpdateConcurrencyAdjusterParameters extends AbstractParameters {
     validParameterNames.add(DISABLE_CONCURRENCY_ADJUSTER_FOR_PARAM);
     validParameterNames.add(ENABLE_CONCURRENCY_ADJUSTER_FOR_PARAM);
     validParameterNames.add(MIN_ISR_BASED_CONCURRENCY_ADJUSTMENT_PARAM);
+    validParameterNames.add(REPLICATION_THROTTLE_ADJUSTMENT_PARAM);
     validParameterNames.addAll(AbstractParameters.CASE_INSENSITIVE_PARAMETER_NAMES);
     CASE_INSENSITIVE_PARAMETER_NAMES = Collections.unmodifiableSortedSet(validParameterNames);
   }
   protected Set<ConcurrencyType> _disableConcurrencyAdjusterFor;
   protected Set<ConcurrencyType> _enableConcurrencyAdjusterFor;
   protected Boolean _minIsrBasedConcurrencyAdjustment;
+  protected Boolean _replicationThrottleAdjustment;
 
   protected UpdateConcurrencyAdjusterParameters() {
     super();
@@ -47,6 +50,7 @@ public class UpdateConcurrencyAdjusterParameters extends AbstractParameters {
     _enableConcurrencyAdjusterFor = concurrencyAdjusterFor.get(true);
     _disableConcurrencyAdjusterFor = concurrencyAdjusterFor.get(false);
     _minIsrBasedConcurrencyAdjustment = ParameterUtils.minIsrBasedConcurrencyAdjustment(_requestContext);
+    _replicationThrottleAdjustment = ParameterUtils.replicationThrottleAdjustment(_requestContext);
   }
 
   /**
@@ -61,10 +65,12 @@ public class UpdateConcurrencyAdjusterParameters extends AbstractParameters {
     UpdateConcurrencyAdjusterParameters updateConcurrencyAdjusterParameters = new UpdateConcurrencyAdjusterParameters();
     updateConcurrencyAdjusterParameters.configure(configs);
     updateConcurrencyAdjusterParameters.initParameters();
-    // If no concurrency adjuster is enabled/disabled in the request and there is no MinISR-based concurrency adjustment, return null.
+    // If no concurrency adjuster is enabled/disabled in the request and there is no MinISR-based concurrency adjustment or replication
+    // throttle adjustment, return null.
     if (updateConcurrencyAdjusterParameters.enableConcurrencyAdjusterFor().isEmpty()
         && updateConcurrencyAdjusterParameters.disableConcurrencyAdjusterFor().isEmpty()
-        && updateConcurrencyAdjusterParameters.minIsrBasedConcurrencyAdjustment() == null) {
+        && updateConcurrencyAdjusterParameters.minIsrBasedConcurrencyAdjustment() == null
+        && updateConcurrencyAdjusterParameters.replicationThrottleAdjustment() == null) {
       return null;
     }
     return updateConcurrencyAdjusterParameters;
@@ -80,6 +86,10 @@ public class UpdateConcurrencyAdjusterParameters extends AbstractParameters {
 
   public Boolean minIsrBasedConcurrencyAdjustment() {
     return _minIsrBasedConcurrencyAdjustment;
+  }
+
+  public Boolean replicationThrottleAdjustment() {
+    return _replicationThrottleAdjustment;
   }
 
   @Override

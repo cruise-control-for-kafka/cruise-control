@@ -83,6 +83,35 @@ public class ParameterUtilsTest {
   }
 
   @Test
+  public void testReplicationThrottleAdjustment() {
+    String firstResponse = Boolean.TRUE.toString();
+    String secondResponse = Boolean.FALSE.toString();
+
+    // Mock for (1) default response (2) response for valid input with true/false.
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    EasyMock.expect(mockRequest.getParameterMap()).andReturn(Collections.emptyMap())
+            .andReturn(Collections.singletonMap(ParameterUtils.REPLICATION_THROTTLE_ADJUSTMENT_PARAM, new String[]{firstResponse}))
+            .andReturn(Collections.singletonMap(ParameterUtils.REPLICATION_THROTTLE_ADJUSTMENT_PARAM, new String[]{secondResponse}));
+    EasyMock.expect(mockRequest.getParameter(ParameterUtils.REPLICATION_THROTTLE_ADJUSTMENT_PARAM))
+            .andReturn(firstResponse).andReturn(secondResponse);
+
+    // Verify default response.
+    EasyMock.replay(mockRequest);
+    Boolean replicationThrottleAdjustment = ParameterUtils.replicationThrottleAdjustment(mockRequest);
+    Assert.assertNull(replicationThrottleAdjustment);
+
+    // Verify response for valid input.
+    replicationThrottleAdjustment = ParameterUtils.replicationThrottleAdjustment(mockRequest);
+    Assert.assertNotNull(replicationThrottleAdjustment);
+    Assert.assertTrue(replicationThrottleAdjustment);
+    replicationThrottleAdjustment = ParameterUtils.replicationThrottleAdjustment(mockRequest);
+    Assert.assertNotNull(replicationThrottleAdjustment);
+    Assert.assertFalse(replicationThrottleAdjustment);
+
+    EasyMock.verify(mockRequest);
+  }
+
+  @Test
   public void testParseTimeRangeNotSet() {
     CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
     // Mock the request so that it does not contain start/end time

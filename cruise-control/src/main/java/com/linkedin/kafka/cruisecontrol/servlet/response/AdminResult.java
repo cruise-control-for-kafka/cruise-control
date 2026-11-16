@@ -31,6 +31,8 @@ public class AdminResult extends AbstractCruiseControlResponse {
   protected static final String CONCURRENCY_ADJUSTER_ENABLED_AFTER = "concurrencyAdjusterEnabledAfter";
   @JsonResponseField(required = false)
   protected static final String MIN_ISR_BASED_CONCURRENCY_ADJUSTMENT_REQUEST = "minIsrBasedConcurrencyAdjustmentRequest";
+  @JsonResponseField(required = false)
+  protected static final String REPLICATION_THROTTLE_ADJUSTMENT_REQUEST = "replicationThrottleAdjustmentRequest";
   protected final Map<AnomalyType, Boolean> _selfHealingEnabledBefore;
   protected final Map<AnomalyType, Boolean> _selfHealingEnabledAfter;
   protected String _ongoingConcurrencyChangeRequest;
@@ -38,6 +40,7 @@ public class AdminResult extends AbstractCruiseControlResponse {
   protected final Map<ConcurrencyType, Boolean> _concurrencyAdjusterEnabledBefore;
   protected final Map<ConcurrencyType, Boolean> _concurrencyAdjusterEnabledAfter;
   protected String _minIsrBasedConcurrencyAdjustmentRequest;
+  protected String _replicationThrottleAdjustmentRequest;
 
   public AdminResult(Map<AnomalyType, Boolean> selfHealingEnabledBefore,
                      Map<AnomalyType, Boolean> selfHealingEnabledAfter,
@@ -46,6 +49,7 @@ public class AdminResult extends AbstractCruiseControlResponse {
                      Map<ConcurrencyType, Boolean> concurrencyAdjusterEnabledBefore,
                      Map<ConcurrencyType, Boolean> concurrencyAdjusterEnabledAfter,
                      String minIsrBasedConcurrencyAdjustmentRequest,
+                     String replicationThrottleAdjustmentRequest,
                      KafkaCruiseControlConfig config) {
     super(config);
     _selfHealingEnabledBefore = selfHealingEnabledBefore;
@@ -55,6 +59,7 @@ public class AdminResult extends AbstractCruiseControlResponse {
     _concurrencyAdjusterEnabledBefore = concurrencyAdjusterEnabledBefore;
     _concurrencyAdjusterEnabledAfter = concurrencyAdjusterEnabledAfter;
     _minIsrBasedConcurrencyAdjustmentRequest = minIsrBasedConcurrencyAdjustmentRequest;
+    _replicationThrottleAdjustmentRequest = replicationThrottleAdjustmentRequest;
   }
 
   @Override
@@ -69,6 +74,7 @@ public class AdminResult extends AbstractCruiseControlResponse {
     _concurrencyAdjusterEnabledBefore.clear();
     _concurrencyAdjusterEnabledAfter.clear();
     _minIsrBasedConcurrencyAdjustmentRequest = null;
+    _replicationThrottleAdjustmentRequest = null;
   }
 
   protected String getJsonString() {
@@ -90,6 +96,9 @@ public class AdminResult extends AbstractCruiseControlResponse {
     }
     if (_minIsrBasedConcurrencyAdjustmentRequest != null && !_minIsrBasedConcurrencyAdjustmentRequest.isEmpty()) {
       jsonStructure.put(MIN_ISR_BASED_CONCURRENCY_ADJUSTMENT_REQUEST, _minIsrBasedConcurrencyAdjustmentRequest);
+    }
+    if (_replicationThrottleAdjustmentRequest != null && !_replicationThrottleAdjustmentRequest.isEmpty()) {
+      jsonStructure.put(REPLICATION_THROTTLE_ADJUSTMENT_REQUEST, _replicationThrottleAdjustmentRequest);
     }
     jsonStructure.put(VERSION, JSON_VERSION);
     return new Gson().toJson(jsonStructure);
@@ -114,6 +123,9 @@ public class AdminResult extends AbstractCruiseControlResponse {
     }
     if (_minIsrBasedConcurrencyAdjustmentRequest != null && !_minIsrBasedConcurrencyAdjustmentRequest.isEmpty()) {
       sb.append(String.format("%s: %s%n", MIN_ISR_BASED_CONCURRENCY_ADJUSTMENT_REQUEST, _minIsrBasedConcurrencyAdjustmentRequest));
+    }
+    if (_replicationThrottleAdjustmentRequest != null && !_replicationThrottleAdjustmentRequest.isEmpty()) {
+      sb.append(String.format("%s: %s%n", REPLICATION_THROTTLE_ADJUSTMENT_REQUEST, _replicationThrottleAdjustmentRequest));
     }
     sb.append("}");
 
