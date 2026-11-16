@@ -34,6 +34,7 @@ import org.apache.kafka.common.TopicPartition;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.Map;
 import org.apache.kafka.common.TopicPartitionReplica;
 import org.easymock.EasyMock;
@@ -42,6 +43,8 @@ import org.junit.Test;
 import static org.apache.kafka.common.KafkaFuture.completedFuture;
 import static org.easymock.EasyMock.anyObject;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC1;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC2;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC3;
@@ -187,6 +190,46 @@ public class ExecutionTaskPlannerTest {
     leaderMovementTasks = planner.getLeadershipMovementTasks(manager);
     assertEquals("1 of the leader movements should return in one batch", 1, leaderMovementTasks.size());
     assertEquals(leaderMovementTasks.get(0).proposal(), _leaderMovement3);
+  }
+
+  @Test
+  public void testMovementThatCannotStartTakesNoSlot() {
+    // _partitionMovement0 moves TOPIC2-0 out of broker 0, and _partitionMovement3 moves TOPIC2-3 to broker 0.
+    List<ExecutionProposal> proposals = List.of(_partitionMovement0, _partitionMovement1, _partitionMovement2, _partitionMovement3);
+    Set<PartitionInfo> partitions = new HashSet<>();
+    proposals.forEach(p -> partitions.add(generatePartitionInfo(p, false)));
+    Cluster expectedCluster = new Cluster(null, _expectedNodes, partitions, Collections.emptySet(), Collections.emptySet());
+    StrategyOptions strategyOptions = new StrategyOptions.Builder(expectedCluster).build();
+
+    // Broker 0 has one slot. When _partitionMovement0 can start, it takes the slot and _partitionMovement3 waits.
+    ExecutionTaskPlanner planner =
+        new ExecutionTaskPlanner(null, new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties()));
+    planner.addExecutionProposals(proposals, strategyOptions, null);
+    Set<ExecutionProposal> started = planner.getInterBrokerReplicaMovementTasks(readyBrokers(1), Collections.emptySet(),
+                                                                                _defaultPartitionsMaxCap)
+                                            .stream().map(ExecutionTask::proposal).collect(Collectors.toSet());
+    assertTrue(started.contains(_partitionMovement0));
+    assertFalse(started.contains(_partitionMovement3));
+
+    // When _partitionMovement0 cannot start, it does not take the slot of broker 0, so _partitionMovement3 starts.
+    planner = new ExecutionTaskPlanner(null, new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties()));
+    planner.addExecutionProposals(proposals, strategyOptions, null);
+    started = planner.getInterBrokerReplicaMovementTasks(readyBrokers(1), Collections.emptySet(), _defaultPartitionsMaxCap,
+                                                         task -> task.proposal() != _partitionMovement0)
+                     .stream().map(ExecutionTask::proposal).collect(Collectors.toSet());
+    assertFalse(started.contains(_partitionMovement0));
+    assertTrue(started.contains(_partitionMovement3));
+    // It stays pending for the next call.
+    assertTrue(planner.remainingInterBrokerReplicaMovements().stream().anyMatch(t -> t.proposal() == _partitionMovement0));
+  }
+
+  private static Map<Integer, Integer> readyBrokers(int slotsOfBroker0) {
+    Map<Integer, Integer> readyBrokers = new HashMap<>();
+    readyBrokers.put(0, slotsOfBroker0);
+    readyBrokers.put(1, 14);
+    readyBrokers.put(2, 14);
+    readyBrokers.put(3, 14);
+    return readyBrokers;
   }
 
   @Test

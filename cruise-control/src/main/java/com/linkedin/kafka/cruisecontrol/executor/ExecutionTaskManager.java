@@ -15,6 +15,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.utils.Time;
@@ -72,20 +73,38 @@ public class ExecutionTaskManager {
    * @return A list of execution tasks that move the replicas cross brokers.
    */
   public synchronized List<ExecutionTask> getInterBrokerReplicaMovementTasks() {
+    return getInterBrokerReplicaMovementTasks(task -> true);
+  }
+
+  /**
+   * @param canStart Whether a movement that complies with the concurrency constraints can start, see
+   * {@link ExecutionTaskPlanner#getInterBrokerReplicaMovementTasks(Map, Set, int, Predicate)}.
+   * @return A list of execution tasks that move the replicas cross brokers.
+   */
+  public synchronized List<ExecutionTask> getInterBrokerReplicaMovementTasks(Predicate<ExecutionTask> canStart) {
     Map<Integer, Integer> brokersReadyForReplicaMovement = brokersReadyForReplicaMovement(_inProgressInterBrokerReplicaMovementsByBrokerId,
                                                                                           ConcurrencyType.INTER_BROKER_REPLICA);
     return _executionTaskPlanner.getInterBrokerReplicaMovementTasks(
         brokersReadyForReplicaMovement, _inProgressPartitionsForInterBrokerMovement,
-        _executionConcurrencyManager.maxClusterInterBrokerPartitionMovements());
+        _executionConcurrencyManager.maxClusterInterBrokerPartitionMovements(), canStart);
   }
 
   /**
    * @return A list of execution tasks that move the replicas cross disks of the same broker.
    */
   public synchronized List<ExecutionTask> getIntraBrokerReplicaMovementTasks() {
+    return getIntraBrokerReplicaMovementTasks(task -> true);
+  }
+
+  /**
+   * @param canStart Whether a movement that complies with the concurrency constraint can start, see
+   * {@link ExecutionTaskPlanner#getIntraBrokerReplicaMovementTasks(Map, Predicate)}.
+   * @return A list of execution tasks that move the replicas cross disks of the same broker.
+   */
+  public synchronized List<ExecutionTask> getIntraBrokerReplicaMovementTasks(Predicate<ExecutionTask> canStart) {
     Map<Integer, Integer> brokersReadyForReplicaMovement = brokersReadyForReplicaMovement(_inProgressIntraBrokerReplicaMovementsByBrokerId,
                                                                                           ConcurrencyType.INTRA_BROKER_REPLICA);
-    return _executionTaskPlanner.getIntraBrokerReplicaMovementTasks(brokersReadyForReplicaMovement);
+    return _executionTaskPlanner.getIntraBrokerReplicaMovementTasks(brokersReadyForReplicaMovement, canStart);
   }
 
   /**
@@ -108,6 +127,20 @@ public class ExecutionTaskManager {
     });
 
     return readyBrokers;
+  }
+
+  /**
+   * @return Inter-broker replica movement tasks that are yet to start.
+   */
+  public synchronized Set<ExecutionTask> remainingInterBrokerReplicaMovements() {
+    return new HashSet<>(_executionTaskPlanner.remainingInterBrokerReplicaMovements());
+  }
+
+  /**
+   * @return Intra-broker replica movement tasks that are yet to start.
+   */
+  public synchronized Set<ExecutionTask> remainingIntraBrokerReplicaMovements() {
+    return new HashSet<>(_executionTaskPlanner.remainingIntraBrokerReplicaMovements());
   }
 
   /**

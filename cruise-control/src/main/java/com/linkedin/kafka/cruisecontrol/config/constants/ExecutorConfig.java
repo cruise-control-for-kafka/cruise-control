@@ -46,6 +46,19 @@ public final class ExecutorConfig {
       + "overwhelming the cluster by intra-broker partition movements.";
 
   /**
+   * <code>num.concurrent.partition.movements.per.logdir</code>
+   */
+  public static final String NUM_CONCURRENT_PARTITION_MOVEMENTS_PER_LOGDIR_CONFIG = "num.concurrent.partition.movements.per.logdir";
+  public static final int DEFAULT_NUM_CONCURRENT_PARTITION_MOVEMENTS_PER_LOGDIR = 0;
+  public static final String NUM_CONCURRENT_PARTITION_MOVEMENTS_PER_LOGDIR_DOC = "The maximum number of partition movements that "
+      + "may read from or write to a logdir of a broker at the same time, on top of the per-broker limits. An inter-broker "
+      + "movement reads from the logdir of the partition's leader and writes to the logdir that each new replica is created in, "
+      + "which the executor then picks (a logdir under this limit, preferring one with room for the replica) and requests "
+      + "before it starts the movement. An intra-broker movement reads from its source logdir and writes to its destination "
+      + "logdir. A movement that would exceed the limit waits, and movements on other logdirs go ahead. Setting it to 1 keeps "
+      + "at most one movement on each disk. 0 disables the limit.";
+
+  /**
    * <code>num.concurrent.leader.movements</code>
    */
   public static final String NUM_CONCURRENT_LEADER_MOVEMENTS_CONFIG = "num.concurrent.leader.movements";
@@ -519,6 +532,12 @@ public final class ExecutorConfig {
                             atLeast(1),
                             ConfigDef.Importance.MEDIUM,
                             NUM_CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_DOC)
+                    .define(NUM_CONCURRENT_PARTITION_MOVEMENTS_PER_LOGDIR_CONFIG,
+                            ConfigDef.Type.INT,
+                            DEFAULT_NUM_CONCURRENT_PARTITION_MOVEMENTS_PER_LOGDIR,
+                            atLeast(0),
+                            ConfigDef.Importance.MEDIUM,
+                            NUM_CONCURRENT_PARTITION_MOVEMENTS_PER_LOGDIR_DOC)
                     .define(NUM_CONCURRENT_LEADER_MOVEMENTS_CONFIG,
                             ConfigDef.Type.INT,
                             DEFAULT_NUM_CONCURRENT_LEADER_MOVEMENTS,

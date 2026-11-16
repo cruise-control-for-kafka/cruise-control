@@ -65,10 +65,12 @@ import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.config.ConfigResource;
 import org.apache.kafka.common.utils.Time;
+import org.apache.kafka.common.TopicPartitionReplica;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.util.Collection;
 import java.util.List;
+import java.util.function.Predicate;
 
 import static com.linkedin.cruisecontrol.CruiseControlUtils.currentUtcDate;
 import static com.linkedin.cruisecontrol.CruiseControlUtils.utcDateFor;
@@ -1308,6 +1310,8 @@ public class Executor {
     private final Collection<Integer> _demotedBrokers;
 
     private final Collection<Integer> _removedBrokers;
+    // Limits the replica movements on each logdir, or null if num.concurrent.partition.movements.per.logdir is 0.
+    private final LogDirMovementLimit _logDirMovementLimit;
 
     ProposalExecutionRunnable(LoadMonitor loadMonitor,
                               Collection<Integer> demotedBrokers,
@@ -1318,6 +1322,8 @@ public class Executor {
       _demotedBrokers = demotedBrokers;
       _removedBrokers = removedBrokers;
       _executionException = null;
+      int maxMovementsPerLogDir = _config.getInt(ExecutorConfig.NUM_CONCURRENT_PARTITION_MOVEMENTS_PER_LOGDIR_CONFIG);
+      _logDirMovementLimit = maxMovementsPerLogDir > 0 ? new LogDirMovementLimit(_adminClient, _config, maxMovementsPerLogDir) : null;
       if (isTriggeredByUserRequest && _userTaskManager == null) {
         processExecuteProposalsFailure();
         _hasOngoingExecution = false;
@@ -1616,12 +1622,14 @@ public class Executor {
       // Exhaust all the pending partition movements.
       while ((partitionsToMove > 0 || !inExecutionTasks().isEmpty()) && _stopSignal.get() == NO_STOP_EXECUTION) {
         // Get tasks to execute.
-        List<ExecutionTask> tasksToExecute = _executionTaskManager.getInterBrokerReplicaMovementTasks();
+        List<ExecutionTask> tasksToExecute =
+            _executionTaskManager.getInterBrokerReplicaMovementTasks(canStartReplicaMovement(INTER_BROKER_REPLICA_ACTION));
         LOG.info("User task {}: Executor will execute {} task(s)", _uuid, tasksToExecute.size());
 
         AlterPartitionReassignmentsResult result = null;
         if (!tasksToExecute.isEmpty()) {
           throttleHelper.setThrottles(tasksToExecute.stream().map(ExecutionTask::proposal).collect(Collectors.toList()));
+          maybePinLogDirsOfReplicasToAdd(tasksToExecute);
           // Execute the tasks.
           _executionTaskManager.markTasksInProgress(tasksToExecute);
           result = ExecutionUtils.submitReplicaReassignmentTasks(_adminClient, tasksToExecute);
@@ -1675,6 +1683,50 @@ public class Executor {
       }
     }
 
+    /**
+     * If the replica movements on each logdir are limited, count the movements in progress on each logdir involved in the
+     * remaining movements of the given type, and return a check that admits a movement only if its logdirs are under the limit.
+     *
+     * @param type The type of replica movements to start.
+     * @return Whether a replica movement can start.
+     */
+    private Predicate<ExecutionTask> canStartReplicaMovement(ExecutionTask.TaskType type) {
+      if (_logDirMovementLimit == null) {
+        return task -> true;
+      }
+      Set<ExecutionTask> remainingTasks = type == INTER_BROKER_REPLICA_ACTION ? _executionTaskManager.remainingInterBrokerReplicaMovements()
+                                                                              : _executionTaskManager.remainingIntraBrokerReplicaMovements();
+      if (remainingTasks.isEmpty()) {
+        return task -> true;
+      }
+      Cluster cluster = _metadataClient.cluster();
+      Set<ExecutionTask> inExecutionTasks = inExecutionTasks();
+      Set<ExecutionTask> involvedTasks = new HashSet<>(remainingTasks);
+      involvedTasks.addAll(inExecutionTasks);
+      _logDirMovementLimit.refresh(cluster, inExecutionTasks, LogDirMovementLimit.brokersInvolved(involvedTasks, cluster));
+      LOG.debug("User task {}: Partition movements by logdir by broker: {}.", _uuid, _logDirMovementLimit.numMovementsByLogDirByBroker());
+      return _logDirMovementLimit::tryReserve;
+    }
+
+    /**
+     * If the replica movements on each logdir are limited, request the destination brokers of the given inter-broker replica
+     * movements to create the replicas to add in the logdirs picked for them.
+     *
+     * @param tasks Inter-broker replica movement tasks about to start.
+     */
+    private void maybePinLogDirsOfReplicasToAdd(List<ExecutionTask> tasks) {
+      if (_logDirMovementLimit == null) {
+        return;
+      }
+      Map<TopicPartitionReplica, String> pickedLogDirs = _logDirMovementLimit.pickedLogDirs(tasks);
+      Set<TopicPartitionReplica> pinnedReplicas = pinLogdirsOfReplicasToAdd(pickedLogDirs, _adminClient, _config);
+      for (TopicPartitionReplica replica : pickedLogDirs.keySet()) {
+        if (!pinnedReplicas.contains(replica)) {
+          _logDirMovementLimit.forgetPickedLogDir(replica);
+        }
+      }
+    }
+
     private void intraBrokerMoveReplicas() {
       int numTotalPartitionMovements = _executionTaskManager.numRemainingIntraBrokerPartitionMovements();
       long totalDataToMoveInMB = _executionTaskManager.remainingIntraBrokerDataToMoveInMB();
@@ -1685,7 +1737,8 @@ public class Executor {
       // Exhaust all the pending partition movements.
       while ((partitionsToMove > 0 || !inExecutionTasks().isEmpty()) && _stopSignal.get() == NO_STOP_EXECUTION) {
         // Get tasks to execute.
-        List<ExecutionTask> tasksToExecute = _executionTaskManager.getIntraBrokerReplicaMovementTasks();
+        List<ExecutionTask> tasksToExecute =
+            _executionTaskManager.getIntraBrokerReplicaMovementTasks(canStartReplicaMovement(INTRA_BROKER_REPLICA_ACTION));
         LOG.info("User task {}: Executor will execute {} task(s)", _uuid, tasksToExecute.size());
 
         if (!tasksToExecute.isEmpty()) {
