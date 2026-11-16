@@ -221,6 +221,13 @@ public class ExecutionProposal {
   }
 
   /**
+   * @return The size of the partition in MB.
+   */
+  public long partitionSize() {
+    return _partitionSize;
+  }
+
+  /**
    * @return The total number of bytes to move across brokers involved in this proposal.
    */
   public long interBrokerDataToMoveInMB() {

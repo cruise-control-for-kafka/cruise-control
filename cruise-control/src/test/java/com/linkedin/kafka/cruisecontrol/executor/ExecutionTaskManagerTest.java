@@ -26,6 +26,7 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 
 
 public class ExecutionTaskManagerTest {
@@ -121,6 +122,45 @@ public class ExecutionTaskManagerTest {
     }
     assertEquals(MOCK_DEFAULT_CONCURRENCY.get(ConcurrencyType.LEADERSHIP_CLUSTER).intValue(),
         taskManager.getExecutionConcurrencyManager().getExecutionClusterLeadershipConcurrency());
+  }
+
+  @Test
+  public void testAdoptInProgressTasks() {
+    ReplicaPlacementInfo r0 = new ReplicaPlacementInfo(0);
+    ReplicaPlacementInfo r1 = new ReplicaPlacementInfo(1);
+    ReplicaPlacementInfo r2 = new ReplicaPlacementInfo(2);
+    TopicPartition adoptedTp = new TopicPartition("topic", 0);
+    TopicPartition pendingTp = new TopicPartition("topic", 1);
+    // Both proposals move the replica on broker 0 to broker 1 without a leader movement.
+    ExecutionProposal adopted = new ExecutionProposal(adoptedTp, 10, r2, Arrays.asList(r2, r0), Arrays.asList(r2, r1));
+    ExecutionProposal pending = new ExecutionProposal(pendingTp, 20, r2, Arrays.asList(r2, r0), Arrays.asList(r2, r1));
+    Node[] replicas = {new Node(2, "null", -1), new Node(0, "null", -1)};
+    Set<PartitionInfo> partitions = Set.of(new PartitionInfo(adoptedTp.topic(), adoptedTp.partition(), replicas[0], replicas, replicas),
+                                           new PartitionInfo(pendingTp.topic(), pendingTp.partition(), replicas[0], replicas, replicas));
+    Cluster cluster = new Cluster(null, Arrays.asList(new Node(0, "null", -1), new Node(1, "null", -1), new Node(2, "null", -1)),
+                                  partitions, Collections.emptySet(), Collections.emptySet());
+
+    taskManager.clear();
+    taskManager.setExecutionModeForTaskTracker(false);
+    taskManager.addExecutionProposals(Arrays.asList(adopted, pending), Collections.emptySet(),
+                                      new StrategyOptions.Builder(cluster).build(), null);
+    taskManager.getExecutionConcurrencyManager().setExecutionConcurrencyForAllBrokersOrCluster(null, ConcurrencyType.INTER_BROKER_REPLICA);
+    long taskStateVersion = taskManager.taskStateVersion();
+
+    List<ExecutionTask> adoptedTasks = taskManager.adoptInProgressTasks(Collections.singleton(adoptedTp), Collections.emptySet());
+    assertEquals(1, adoptedTasks.size());
+    assertEquals(adoptedTp, adoptedTasks.get(0).proposal().topicPartition());
+    assertEquals(ExecutionTaskState.IN_PROGRESS, adoptedTasks.get(0).state());
+    assertNotEquals(taskStateVersion, taskManager.taskStateVersion());
+    assertEquals(Collections.singleton(adoptedTasks.get(0)), taskManager.inExecutionTasks());
+    assertEquals(2, taskManager.allTasks().size());
+
+    // The adopted task is not returned for execution (i.e. it will not be submitted again), but the pending task is.
+    List<ExecutionTask> tasksToExecute = taskManager.getInterBrokerReplicaMovementTasks();
+    assertEquals(1, tasksToExecute.size());
+    assertEquals(pendingTp, tasksToExecute.get(0).proposal().topicPartition());
+    assertEquals(1, taskManager.numRemainingInterBrokerPartitionMovements());
+    taskManager.clear();
   }
 
   private void verifyStateChangeSequence(List<ExecutionTaskState> stateSequence,

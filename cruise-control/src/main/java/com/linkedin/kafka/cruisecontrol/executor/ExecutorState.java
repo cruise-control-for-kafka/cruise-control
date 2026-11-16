@@ -30,6 +30,8 @@ public final class ExecutorState {
   private static final String RECENTLY_DEMOTED_BROKERS = "recentlyDemotedBrokers";
   @JsonResponseField(required = false)
   private static final String RECENTLY_REMOVED_BROKERS = "recentlyRemovedBrokers";
+  @JsonResponseField(required = false)
+  private static final String RECOVERY = "recovery";
 
   @JsonResponseField(required = false)
   private static final String NUM_TOTAL_LEADERSHIP_MOVEMENTS = "numTotalLeadershipMovements";
@@ -139,7 +141,9 @@ public final class ExecutorState {
     LEADER_MOVEMENT_TASK_IN_PROGRESS,
     STOPPING_EXECUTION,
     INITIALIZING_PROPOSAL_EXECUTION,
-    GENERATING_PROPOSALS_FOR_EXECUTION
+    GENERATING_PROPOSALS_FOR_EXECUTION,
+    // Cleaning up an execution that was interrupted by a Cruise Control restart and is not resumed.
+    RECOVERING_INTERRUPTED_EXECUTION
   }
 
   public static final Set<State> IN_PROGRESS_STATES = Set.of(State.INTER_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS,
@@ -156,6 +160,8 @@ public final class ExecutorState {
   private final boolean _isTriggeredByUserRequest;
   private final Set<Integer> _recentlyDemotedBrokers;
   private final Set<Integer> _recentlyRemovedBrokers;
+  // The recovery of the latest execution interrupted by a Cruise Control restart (if any).
+  private final Map<String, Object> _recovery;
 
   private ExecutorState(State state,
                         ExecutionTasksSummary executionTasksSummary,
@@ -173,6 +179,34 @@ public final class ExecutorState {
     _recentlyDemotedBrokers = recentlyDemotedBrokers;
     _recentlyRemovedBrokers = recentlyRemovedBrokers;
     _isTriggeredByUserRequest = isTriggeredByUserRequest;
+    _recovery = null;
+  }
+
+  private ExecutorState(ExecutorState executorState, Map<String, Object> recovery) {
+    _state = executorState._state;
+    _executionTasksSummary = executorState._executionTasksSummary;
+    _executionConcurrencySummary = executorState._executionConcurrencySummary;
+    _uuid = executorState._uuid;
+    _reason = executorState._reason;
+    _recentlyDemotedBrokers = executorState._recentlyDemotedBrokers;
+    _recentlyRemovedBrokers = executorState._recentlyRemovedBrokers;
+    _isTriggeredByUserRequest = executorState._isTriggeredByUserRequest;
+    _recovery = recovery;
+  }
+
+  /**
+   * @param recovery The recovery of the latest execution interrupted by a Cruise Control restart, or {@code null} if none.
+   * @return This executor state, along with the given recovery of an interrupted execution.
+   */
+  public ExecutorState withRecovery(Map<String, Object> recovery) {
+    return recovery == null ? this : new ExecutorState(this, recovery);
+  }
+
+  /**
+   * @return The recovery of the latest execution interrupted by a Cruise Control restart, or {@code null} if none.
+   */
+  public Map<String, Object> recovery() {
+    return _recovery;
   }
 
   /**
@@ -252,6 +286,29 @@ public final class ExecutorState {
                                                               Set<Integer> recentlyRemovedBrokers,
                                                               boolean isTriggeredByUserRequest) {
     return new ExecutorState(State.GENERATING_PROPOSALS_FOR_EXECUTION,
+                             null,
+                             null,
+                             uuid,
+                             reason,
+                             recentlyDemotedBrokers,
+                             recentlyRemovedBrokers,
+                             isTriggeredByUserRequest);
+  }
+
+  /**
+   * @param uuid UUID of the interrupted execution.
+   * @param reason Reason of the interrupted execution.
+   * @param recentlyDemotedBrokers Recently demoted broker IDs.
+   * @param recentlyRemovedBrokers Recently removed broker IDs.
+   * @param isTriggeredByUserRequest Whether the interrupted execution was triggered by a user request.
+   * @return Executor state when cleaning up an execution that was interrupted by a Cruise Control restart.
+   */
+  public static ExecutorState recoveringInterruptedExecution(String uuid,
+                                                             String reason,
+                                                             Set<Integer> recentlyDemotedBrokers,
+                                                             Set<Integer> recentlyRemovedBrokers,
+                                                             boolean isTriggeredByUserRequest) {
+    return new ExecutorState(State.RECOVERING_INTERRUPTED_EXECUTION,
                              null,
                              null,
                              uuid,
@@ -387,6 +444,7 @@ public final class ExecutorState {
       case STARTING_EXECUTION:
       case INITIALIZING_PROPOSAL_EXECUTION:
       case GENERATING_PROPOSALS_FOR_EXECUTION:
+      case RECOVERING_INTERRUPTED_EXECUTION:
         populateUuidFieldInJsonStructure(execState, _uuid);
         execState.put(TRIGGERED_TASK_REASON, _reason);
         break;
@@ -493,6 +551,9 @@ public final class ExecutorState {
         execState.put(ERROR, "ILLEGAL_STATE_EXCEPTION");
         break;
     }
+    if (_recovery != null) {
+      execState.put(RECOVERY, _recovery);
+    }
     return execState;
   }
 
@@ -500,6 +561,12 @@ public final class ExecutorState {
    * @return Plaintext response for the executor state.
    */
   public String getPlaintext() {
+    String plaintext = plaintextWithoutRecovery();
+    // Every plaintext state ends with a closing brace.
+    return _recovery == null ? plaintext : String.format("%s, %s: %s}", plaintext.substring(0, plaintext.length() - 1), RECOVERY, _recovery);
+  }
+
+  private String plaintextWithoutRecovery() {
     String recentlyDemotedBrokers = (_recentlyDemotedBrokers != null && !_recentlyDemotedBrokers.isEmpty())
                                     ? String.format(", %s: %s", RECENTLY_DEMOTED_BROKERS, _recentlyDemotedBrokers) : "";
     String recentlyRemovedBrokers = (_recentlyRemovedBrokers != null && !_recentlyRemovedBrokers.isEmpty())
@@ -513,6 +580,7 @@ public final class ExecutorState {
       case STARTING_EXECUTION:
       case INITIALIZING_PROPOSAL_EXECUTION:
       case GENERATING_PROPOSALS_FOR_EXECUTION:
+      case RECOVERING_INTERRUPTED_EXECUTION:
         return String.format("{%s: %s, %s: %s, %s: %s%s%s}", STATE, _state,
                              _isTriggeredByUserRequest ? TRIGGERED_USER_TASK_ID : TRIGGERED_SELF_HEALING_TASK_ID,
                              _uuid, TRIGGERED_TASK_REASON, _reason, recentlyDemotedBrokers, recentlyRemovedBrokers);

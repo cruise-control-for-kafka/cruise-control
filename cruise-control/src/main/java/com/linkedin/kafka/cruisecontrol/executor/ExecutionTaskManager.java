@@ -9,7 +9,9 @@ import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.executor.concurrency.ExecutionConcurrencyManager;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.ReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.StrategyOptions;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -17,6 +19,7 @@ import java.util.Map;
 import java.util.Set;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.TopicPartitionReplica;
 import org.apache.kafka.common.utils.Time;
 
 import static com.linkedin.kafka.cruisecontrol.executor.ExecutionTask.TaskType;
@@ -185,6 +188,69 @@ public class ExecutionTaskManager {
           break;
       }
     }
+  }
+
+  /**
+   * Adopt the given inter-broker and intra-broker replica movements that are already being executed by Kafka (e.g. submitted
+   * before a Cruise Control restart): The corresponding pending tasks are marked as in progress without being submitted
+   * again, so that the execution only monitors them until completion.
+   *
+   * @param interBrokerPartitions Partitions with an ongoing inter-broker replica movement to adopt.
+   * @param intraBrokerReplicas Replicas with an ongoing intra-broker replica movement to adopt.
+   * @return The adopted tasks.
+   */
+  public synchronized List<ExecutionTask> adoptInProgressTasks(Set<TopicPartition> interBrokerPartitions,
+                                                               Set<TopicPartitionReplica> intraBrokerReplicas) {
+    return adoptInProgressTasks(interBrokerPartitions, intraBrokerReplicas, Collections.emptyMap());
+  }
+
+  /**
+   * Adopt the in-progress tasks as {@link #adoptInProgressTasks(Set, Set)} does, keeping the time each of them started before the restart.
+   *
+   * @param interBrokerPartitions Partitions whose inter-broker replica reassignment is still ongoing.
+   * @param intraBrokerReplicas Replicas whose intra-broker movement is still ongoing.
+   * @param startTimeByTask The time each task started before the restart, by task key (see {@link ExecutionTaskPlanner#taskKey}).
+   * @return The adopted tasks.
+   */
+  public synchronized List<ExecutionTask> adoptInProgressTasks(Set<TopicPartition> interBrokerPartitions,
+                                                               Set<TopicPartitionReplica> intraBrokerReplicas,
+                                                               Map<String, Long> startTimeByTask) {
+    List<ExecutionTask> adoptedTasks = new ArrayList<>(_executionTaskPlanner.removeInterBrokerReplicaMovementTasks(interBrokerPartitions));
+    adoptedTasks.addAll(_executionTaskPlanner.removeIntraBrokerReplicaMovementTasks(intraBrokerReplicas));
+    markTasksInProgress(adoptedTasks);
+    for (ExecutionTask task : adoptedTasks) {
+      Long startTimeMs = startTimeByTask.get(ExecutionTaskPlanner.taskKey(task.type(), task.proposal().topicPartition(), task.brokerId()));
+      if (startTimeMs != null) {
+        task.keepStartTimeOfAdoptedTask(startTimeMs);
+      }
+    }
+    return adoptedTasks;
+  }
+
+  /**
+   * Make the tasks added next keep the given execution ids -- see {@link ExecutionTaskPlanner#keepExecutionIds(Map, long)}.
+   *
+   * @param executionIdByTask Execution id to keep for each task, by task key.
+   * @param nextExecutionId The execution id to give the next task without a kept id (at least).
+   */
+  public synchronized void keepExecutionIds(Map<String, Long> executionIdByTask, long nextExecutionId) {
+    _executionTaskPlanner.keepExecutionIds(executionIdByTask, nextExecutionId);
+  }
+
+  /**
+   * @return A new execution id, not given to any task yet.
+   */
+  public synchronized long newExecutionId() {
+    return _executionTaskPlanner.newExecutionId();
+  }
+
+  /**
+   * Count the tasks that an execution interrupted by a restart finished before the restart in the progress of the resumed execution.
+   *
+   * @param finishedTasks Tasks in their final state (i.e. completed, dead, or aborted), which are not executed again.
+   */
+  public synchronized void restoreFinishedTasks(Collection<ExecutionTask> finishedTasks) {
+    _executionTaskTracker.addFinishedTasksToTrace(finishedTasks);
   }
 
   /**
@@ -358,6 +424,20 @@ public class ExecutionTaskManager {
     _inProgressPartitionsForInterBrokerMovement.clear();
     _executionTaskPlanner.clear();
     _executionTaskTracker.clear();
+  }
+
+  /**
+   * @return A number that changes whenever a task is added or changes its state.
+   */
+  public synchronized long taskStateVersion() {
+    return _executionTaskTracker.taskStateVersion();
+  }
+
+  /**
+   * @return All tasks of the current execution regardless of their type and state.
+   */
+  public synchronized List<ExecutionTask> allTasks() {
+    return _executionTaskTracker.allTasks();
   }
 
   /**

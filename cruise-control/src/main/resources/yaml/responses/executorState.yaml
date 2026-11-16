@@ -20,6 +20,7 @@ ExecutorState:
         - STOPPING_EXECUTION
         - INITIALIZING_PROPOSAL_EXECUTION
         - GENERATING_PROPOSALS_FOR_EXECUTION
+        - RECOVERING_INTERRUPTED_EXECUTION
     recentlyDemotedBrokers:
       type: array
       items:
@@ -30,6 +31,8 @@ ExecutorState:
       items:
         type: integer
         format: int32
+    recovery:
+      $ref: '#/InterruptedExecutionRecovery'
     # leadership information
     numTotalLeadershipMovements:
       type: integer
@@ -222,3 +225,63 @@ ExecutionTask:
     brokerId:
       type: integer
       format: int32
+InterruptedExecutionRecovery:
+  type: object
+  description: What happened to the latest execution that was interrupted by a Cruise Control restart -- reported until the next execution starts.
+  required:
+    - uuid
+    - reason
+    - triggeredByUserRequest
+    - startTime
+    - interruptedTime
+    - resumeCount
+    - status
+  properties:
+    uuid:
+      type: string
+    reason:
+      type: string
+    triggeredByUserRequest:
+      type: boolean
+    startTime:
+      type: string
+    interruptedTime:
+      type: string
+    resumeCount:
+      type: integer
+      format: int32
+    status:
+      type: string
+      enum:
+        - DECIDING
+        - RESUMED
+        - WAITING_FOR_IN_FLIGHT_MOVEMENTS
+        - WAITING_FOR_KAFKA
+        - CANCELLING_IN_FLIGHT_MOVEMENTS
+        - REMOVING_THROTTLES
+        - CLEANED_UP
+        - FAILED
+        - RETAINED_FOR_RESTART
+    reasonNotResumed:
+      type: string
+    divergences:
+      type: array
+      items:
+        type: string
+    tasksByRecoveryAction:
+      type: object
+      additionalProperties:
+        type: integer
+        format: int32
+    inFlightPartitionMovements:
+      type: array
+      items:
+        type: string
+    cleanupDeadline:
+      type: string
+    keptThrottles:
+      type: array
+      items:
+        type: string
+    error:
+      type: string

@@ -51,6 +51,8 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
   private static final String BROKER_ID = "brokerId";
   private static final Map<ExecutionTaskState, Set<ExecutionTaskState>> VALID_TRANSFER = new HashMap<>();
   private final TaskType _type;
+  // The broker of a task that is not an intra-broker replica movement.
+  public static final int NO_BROKER_ID = -1;
   private final long _executionId;
   private final ExecutionProposal _proposal;
   // _brokerId is only relevant for intra-broker replica action, otherwise it will be -1.
@@ -91,7 +93,7 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
     }
     _executionId = executionId;
     _proposal = proposal;
-    _brokerId = brokerId == null ? -1 : brokerId;
+    _brokerId = brokerId == null ? NO_BROKER_ID : brokerId;
     _state = ExecutionTaskState.PENDING;
     _type = type;
     _startTimeMs = -1L;
@@ -179,6 +181,19 @@ public class ExecutionTask implements Comparable<ExecutionTask> {
     this._state = ExecutionTaskState.IN_PROGRESS;
     _startTimeMs = now;
     _alertTimeMs += now;
+  }
+
+  /**
+   * Keep the start time of an in-progress task that was submitted before a Cruise Control restart and is adopted by the resumed
+   * execution -- rather than the time it was adopted.
+   *
+   * @param startTimeMs The time the task started before the restart, ignored if unknown (i.e. not positive) or later than its adoption.
+   */
+  public void keepStartTimeOfAdoptedTask(long startTimeMs) {
+    if (_state == ExecutionTaskState.IN_PROGRESS && startTimeMs > 0 && startTimeMs < _startTimeMs) {
+      _alertTimeMs -= _startTimeMs - startTimeMs;
+      _startTimeMs = startTimeMs;
+    }
   }
 
   /**
