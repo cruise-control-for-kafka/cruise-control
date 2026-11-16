@@ -1,10 +1,22 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.monitor.task;
 
-import com.linkedin.kafka.cruisecontrol.common.MetadataClient;
+import com.linkedin.kafka.cruisecontrol.common.MetadataAdminClient;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.MetricFetcherManager;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.SampleStore;
 import java.util.concurrent.TimeoutException;
@@ -20,7 +32,7 @@ class SamplingTask implements Runnable {
   private static final Logger LOG = LoggerFactory.getLogger(SamplingTask.class);
   private final long _samplingIntervalMs;
   private final Time _time;
-  private final MetadataClient _metadataClient;
+  private final MetadataAdminClient _metadataClient;
   private final LoadMonitorTaskRunner _loadMonitorTaskRunner;
   private final MetricFetcherManager _metricFetcherManager;
   private final SampleStore _sampleStore;
@@ -28,7 +40,7 @@ class SamplingTask implements Runnable {
   private long _lastSamplingPeriodEndTimeMs;
 
   SamplingTask(long samplingIntervalMs,
-               MetadataClient metadataClient,
+               MetadataAdminClient metadataClient,
                LoadMonitorTaskRunner loadMonitorTaskRunner,
                MetricFetcherManager metricFetcherManager,
                SampleStore sampleStore,
@@ -54,7 +66,7 @@ class SamplingTask implements Runnable {
         boolean hasSamplingError;
         long deadline = _time.milliseconds() + _samplingIntervalMs;
         do {
-          _metadataClient.refreshMetadata();
+          _metadataClient.cluster();
           samplingPeriodEndMs = _time.milliseconds();
 
           hasSamplingError = _metricFetcherManager.fetchMetricSamples(_lastSamplingPeriodEndTimeMs,

@@ -1,5 +1,17 @@
 /*
  * Copyright 2017 LinkedIn Corp. Licensed under the BSD 2-Clause License (the "License"). See License in the project root for license information.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package com.linkedin.kafka.cruisecontrol.monitor.sampling.aggregator;
@@ -17,6 +29,7 @@ import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
 import com.linkedin.kafka.cruisecontrol.monitor.metricdefinition.KafkaMetricDef;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.holder.PartitionEntity;
 import com.linkedin.kafka.cruisecontrol.monitor.sampling.holder.PartitionMetricSample;
+import com.linkedin.kafka.cruisecontrol.common.MetadataAdminClient;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
@@ -24,7 +37,6 @@ import java.util.SortedMap;
 import java.util.SortedSet;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import org.apache.kafka.clients.Metadata;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
@@ -45,21 +57,21 @@ import org.slf4j.LoggerFactory;
 public class KafkaPartitionMetricSampleAggregator extends MetricSampleAggregator<String, PartitionEntity> {
   private static final Logger LOG = LoggerFactory.getLogger(KafkaPartitionMetricSampleAggregator.class);
   private final int _maxAllowedExtrapolationsPerPartition;
-  private final Metadata _metadata;
+  private final MetadataAdminClient _metadataClient;
 
   /**
    * Construct the metric sample aggregator.
    *
    * @param config   The load monitor configurations.
-   * @param metadata The metadata of the cluster.
+   * @param metadataClient The metadata client for fetching cluster state.
    */
-  public KafkaPartitionMetricSampleAggregator(KafkaCruiseControlConfig config, Metadata metadata) {
+  public KafkaPartitionMetricSampleAggregator(KafkaCruiseControlConfig config, MetadataAdminClient metadataClient) {
     super(config.getInt(MonitorConfig.NUM_PARTITION_METRICS_WINDOWS_CONFIG),
           config.getLong(MonitorConfig.PARTITION_METRICS_WINDOW_MS_CONFIG),
           config.getInt(MonitorConfig.MIN_SAMPLES_PER_PARTITION_METRICS_WINDOW_CONFIG).byteValue(),
           config.getInt(MonitorConfig.PARTITION_METRIC_SAMPLE_AGGREGATOR_COMPLETENESS_CACHE_SIZE_CONFIG),
           KafkaMetricDef.commonMetricDef());
-    _metadata = metadata;
+    _metadataClient = metadataClient;
     _maxAllowedExtrapolationsPerPartition =
         config.getInt(MonitorConfig.MAX_ALLOWED_EXTRAPOLATIONS_PER_PARTITION_CONFIG);
     _sampleType = SampleType.PARTITION;
@@ -266,7 +278,7 @@ public class KafkaPartitionMetricSampleAggregator extends MetricSampleAggregator
   private boolean isValidSample(PartitionMetricSample sample, boolean leaderValidation) {
     boolean validLeader = true;
     if (leaderValidation) {
-      Node leader = _metadata.fetch().leaderFor(sample.entity().tp());
+      Node leader = _metadataClient.cluster().leaderFor(sample.entity().tp());
       validLeader = leader != null && sample.brokerId() == leader.id();
       if (!validLeader) {
         LOG.warn("The metric sample is discarded due to invalid leader. Current leader {}, Sample: {}", leader, sample);
