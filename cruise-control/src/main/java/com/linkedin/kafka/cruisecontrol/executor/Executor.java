@@ -42,12 +42,14 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -102,6 +104,10 @@ public class Executor {
   private final long _defaultExecutionProgressCheckIntervalMs;
   private Long _requestedExecutionProgressCheckIntervalMs;
   private final ExecutorService _proposalExecutor;
+  // Starts an execution queued after the ongoing one (see #queueExecution), once the ongoing one completes.
+  private final ExecutorService _queuedExecutionStarter;
+  // An execution queued after the ongoing execution of the same user task, or null if none.
+  private volatile QueuedExecution _queuedExecution;
   private final Admin _adminClient;
   private final double _leaderMovementTimeoutMs;
 
@@ -208,6 +214,9 @@ public class Executor {
     _requestedExecutionProgressCheckIntervalMs = null;
     _proposalExecutor =
         Executors.newSingleThreadExecutor(new KafkaCruiseControlThreadFactory("ProposalExecutor", false, LOG));
+    _queuedExecutionStarter =
+        Executors.newSingleThreadExecutor(new KafkaCruiseControlThreadFactory("QueuedExecutionStarter", true, LOG));
+    _queuedExecution = null;
     _latestDemoteStartTimeMsByBrokerId = new ConcurrentHashMap<>();
     _latestRemoveStartTimeMsByBrokerId = new ConcurrentHashMap<>();
     _executorState = ExecutorState.noTaskInProgress(recentlyDemotedBrokers(), recentlyRemovedBrokers());
@@ -747,7 +756,10 @@ public class Executor {
    * @return The current executor state.
    */
   public ExecutorState state() {
-    return _executorState;
+    QueuedExecution queuedExecution = _queuedExecution;
+    // A queued execution that a stop request cancelled does not start, so it is not reported.
+    return queuedExecution == null || queuedExecution.isCancelled() ? _executorState
+                                                                   : _executorState.withQueuedExecution(queuedExecution.type());
   }
 
   /**
@@ -827,6 +839,9 @@ public class Executor {
                                             boolean skipInterBrokerReplicaConcurrencyAdjustment) throws OngoingExecutionException {
     setExecutionMode(isKafkaAssignerMode);
     sanityCheckExecuteProposals(loadMonitor, uuid);
+    if (isQueuedExecutionCancelled(uuid)) {
+      throw new IllegalStateException(String.format("The queued %s was stopped before it started.", _queuedExecution.type()));
+    }
     _skipInterBrokerReplicaConcurrencyAdjustment = skipInterBrokerReplicaConcurrencyAdjustment;
     try {
       initProposalExecution(proposals, unthrottledBrokers, requestedInterBrokerPartitionMovementConcurrency, requestedMaxClusterPartitionMovements,
@@ -1084,9 +1099,143 @@ public class Executor {
 
   private void processExecuteProposalsFailure() {
     _executionTaskManager.clear();
+    endQueuedExecution(true, "the execution failed to start");
     _uuid = null;
     _reasonSupplier = null;
     _executorState = ExecutorState.noTaskInProgress(recentlyDemotedBrokers(), recentlyRemovedBrokers());
+  }
+
+  /**
+   * Queue an execution to start after the execution about to start for the given user task completes -- e.g. a disk rebalance
+   * after a rebalance. The executor must be generating proposals for execution for the given UUID.
+   * <ul>
+   *   <li>If that execution completes (i.e. it is not stopped and does not fail), the executor stays reserved for the same UUID, as
+   *   when generating proposals for execution, so no other execution (e.g. a self-healing one) can start in between, and runs
+   *   {@code start} on a separate thread. {@code start} must then either execute proposals with the same UUID, or call
+   *   {@link #finishQueuedExecution(String, boolean, String)}.</li>
+   *   <li>If that execution is stopped or fails, or a stop is requested before the queued execution starts, the queued execution is
+   *   dropped.</li>
+   * </ul>
+   * The user task stays in execution from the first execution until the queued one finishes.
+   *
+   * @param uuid UUID of the user task whose execution is about to start.
+   * @param type The type of the queued execution, as reported in the executor state (e.g. REBALANCE_DISK).
+   * @param start Generates the proposals of the queued execution and executes them.
+   */
+  public synchronized void queueExecution(String uuid, String type, Runnable start) {
+    if (_executorState.state() != GENERATING_PROPOSALS_FOR_EXECUTION || !Objects.equals(uuid, _uuid)) {
+      throw new IllegalStateException(String.format("Cannot queue an execution for %s while the executor is in %s state for %s.", uuid,
+                                                    _executorState.state(), _uuid));
+    }
+    _queuedExecution = new QueuedExecution(type, start);
+    LOG.info("User task {}: Queued a {} to start after the execution completes.", uuid, type);
+  }
+
+  /**
+   * Start the execution queued for the given user task right away, without an execution before it -- e.g. because the rebalance
+   * before it has nothing to move. The executor stays reserved for the same UUID.
+   *
+   * @param uuid UUID of the user task.
+   */
+  public synchronized void startQueuedExecutionNow(String uuid) {
+    QueuedExecution queuedExecution = _queuedExecution;
+    if (queuedExecution == null || queuedExecution.isHandedOff() || _executorState.state() != GENERATING_PROPOSALS_FOR_EXECUTION
+        || !Objects.equals(uuid, _uuid)) {
+      throw new IllegalStateException(String.format("No execution is queued for %s.", uuid));
+    }
+    // The user task is not in execution yet: the queued execution starts it.
+    queuedExecution.handOff(false);
+    reserveForQueuedExecution(queuedExecution, _executorState.isTriggeredByUserRequest());
+    startQueuedExecution(queuedExecution);
+  }
+
+  /**
+   * @param uuid UUID of the user task.
+   * @return {@code true} if a stop was requested while the execution queued for the given user task was about to start.
+   */
+  public boolean isQueuedExecutionCancelled(String uuid) {
+    QueuedExecution queuedExecution = _queuedExecution;
+    return queuedExecution != null && queuedExecution.isCancelled() && Objects.equals(uuid, _uuid);
+  }
+
+  /**
+   * Finish the execution queued for the given user task without executing it -- e.g. because there is nothing to move, the
+   * cluster model is not ready, or a stop was requested. Releases the executor and finishes the user task.
+   *
+   * @param uuid UUID of the user task.
+   * @param completedWithError {@code true} if the queued execution could not run, {@code false} if it had nothing to do.
+   * @param message Why the queued execution finished without executing.
+   */
+  public synchronized void finishQueuedExecution(String uuid, boolean completedWithError, String message) {
+    QueuedExecution queuedExecution = _queuedExecution;
+    if (queuedExecution == null || !queuedExecution.isHandedOff() || !Objects.equals(uuid, _uuid)) {
+      LOG.warn("User task {}: No queued execution to finish ({}).", uuid, message);
+      return;
+    }
+    endQueuedExecution(completedWithError, message);
+    _uuid = null;
+    _reasonSupplier = null;
+    _executorState = ExecutorState.noTaskInProgress(recentlyDemotedBrokers(), recentlyRemovedBrokers());
+  }
+
+  /**
+   * Keep the executor reserved for the user task of the given queued execution, as when generating proposals for execution.
+   *
+   * @param queuedExecution The queued execution about to start.
+   * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
+   */
+  private void reserveForQueuedExecution(QueuedExecution queuedExecution, boolean isTriggeredByUserRequest) {
+    String reason = String.format("%s (queued %s)", _reasonSupplier.get(), queuedExecution.type());
+    _reasonSupplier = () -> reason;
+    _executorState = ExecutorState.generatingProposalsForExecution(_uuid, reason, recentlyDemotedBrokers(), recentlyRemovedBrokers(),
+                                                                   isTriggeredByUserRequest);
+  }
+
+  /**
+   * Run the start of the given queued execution on a separate thread. Not synchronized: also called by the execution thread, which
+   * {@link #shutdown()} waits for while holding the lock.
+   *
+   * @param queuedExecution The queued execution, already reserved for.
+   */
+  private void startQueuedExecution(QueuedExecution queuedExecution) {
+    LOG.info("User task {}: Starting the queued {}.", _uuid, queuedExecution.type());
+    try {
+      _queuedExecutionStarter.execute(queuedExecution.start());
+    } catch (RejectedExecutionException ree) {
+      endQueuedExecution(true, "Cruise Control is shutting down");
+      _uuid = null;
+      _reasonSupplier = null;
+      _executorState = ExecutorState.noTaskInProgress(recentlyDemotedBrokers(), recentlyRemovedBrokers());
+    }
+  }
+
+  /**
+   * End the queued execution (if any) without executing it: drop it if the execution before it has not completed yet, or finish it
+   * (and its user task, if in execution) if it was handed over.
+   *
+   * Not synchronized: also called by the execution thread, which {@link #shutdown()} waits for while holding the lock.
+   *
+   * @param completedWithError {@code true} if the queued execution could not run.
+   * @param message Why the queued execution ends.
+   */
+  private void endQueuedExecution(boolean completedWithError, String message) {
+    QueuedExecution queuedExecution = _queuedExecution;
+    if (queuedExecution == null) {
+      return;
+    }
+    _queuedExecution = null;
+    String notification = String.format("Task [%s] queued %s %s: %s", _uuid, queuedExecution.type(),
+                                        queuedExecution.isHandedOff() ? "finished without executing" : "is dropped", message);
+    if (queuedExecution.isHandedOff() && queuedExecution.isUserTaskInExecution()) {
+      _userTaskManager.markTaskExecutionFinished(_uuid, completedWithError);
+    }
+    if (completedWithError) {
+      _executorNotifier.sendAlert(notification);
+      OPERATION_LOG.warn(notification);
+    } else {
+      _executorNotifier.sendNotification(notification);
+      OPERATION_LOG.info(notification);
+    }
   }
 
   /**
@@ -1128,6 +1277,7 @@ public class Executor {
     if (_executorState.state() == GENERATING_PROPOSALS_FOR_EXECUTION) {
       if (uuid != null && uuid.equals(_uuid)) {
         LOG.warn("Failed to generate proposals for execution (UUID: {} reason: {}).", uuid, _reasonSupplier.get());
+        endQueuedExecution(true, "failed to generate proposals for execution");
         _uuid = null;
         _reasonSupplier = null;
         _executorState = ExecutorState.noTaskInProgress(recentlyDemotedBrokers(), recentlyRemovedBrokers());
@@ -1143,6 +1293,11 @@ public class Executor {
    * @param stopExternalAgent Whether to stop ongoing execution started by external agents.
    */
   public synchronized void userTriggeredStopExecution(boolean stopExternalAgent) {
+    QueuedExecution queuedExecution = _queuedExecution;
+    if (queuedExecution != null && !queuedExecution.isCancelled()) {
+      queuedExecution.cancel();
+      LOG.info("User task {}: User requested to stop, hence the queued {} does not start.", _uuid, queuedExecution.type());
+    }
     if (stopExecution()) {
       LOG.info("User task {}: User requested to stop the ongoing proposal execution.", _uuid);
       _numExecutionStoppedByUser.incrementAndGet();
@@ -1175,6 +1330,11 @@ public class Executor {
    */
   public synchronized void shutdown() {
     LOG.info("Shutting down executor.");
+    QueuedExecution queuedExecution = _queuedExecution;
+    if (queuedExecution != null) {
+      queuedExecution.cancel();
+    }
+    _queuedExecutionStarter.shutdownNow();
 
     try {
       _flipOngoingExecutionMutex.acquire();
@@ -1395,6 +1555,11 @@ public class Executor {
       if (_isTriggeredByUserRequest) {
         userTaskInfo = _userTaskManager.markTaskExecutionBegan(_uuid);
       }
+      QueuedExecution queuedExecution = _queuedExecution;
+      if (queuedExecution != null && queuedExecution.isHandedOff()) {
+        // The queued execution is the one starting now.
+        _queuedExecution = null;
+      }
       String reason = _reasonSupplier.get();
       _executorState = ExecutorState.executionStarting(_uuid, reason, _recentlyDemotedBrokers, _recentlyRemovedBrokers, _isTriggeredByUserRequest);
       OPERATION_LOG.info("Task [{}] execution starts. The reason of execution is {}.", _uuid, reason);
@@ -1503,8 +1668,16 @@ public class Executor {
       // If the finished task was triggered by a user request, update task status in user task manager; if task is triggered
       // by an anomaly self-healing, update the task status in anomaly detector.
       boolean completeWithError = (_executorState.state() == STOPPING_EXECUTION || _executionException != null);
+      QueuedExecution queuedExecution = _queuedExecution;
+      boolean startsQueuedExecution = queuedExecution != null && !completeWithError && !queuedExecution.isCancelled();
+      if (queuedExecution != null && !startsQueuedExecution) {
+        endQueuedExecution(true, "the execution before it did not complete");
+      }
       if (userTaskInfo != null) {
-        _userTaskManager.markTaskExecutionFinished(_uuid, completeWithError);
+        if (!startsQueuedExecution) {
+          // Otherwise, the user task stays in execution until the queued execution finishes.
+          _userTaskManager.markTaskExecutionFinished(_uuid, completeWithError);
+        }
       } else {
         _anomalyDetectorManager.markSelfHealingFinished(_uuid, completeWithError);
       }
@@ -1519,7 +1692,9 @@ public class Executor {
         notifyExecutionFinished(String.format("%sinterrupted with exception %s.", prefix, _executionException.getMessage()),
                                 true);
       } else {
-        notifyExecutionFinished(String.format("%sfinished.", prefix), false);
+        notifyExecutionFinished(String.format("%sfinished.%s", prefix, startsQueuedExecution
+                                                                      ? String.format(" The queued %s starts next.", queuedExecution.type())
+                                                                      : ""), false);
       }
     }
 
@@ -1535,9 +1710,24 @@ public class Executor {
 
     private void clearCompletedExecution() {
       _executionTaskManager.clear();
-      _uuid = null;
-      _reasonSupplier = null;
-      _executorState = ExecutorState.noTaskInProgress(_recentlyDemotedBrokers, _recentlyRemovedBrokers);
+      // A queued execution is still set only if this execution completed (see #notifyFinishedTask).
+      QueuedExecution queuedExecution = _queuedExecution;
+      if (queuedExecution != null) {
+        // The user task stayed in execution for the queued execution.
+        queuedExecution.handOff(_isTriggeredByUserRequest);
+        if (queuedExecution.isCancelled()) {
+          endQueuedExecution(true, "a stop was requested before it started");
+          queuedExecution = null;
+        } else {
+          // Reserve the executor for the same user task before releasing it below, so no other execution can start in between.
+          reserveForQueuedExecution(queuedExecution, _isTriggeredByUserRequest);
+        }
+      }
+      if (queuedExecution == null) {
+        _uuid = null;
+        _reasonSupplier = null;
+        _executorState = ExecutorState.noTaskInProgress(_recentlyDemotedBrokers, _recentlyRemovedBrokers);
+      }
       _hasOngoingExecution = false;
       _noOngoingExecutionSemaphore.release();
       _stopSignal.set(NO_STOP_EXECUTION);
@@ -1545,6 +1735,9 @@ public class Executor {
       // Ensure that sampling mode is adjusted properly to continue collecting partition metrics after execution.
       _loadMonitor.setSamplingMode(ALL);
       _concurrencyAdjuster.clearAdjustment();
+      if (queuedExecution != null) {
+        startQueuedExecution(queuedExecution);
+      }
     }
 
     private void updateOngoingExecutionState() {
@@ -2231,6 +2424,56 @@ public class Executor {
         _partitionMovementMbPerSec.set(totalDataToMoveInMB / (double) executionTimeMs * 1000);
         _partitionMovementCountPerSec.set(numTotalPartitionMovements / (double) executionTimeMs * 1000);
       }
+    }
+  }
+
+  /**
+   * An execution queued after the ongoing execution of the same user task.
+   */
+  private static final class QueuedExecution {
+    private final String _type;
+    private final Runnable _start;
+    // The execution before it completed (or there was none), so this one is about to start.
+    private volatile boolean _handedOff;
+    // The user task is in execution, so finishing this execution without executing it finishes the user task.
+    private volatile boolean _isUserTaskInExecution;
+    private volatile boolean _cancelled;
+
+    private QueuedExecution(String type, Runnable start) {
+      _type = type;
+      _start = start;
+      _handedOff = false;
+      _isUserTaskInExecution = false;
+      _cancelled = false;
+    }
+
+    private String type() {
+      return _type;
+    }
+
+    private Runnable start() {
+      return _start;
+    }
+
+    private boolean isHandedOff() {
+      return _handedOff;
+    }
+
+    private void handOff(boolean isUserTaskInExecution) {
+      _isUserTaskInExecution = isUserTaskInExecution;
+      _handedOff = true;
+    }
+
+    private boolean isUserTaskInExecution() {
+      return _isUserTaskInExecution;
+    }
+
+    private boolean isCancelled() {
+      return _cancelled;
+    }
+
+    private void cancel() {
+      _cancelled = true;
     }
   }
 }

@@ -48,6 +48,9 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -93,6 +96,7 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
   private static final Random RANDOM = new Random(0xDEADBEEF);
   private static final int MOCK_BROKER_ID_TO_DROP = 1;
   private static final long MOCK_CURRENT_TIME = 1596842708000L;
+  private static final String QUEUED_EXECUTION_TYPE = "REBALANCE_DISK";
 
   /**
    * Setup the unit test.
@@ -559,6 +563,98 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
                   "Proposal execution did not finish within the time limit",
                   EXECUTION_DEADLINE_MS, EXECUTION_REGULAR_CHECK_MS);
     EasyMock.verify(mockMetadataClient, mockLoadMonitor, mockAnomalyDetectorManager, mockUserTaskInfo, mockUserTaskManager);
+  }
+
+  @Test
+  public void testQueuedExecutionStartsAfterTheExecutionCompletes() throws Exception {
+    List<ExecutionProposal> proposalsToExecute = new ArrayList<>();
+    List<ExecutionProposal> proposalsToCheck = new ArrayList<>();
+    populateProposals(proposalsToExecute, proposalsToCheck, 0);
+    UserTaskManager.UserTaskInfo mockUserTaskInfo = getMockUserTaskInfo();
+    // One user task stays in execution from the first execution until the queued one finishes.
+    UserTaskManager mockUserTaskManager = EasyMock.mock(UserTaskManager.class);
+    EasyMock.expect(mockUserTaskManager.markTaskExecutionBegan(RANDOM_UUID)).andReturn(mockUserTaskInfo).once();
+    mockUserTaskManager.markTaskExecutionFinished(RANDOM_UUID, false);
+    expectLastCall().once();
+    ExecutorNotifier mockExecutorNotifier = EasyMock.niceMock(ExecutorNotifier.class);
+    LoadMonitor mockLoadMonitor = getMockLoadMonitor();
+    AnomalyDetectorManager mockAnomalyDetectorManager = getMockAnomalyDetector(RANDOM_UUID, false);
+    EasyMock.replay(mockUserTaskInfo, mockUserTaskManager, mockExecutorNotifier, mockLoadMonitor, mockAnomalyDetectorManager);
+    Executor executor = new Executor(new KafkaCruiseControlConfig(getExecutorProperties()), Time.SYSTEM, new MetricRegistry(),
+                                     _cluster.adminClient(), new MetadataAdminClient(_cluster.adminClient()), mockExecutorNotifier,
+                                     mockAnomalyDetectorManager);
+    executor.setUserTaskManager(mockUserTaskManager);
+
+    CompletableFuture<ExecutorState> stateWhenQueuedExecutionStarts = new CompletableFuture<>();
+    executor.setGeneratingProposalsForExecution(RANDOM_UUID, ExecutorTest.class::getSimpleName, true);
+    executor.queueExecution(RANDOM_UUID, QUEUED_EXECUTION_TYPE, () -> stateWhenQueuedExecutionStarts.complete(executor.state()));
+    assertEquals(QUEUED_EXECUTION_TYPE, executor.state().queuedExecution());
+    executor.executeProposals(proposalsToExecute, Collections.emptySet(), null, mockLoadMonitor, null, null, null, null, null, null, null,
+                              null, true, RANDOM_UUID, false, false);
+
+    // Once the execution completes, the executor stays reserved for the same user task and starts the queued execution.
+    ExecutorState state = stateWhenQueuedExecutionStarts.get(EXECUTION_DEADLINE_MS, TimeUnit.MILLISECONDS);
+    assertEquals(ExecutorState.State.GENERATING_PROPOSALS_FOR_EXECUTION, state.state());
+    assertEquals(RANDOM_UUID, state.uuid());
+    assertEquals(QUEUED_EXECUTION_TYPE, state.queuedExecution());
+    assertTrue(state.getPlaintext(), state.getPlaintext().endsWith(String.format(", queuedExecution: %s}", QUEUED_EXECUTION_TYPE)));
+    assertEquals(QUEUED_EXECUTION_TYPE, state.getJsonStructure(false).get("queuedExecution"));
+    assertFalse(executor.hasOngoingExecution());
+    // No other execution can start in between.
+    assertThrows(OngoingExecutionException.class,
+                 () -> executor.setGeneratingProposalsForExecution(UNKNOWN_UUID, ExecutorTest.class::getSimpleName, true));
+
+    // The queued execution has nothing to do: the executor is released and the user task finishes.
+    executor.finishQueuedExecution(RANDOM_UUID, false, "nothing to do");
+    assertEquals(ExecutorState.State.NO_TASK_IN_PROGRESS, executor.state().state());
+    assertNull(executor.state().queuedExecution());
+    EasyMock.verify(mockUserTaskManager);
+    executor.shutdown();
+  }
+
+  @Test
+  public void testQueuedExecutionIsDroppedWhenTheExecutionIsStopped() throws Exception {
+    createTopics(0);
+    // The proposal moves replicas, but the metadata never changes, so the movement stays in progress until it is stopped.
+    ExecutionProposal proposal = new ExecutionProposal(TP1, 0, new ReplicaPlacementInfo(1),
+                                                       Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(1)),
+                                                       Arrays.asList(new ReplicaPlacementInfo(1), new ReplicaPlacementInfo(0)));
+    MetadataAdminClient mockMetadataClient = EasyMock.mock(MetadataAdminClient.class);
+    Node node0 = new Node(BROKER_ID_0, "host0", 100);
+    Node node1 = new Node(BROKER_ID_1, "host1", 100);
+    Node[] replicas = {node0, node1};
+    PartitionInfo partitionInfo = new PartitionInfo(TP1.topic(), TP1.partition(), node1, replicas, replicas);
+    Cluster cluster = new Cluster("id", Arrays.asList(node0, node1), Collections.singleton(partitionInfo), Collections.emptySet(),
+                                  Collections.emptySet());
+    EasyMock.expect(mockMetadataClient.cluster()).andReturn(cluster).anyTimes();
+    UserTaskManager.UserTaskInfo mockUserTaskInfo = getMockUserTaskInfo();
+    UserTaskManager mockUserTaskManager = getMockUserTaskManager(RANDOM_UUID, mockUserTaskInfo, Collections.singletonList(true));
+    LoadMonitor mockLoadMonitor = getMockLoadMonitor();
+    AnomalyDetectorManager mockAnomalyDetectorManager = getMockAnomalyDetector(RANDOM_UUID, true);
+    ExecutorNotifier mockExecutorNotifier = EasyMock.niceMock(ExecutorNotifier.class);
+    EasyMock.replay(mockMetadataClient, mockUserTaskInfo, mockUserTaskManager, mockLoadMonitor, mockAnomalyDetectorManager,
+                    mockExecutorNotifier);
+    Executor executor = new Executor(new KafkaCruiseControlConfig(getExecutorProperties()), new MockTime(), new MetricRegistry(), null,
+                                     mockMetadataClient, mockExecutorNotifier, mockAnomalyDetectorManager);
+    executor.setUserTaskManager(mockUserTaskManager);
+
+    AtomicBoolean queuedExecutionStarted = new AtomicBoolean(false);
+    executor.setGeneratingProposalsForExecution(RANDOM_UUID, ExecutorTest.class::getSimpleName, true);
+    executor.queueExecution(RANDOM_UUID, QUEUED_EXECUTION_TYPE, () -> queuedExecutionStarted.set(true));
+    executor.executeProposals(Collections.singletonList(proposal), Collections.emptySet(), null, mockLoadMonitor, null, null, null, null,
+                              null, null, null, null, true, RANDOM_UUID, false, false);
+    waitUntilTrue(() -> executor.state().state() == ExecutorState.State.INTER_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS,
+                  "Inter-broker replica movement task did not start within the time limit", EXECUTION_DEADLINE_MS, EXECUTION_SHORT_CHECK_MS);
+    assertEquals(QUEUED_EXECUTION_TYPE, executor.state().queuedExecution());
+    executor.userTriggeredStopExecution(false);
+    waitUntilTrue(() -> (!executor.hasOngoingExecution() && executor.state().state() == ExecutorState.State.NO_TASK_IN_PROGRESS),
+                  "Proposal execution did not finish within the time limit", EXECUTION_DEADLINE_MS, EXECUTION_REGULAR_CHECK_MS);
+
+    // The queued execution is dropped, and the user task finishes with an error once.
+    assertNull(executor.state().queuedExecution());
+    assertFalse(queuedExecutionStarted.get());
+    EasyMock.verify(mockUserTaskManager);
+    executor.shutdown();
   }
 
   /**

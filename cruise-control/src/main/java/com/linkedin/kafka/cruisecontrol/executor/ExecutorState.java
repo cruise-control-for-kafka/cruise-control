@@ -24,6 +24,8 @@ public final class ExecutorState {
   private static final String TRIGGERED_SELF_HEALING_TASK_ID = "triggeredSelfHealingTaskId";
   @JsonResponseField(required = false)
   private static final String TRIGGERED_TASK_REASON = "triggeredTaskReason";
+  @JsonResponseField(required = false)
+  private static final String QUEUED_EXECUTION = "queuedExecution";
   @JsonResponseField
   private static final String STATE = "state";
   @JsonResponseField(required = false)
@@ -156,6 +158,8 @@ public final class ExecutorState {
   private final boolean _isTriggeredByUserRequest;
   private final Set<Integer> _recentlyDemotedBrokers;
   private final Set<Integer> _recentlyRemovedBrokers;
+  // The type of an execution queued after the ongoing one of the same user task (e.g. REBALANCE_DISK), or null if none.
+  private final String _queuedExecution;
 
   private ExecutorState(State state,
                         ExecutionTasksSummary executionTasksSummary,
@@ -173,6 +177,41 @@ public final class ExecutorState {
     _recentlyDemotedBrokers = recentlyDemotedBrokers;
     _recentlyRemovedBrokers = recentlyRemovedBrokers;
     _isTriggeredByUserRequest = isTriggeredByUserRequest;
+    _queuedExecution = null;
+  }
+
+  private ExecutorState(ExecutorState executorState, String queuedExecution) {
+    _state = executorState._state;
+    _executionTasksSummary = executorState._executionTasksSummary;
+    _executionConcurrencySummary = executorState._executionConcurrencySummary;
+    _uuid = executorState._uuid;
+    _reason = executorState._reason;
+    _recentlyDemotedBrokers = executorState._recentlyDemotedBrokers;
+    _recentlyRemovedBrokers = executorState._recentlyRemovedBrokers;
+    _isTriggeredByUserRequest = executorState._isTriggeredByUserRequest;
+    _queuedExecution = queuedExecution;
+  }
+
+  /**
+   * @param queuedExecution The type of an execution queued after the ongoing one of the same user task (e.g. REBALANCE_DISK).
+   * @return A copy of this executor state that reports the given queued execution.
+   */
+  public ExecutorState withQueuedExecution(String queuedExecution) {
+    return new ExecutorState(this, queuedExecution);
+  }
+
+  /**
+   * @return The type of an execution queued after the ongoing one of the same user task, or {@code null} if none.
+   */
+  public String queuedExecution() {
+    return _queuedExecution;
+  }
+
+  /**
+   * @return {@code true} if the execution is triggered by a user request, {@code false} otherwise.
+   */
+  public boolean isTriggeredByUserRequest() {
+    return _isTriggeredByUserRequest;
   }
 
   /**
@@ -493,6 +532,9 @@ public final class ExecutorState {
         execState.put(ERROR, "ILLEGAL_STATE_EXCEPTION");
         break;
     }
+    if (_queuedExecution != null) {
+      execState.put(QUEUED_EXECUTION, _queuedExecution);
+    }
     return execState;
   }
 
@@ -500,6 +542,13 @@ public final class ExecutorState {
    * @return Plaintext response for the executor state.
    */
   public String getPlaintext() {
+    String plaintext = plaintextWithoutQueuedExecution();
+    return _queuedExecution == null ? plaintext
+                                    : String.format("%s, %s: %s}", plaintext.substring(0, plaintext.lastIndexOf('}')), QUEUED_EXECUTION,
+                                                    _queuedExecution);
+  }
+
+  private String plaintextWithoutQueuedExecution() {
     String recentlyDemotedBrokers = (_recentlyDemotedBrokers != null && !_recentlyDemotedBrokers.isEmpty())
                                     ? String.format(", %s: %s", RECENTLY_DEMOTED_BROKERS, _recentlyDemotedBrokers) : "";
     String recentlyRemovedBrokers = (_recentlyRemovedBrokers != null && !_recentlyRemovedBrokers.isEmpty())

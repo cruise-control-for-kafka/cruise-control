@@ -9,6 +9,9 @@ ExecutorState:
       type: string
     triggeredTaskReason:
       type: string
+    queuedExecution:
+      type: string
+      description: The type of an execution queued after the ongoing one of the same user task (e.g. REBALANCE_DISK), if any.
     state:
       type: string
       enum:

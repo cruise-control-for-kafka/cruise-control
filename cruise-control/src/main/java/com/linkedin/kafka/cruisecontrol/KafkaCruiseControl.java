@@ -793,6 +793,47 @@ public class KafkaCruiseControl {
   }
 
   /**
+   * See {@link Executor#queueExecution(String, String, Runnable)}.
+   *
+   * @param uuid UUID of the user task whose execution is about to start.
+   * @param type The type of the queued execution, as reported in the executor state.
+   * @param start Generates the proposals of the queued execution and executes them.
+   */
+  public void queueExecution(String uuid, String type, Runnable start) {
+    _executor.queueExecution(uuid, type, start);
+  }
+
+  /**
+   * See {@link Executor#startQueuedExecutionNow(String)}.
+   *
+   * @param uuid UUID of the user task.
+   */
+  public void startQueuedExecutionNow(String uuid) {
+    _executor.startQueuedExecutionNow(uuid);
+  }
+
+  /**
+   * See {@link Executor#isQueuedExecutionCancelled(String)}.
+   *
+   * @param uuid UUID of the user task.
+   * @return {@code true} if a stop was requested while the execution queued for the given user task was about to start.
+   */
+  public boolean isQueuedExecutionCancelled(String uuid) {
+    return _executor.isQueuedExecutionCancelled(uuid);
+  }
+
+  /**
+   * See {@link Executor#finishQueuedExecution(String, boolean, String)}.
+   *
+   * @param uuid UUID of the user task.
+   * @param completedWithError {@code true} if the queued execution could not run, {@code false} if it had nothing to do.
+   * @param message Why the queued execution finished without executing.
+   */
+  public void finishQueuedExecution(String uuid, boolean completedWithError, String message) {
+    _executor.finishQueuedExecution(uuid, completedWithError, message);
+  }
+
+  /**
    * See {@link Executor#failGeneratingProposalsForExecution(String)}.
    * @param uuid UUID of the failed proposal generation for execution.
    */
