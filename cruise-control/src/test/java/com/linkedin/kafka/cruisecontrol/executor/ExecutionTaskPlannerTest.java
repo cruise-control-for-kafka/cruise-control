@@ -10,6 +10,7 @@ import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
 import com.linkedin.kafka.cruisecontrol.executor.concurrency.ExecutionConcurrencyManager;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.BaseReplicaMovementStrategy;
+import com.linkedin.kafka.cruisecontrol.executor.strategy.OneReplicaPerPartitionMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PostponeUrpReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeLargeReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.PrioritizeMinIsrWithOfflineReplicasStrategy;
@@ -42,6 +43,7 @@ import org.junit.Test;
 import static org.apache.kafka.common.KafkaFuture.completedFuture;
 import static org.easymock.EasyMock.anyObject;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC1;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC2;
 import static com.linkedin.kafka.cruisecontrol.common.TestConstants.TOPIC3;
@@ -410,6 +412,54 @@ public class ExecutionTaskPlannerTest {
     assertEquals("Second task", _partitionMovement2, partitionMovementTasks.get(1).proposal());
     assertEquals("Third task", _partitionMovement3, partitionMovementTasks.get(2).proposal());
     assertEquals("Fourth task", _partitionMovement1, partitionMovementTasks.get(3).proposal());
+  }
+
+  @Test
+  public void testOneReplicaPerPartitionMovementStrategy() {
+    TopicPartition tp = new TopicPartition(TOPIC3, 0);
+    ExecutionProposal rf3PartitionMovement = new ExecutionProposal(tp, 10, _r0, List.of(_r0, _r1, _r2), List.of(_r3, _r4, _r5));
+    List<ExecutionProposal> proposals = List.of(rf3PartitionMovement, _partitionMovement0);
+    ExecutionTaskPlanner planner =
+        new ExecutionTaskPlanner(null, new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties()));
+
+    Set<PartitionInfo> partitions = new HashSet<>();
+    partitions.add(generatePartitionInfo(rf3PartitionMovement, false));
+    partitions.add(generatePartitionInfo(_partitionMovement0, false));
+    Cluster expectedCluster = new Cluster(null, _rf4ExpectedNodes, partitions, Collections.emptySet(), Collections.emptySet());
+    StrategyOptions strategyOptions = new StrategyOptions.Builder(expectedCluster).build();
+
+    Map<Integer, Integer> readyBrokers = new HashMap<>();
+    for (Node node : _rf4ExpectedNodes) {
+      readyBrokers.put(node.id(), 8);
+    }
+    planner.addExecutionProposals(proposals, strategyOptions, new OneReplicaPerPartitionMovementStrategy());
+    // The RF3 partition movement is split into three steps, while the movement with a single new replica is not split.
+    assertEquals(4, planner.remainingInterBrokerReplicaMovements().size());
+
+    // Only the first step of the split partition movement is executable.
+    List<ExecutionTask> partitionMovementTasks = planner.getInterBrokerReplicaMovementTasks(readyBrokers, Collections.emptySet(),
+                                                                                            _defaultPartitionsMaxCap);
+    assertEquals(2, partitionMovementTasks.size());
+    ExecutionProposal firstStep = new ExecutionProposal(tp, 10, _r0, List.of(_r0, _r1, _r2), List.of(_r0, _r1, _r3));
+    Set<ExecutionProposal> executableProposals = new HashSet<>();
+    partitionMovementTasks.forEach(task -> executableProposals.add(task.proposal()));
+    assertEquals(Set.of(firstStep, _partitionMovement0), executableProposals);
+
+    // The next step is not executable while the partition is still in progress.
+    partitionMovementTasks = planner.getInterBrokerReplicaMovementTasks(readyBrokers, Set.of(tp), _defaultPartitionsMaxCap);
+    assertTrue(partitionMovementTasks.isEmpty());
+
+    // Once the preceding step has completed, the next step is executable.
+    partitionMovementTasks = planner.getInterBrokerReplicaMovementTasks(readyBrokers, Collections.emptySet(), _defaultPartitionsMaxCap);
+    assertEquals(1, partitionMovementTasks.size());
+    assertEquals(new ExecutionProposal(tp, 10, _r0, List.of(_r0, _r1, _r3), List.of(_r0, _r3, _r4)),
+                 partitionMovementTasks.get(0).proposal());
+
+    partitionMovementTasks = planner.getInterBrokerReplicaMovementTasks(readyBrokers, Collections.emptySet(), _defaultPartitionsMaxCap);
+    assertEquals(1, partitionMovementTasks.size());
+    assertEquals(new ExecutionProposal(tp, 10, _r0, List.of(_r0, _r3, _r4), List.of(_r3, _r4, _r5)),
+                 partitionMovementTasks.get(0).proposal());
+    assertTrue(planner.remainingInterBrokerReplicaMovements().isEmpty());
   }
 
   @Test

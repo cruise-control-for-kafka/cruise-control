@@ -157,6 +157,13 @@ public class ExecutionProposal {
   }
 
   /**
+   * @return The size of the partition.
+   */
+  public long partitionSize() {
+    return _partitionSize;
+  }
+
+  /**
    * @return The old leader of the partition before the executing the proposal.
    */
   public ReplicaPlacementInfo oldLeader() {

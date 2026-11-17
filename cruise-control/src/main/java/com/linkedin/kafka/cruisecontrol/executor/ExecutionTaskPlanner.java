@@ -9,6 +9,7 @@ import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.executor.concurrency.ExecutionConcurrencyManager;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.BaseReplicaMovementStrategy;
+import com.linkedin.kafka.cruisecontrol.executor.strategy.OneReplicaPerPartitionMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.ReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.StrategyOptions;
 import com.linkedin.kafka.cruisecontrol.model.ReplicaPlacementInfo;
@@ -63,6 +64,10 @@ import static org.apache.kafka.clients.admin.DescribeReplicaLogDirsResult.Replic
  * The task is tracked both under source broker and destination broker's plan.
  * Once a task is fulfilled, the task will be removed from both source broker and destination broker's execution plan.
  * <p>
+ * If the replica movement strategy contains {@link OneReplicaPerPartitionMovementStrategy}, the inter-broker partition
+ * movement of a proposal is split into sequential steps, each of which is a separate task. A step is executable only
+ * after the preceding step of the same partition has completed.
+ * <p>
  * This class is not thread safe.
  */
 public class ExecutionTaskPlanner {
@@ -71,6 +76,8 @@ public class ExecutionTaskPlanner {
   private Comparator<Integer> _interPartMoveBrokerComparator;
   private final Map<Integer, SortedSet<ExecutionTask>> _intraPartMoveTasksByBrokerId;
   private final Set<ExecutionTask> _remainingInterBrokerReplicaMovements;
+  // The preceding step of each inter-broker replica movement task that is not the first step of its partition movement.
+  private final Map<ExecutionTask, ExecutionTask> _precedingInterBrokerReplicaMovementSteps;
   private final Set<ExecutionTask> _remainingIntraBrokerReplicaMovements;
   private final Map<Long, ExecutionTask> _remainingLeadershipMovements;
   private long _executionId;
@@ -94,6 +101,7 @@ public class ExecutionTaskPlanner {
     _interPartMoveTasksByBrokerId = new HashMap<>();
     _intraPartMoveTasksByBrokerId = new HashMap<>();
     _remainingInterBrokerReplicaMovements = new HashSet<>();
+    _precedingInterBrokerReplicaMovementSteps = new HashMap<>();
     _remainingIntraBrokerReplicaMovements = new HashSet<>();
     _remainingLeadershipMovements = new HashMap<>();
     _config = config;
@@ -169,6 +177,7 @@ public class ExecutionTaskPlanner {
     if (!_remainingIntraBrokerReplicaMovements.isEmpty()) {
       _interPartMoveTasksByBrokerId.clear();
       _remainingInterBrokerReplicaMovements.clear();
+      _precedingInterBrokerReplicaMovementSteps.clear();
     }
   }
 
@@ -183,6 +192,10 @@ public class ExecutionTaskPlanner {
   private void maybeAddInterBrokerReplicaMovementTasks(Collection<ExecutionProposal> proposals,
                                                        StrategyOptions strategyOptions,
                                                        ReplicaMovementStrategy replicaMovementStrategy) {
+    ReplicaMovementStrategy chosenReplicaMovementTaskStrategy = replicaMovementStrategy == null
+                                                                ? _defaultReplicaMovementTaskStrategy
+                                                                : replicaMovementStrategy.chainBaseReplicaMovementStrategyIfAbsent();
+    boolean moveOneReplicaPerPartition = OneReplicaPerPartitionMovementStrategy.isEnabled(chosenReplicaMovementTaskStrategy);
     for (ExecutionProposal proposal : proposals) {
       TopicPartition tp = proposal.topicPartition();
       PartitionInfo partitionInfo = strategyOptions.cluster().partition(tp);
@@ -191,19 +204,25 @@ public class ExecutionTaskPlanner {
         continue;
       }
       if (!proposal.isInterBrokerMovementCompleted(partitionInfo)) {
-        long replicaActionExecutionId = _executionId++;
-        long executionAlertingThresholdMs = Math.max(Math.round(proposal.dataToMoveInMB() / _interBrokerReplicaMovementRateAlertingThreshold * 1000),
-                                                     _taskExecutionAlertingThresholdMs);
-        ExecutionTask executionTask = new ExecutionTask(replicaActionExecutionId, proposal, INTER_BROKER_REPLICA_ACTION,
-                                                        executionAlertingThresholdMs);
-        _remainingInterBrokerReplicaMovements.add(executionTask);
-        LOG.trace("Added action {} as replica proposal {}", replicaActionExecutionId, proposal);
+        List<ExecutionProposal> steps = moveOneReplicaPerPartition ? OneReplicaPerPartitionMovementStrategy.splitProposal(proposal)
+                                                                   : Collections.singletonList(proposal);
+        ExecutionTask precedingStep = null;
+        for (ExecutionProposal step : steps) {
+          long replicaActionExecutionId = _executionId++;
+          long executionAlertingThresholdMs = Math.max(Math.round(step.dataToMoveInMB() / _interBrokerReplicaMovementRateAlertingThreshold * 1000),
+                                                       _taskExecutionAlertingThresholdMs);
+          ExecutionTask executionTask = new ExecutionTask(replicaActionExecutionId, step, INTER_BROKER_REPLICA_ACTION,
+                                                          executionAlertingThresholdMs);
+          _remainingInterBrokerReplicaMovements.add(executionTask);
+          if (precedingStep != null) {
+            _precedingInterBrokerReplicaMovementSteps.put(executionTask, precedingStep);
+          }
+          precedingStep = executionTask;
+          LOG.trace("Added action {} as replica proposal {}", replicaActionExecutionId, step);
+        }
       }
     }
 
-    ReplicaMovementStrategy chosenReplicaMovementTaskStrategy = replicaMovementStrategy == null
-                                                                ? _defaultReplicaMovementTaskStrategy
-                                                                : replicaMovementStrategy.chainBaseReplicaMovementStrategyIfAbsent();
     _interPartMoveTasksByBrokerId = chosenReplicaMovementTaskStrategy.applyStrategy(_remainingInterBrokerReplicaMovements, strategyOptions);
     _interPartMoveBrokerComparator = brokerComparator(strategyOptions, chosenReplicaMovementTaskStrategy);
   }
@@ -406,7 +425,8 @@ public class ExecutionTaskPlanner {
           // Check if the proposal is executable.
           if (isExecutableProposal(task.proposal(), readyBrokers)
               && !inProgressPartitions.contains(tp)
-              && !partitionsInvolved.contains(tp)) {
+              && !partitionsInvolved.contains(tp)
+              && !hasRemainingPrecedingStep(task)) {
             partitionsInvolved.add(tp);
             executableReplicaMovements.add(task);
             // Record the brokers as involved in this round and stop involving them again in this round.
@@ -474,6 +494,19 @@ public class ExecutionTaskPlanner {
     _remainingLeadershipMovements.clear();
     _remainingInterBrokerReplicaMovements.clear();
     _remainingIntraBrokerReplicaMovements.clear();
+    _precedingInterBrokerReplicaMovementSteps.clear();
+  }
+
+  /**
+   * A step of a partition movement can start only after its preceding step is no longer remaining, i.e. it has been picked
+   * for execution. Together with the in-progress partitions check, this ensures that the preceding step has completed.
+   *
+   * @param task Inter-broker replica movement task to check.
+   * @return {@code true} if the preceding step of the given task has not been picked for execution yet, {@code false} otherwise.
+   */
+  private boolean hasRemainingPrecedingStep(ExecutionTask task) {
+    ExecutionTask precedingStep = _precedingInterBrokerReplicaMovementSteps.get(task);
+    return precedingStep != null && _remainingInterBrokerReplicaMovements.contains(precedingStep);
   }
 
   /**
