@@ -62,7 +62,7 @@ public class DefaultPrometheusQuerySupplier implements CruiseControlConfigurable
     private void buildTypeToQueryMap() {
         // broker metrics
         _typeToQuery.put(BROKER_CPU_UTIL,
-            String.format("1 - avg by (instance) (irate(node_cpu_seconds_total{mode=\"idle\"}[%dm]))",
+            String.format("avg by (instance) (rate(process_cpu_seconds_total[%dm]))",
                                                         _brokerCpuUtilQueryMinutes));
         _typeToQuery.put(ALL_TOPIC_BYTES_IN,
             "kafka_server_BrokerTopicMetrics_OneMinuteRate{name=\"BytesInPerSec\",topic=\"\"}");
