@@ -35,6 +35,9 @@ public class Disk implements Comparable<Disk> {
 
   private final String _logDir;
   private double _capacity;
+  // The capacity of the disk before it was marked for removal -- only relevant if the disk is marked for removal.
+  private double _capacityBeforeRemoval;
+  private boolean _isMarkedForRemoval;
   private final Set<Replica> _replicas;
   private State _state;
   private final Broker _broker;
@@ -56,6 +59,7 @@ public class Disk implements Comparable<Disk> {
     _replicas = new HashSet<>();
     _utilization = 0;
     _sortedReplicas = new HashMap<>();
+    _isMarkedForRemoval = false;
 
     if (diskCapacity < 0) {
       _capacity = DEAD_DISK_CAPACITY;
@@ -80,6 +84,13 @@ public class Disk implements Comparable<Disk> {
 
   public boolean isAlive() {
     return _state == State.ALIVE;
+  }
+
+  /**
+   * @return {@code true} if the disk is marked for removal, {@code false} otherwise.
+   */
+  public boolean isMarkedForRemoval() {
+    return _isMarkedForRemoval;
   }
 
   public Set<Replica> replicas() {
@@ -111,9 +122,17 @@ public class Disk implements Comparable<Disk> {
   }
 
   /**
-   * Set disk capacity to 0 to mark it for removal.
+   * Set disk capacity to 0 to mark it for removal, so that goals move all replicas off the disk. The disk keeps its capacity
+   * before removal to report its load (see {@link #diskStats()}).
+   *
+   * Use {@link ClusterModel#markDiskForRemoval(int, String)} to also drop the disk capacity from the capacity of its broker,
+   * host, rack and cluster.
    */
-  public void markDiskForRemoval() {
+  void markDiskForRemoval() {
+    if (!_isMarkedForRemoval) {
+      _capacityBeforeRemoval = _capacity;
+      _isMarkedForRemoval = true;
+    }
     _capacity = 0;
   }
 
@@ -254,12 +273,43 @@ public class Disk implements Comparable<Disk> {
   }
 
   /**
-   * @return Disk stats.
+   * @return Disk stats, with a potential NW_OUT rate of 0 -- see {@link #diskStats(double)}.
    */
   public DiskStats diskStats() {
-    return new DiskStats((int) _replicas.stream().filter(Replica::isLeader).count(),
+    return diskStats(0.0);
+  }
+
+  /**
+   * Get the disk stats. The network rates are the total produce / consume traffic of the replicas on the disk as modeled by
+   * Cruise Control, not the I/O of the disk.
+   *
+   * @param potentialBytesOutRate The NW_OUT rate of the replicas on the disk if all of them were leaders. Computing it
+   *                              requires the leader of each partition, hence it is provided by the {@link ClusterModel}.
+   * @return Disk stats.
+   */
+  public DiskStats diskStats(double potentialBytesOutRate) {
+    int numLeaderReplicas = 0;
+    double leaderBytesInRate = 0.0;
+    double followerBytesInRate = 0.0;
+    double bytesOutRate = 0.0;
+    for (Replica replica : _replicas) {
+      double bytesInRate = replica.load().expectedUtilizationFor(Resource.NW_IN);
+      if (replica.isLeader()) {
+        numLeaderReplicas++;
+        leaderBytesInRate += bytesInRate;
+      } else {
+        followerBytesInRate += bytesInRate;
+      }
+      bytesOutRate += replica.load().expectedUtilizationFor(Resource.NW_OUT);
+    }
+    // An alive disk marked for removal reports its load relative to its capacity before removal, rather than as a dead disk.
+    return new DiskStats(numLeaderReplicas,
                          _replicas.size(),
                          _utilization,
-                         _capacity);
+                         _isMarkedForRemoval && isAlive() ? _capacityBeforeRemoval : _capacity,
+                         leaderBytesInRate,
+                         followerBytesInRate,
+                         bytesOutRate,
+                         potentialBytesOutRate);
   }
 }

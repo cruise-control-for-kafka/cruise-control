@@ -5,12 +5,22 @@
 package com.linkedin.kafka.cruisecontrol.servlet.parameters;
 
 import com.linkedin.cruisecontrol.http.CruiseControlRequestContext;
+import com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUnitTestUtils;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.DiskUsageDistributionGoal;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskCapacityGoal;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
+import com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.ExecutorConfig;
+import java.io.UnsupportedEncodingException;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
+import com.linkedin.kafka.cruisecontrol.servlet.UserRequestException;
 import org.easymock.EasyMock;
 import org.junit.Assert;
 import org.junit.Test;
@@ -244,5 +254,80 @@ public class ParameterUtilsTest {
 
     Assert.assertEquals(CruiseControlEndPoint.STATE, ParameterUtils.endPoint(mockRequest));
     EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testBrokerIdAndLogdirs() throws UnsupportedEncodingException {
+    // The first hyphen of a pair separates the broker id from the logdir, which may contain hyphens. Empty pairs are ignored.
+    Assert.assertEquals(Map.of(101, Set.of("/tmp/kafka-logs-1", "/tmp/kafka-logs-2"), 102, Set.of("/data/d-1")),
+                        ParameterUtils.brokerIdAndLogdirs(requestWithBrokerIdAndLogdirs("101-/tmp/kafka-logs-1,,101-/tmp/kafka-logs-2,"
+                                                                                        + "102-/data/d-1")));
+    Assert.assertEquals(Collections.emptyMap(), ParameterUtils.brokerIdAndLogdirs(requestWithBrokerIdAndLogdirs("")));
+    Assert.assertEquals(Collections.emptyMap(), ParameterUtils.brokerIdAndLogdirs(requestWithBrokerIdAndLogdirs(null)));
+  }
+
+  @Test
+  public void testInvalidBrokerIdAndLogdirs() {
+    for (String invalidPair : List.of("101", "-/tmp/kafka-logs-1", "-1-/tmp/kafka-logs-1", "abc-/tmp/kafka-logs-1", "101-")) {
+      UserRequestException e = Assert.assertThrows(UserRequestException.class, () -> ParameterUtils.brokerIdAndLogdirs(
+          requestWithBrokerIdAndLogdirs("101-/tmp/kafka-logs-2," + invalidPair)));
+      Assert.assertTrue(e.getMessage(), e.getMessage().contains(String.format("'%s'", invalidPair)));
+    }
+  }
+
+  @Test
+  public void testGoalsInRebalanceDiskMode() throws UnsupportedEncodingException {
+    KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties());
+    String capacityGoal = IntraBrokerDiskCapacityGoal.class.getSimpleName();
+    String usageGoal = IntraBrokerDiskUsageDistributionGoal.class.getSimpleName();
+    Map<String, String> rebalanceDisk = Map.of(ParameterUtils.REBALANCE_DISK_MODE_PARAM, "true");
+
+    // Without requested goals, the intra-broker goals of the config, in their order.
+    Assert.assertEquals(List.of(capacityGoal, usageGoal), ParameterUtils.getGoals(request(rebalanceDisk), config));
+    Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
+    props.setProperty(AnalyzerConfig.INTRA_BROKER_GOALS_CONFIG, IntraBrokerDiskUsageDistributionGoal.class.getName());
+    Assert.assertEquals(List.of(usageGoal), ParameterUtils.getGoals(request(rebalanceDisk), new KafkaCruiseControlConfig(props)));
+
+    // Requested intra-broker goals are accepted, whatever the case of their names.
+    Map<String, String> requestedGoals = Map.of(ParameterUtils.REBALANCE_DISK_MODE_PARAM, "true",
+                                                ParameterUtils.GOALS_PARAM, usageGoal.toLowerCase());
+    Assert.assertEquals(List.of(usageGoal.toLowerCase()), ParameterUtils.getGoals(request(requestedGoals), config));
+
+    // Requested goals that are not intra-broker goals are rejected.
+    String interBrokerGoal = DiskUsageDistributionGoal.class.getSimpleName();
+    Map<String, String> unsupportedGoals = Map.of(ParameterUtils.REBALANCE_DISK_MODE_PARAM, "true",
+                                                  ParameterUtils.GOALS_PARAM, capacityGoal + "," + interBrokerGoal);
+    UserRequestException e = Assert.assertThrows(UserRequestException.class,
+                                                 () -> ParameterUtils.getGoals(request(unsupportedGoals), config));
+    Assert.assertTrue(e.getMessage(), e.getMessage().endsWith(String.format("got [%s].", interBrokerGoal)));
+
+    // Outside of rebalance disk mode, the requested goals are returned as they are.
+    Assert.assertEquals(List.of(), ParameterUtils.getGoals(request(Map.of()), config));
+    Assert.assertEquals(List.of(interBrokerGoal),
+                        ParameterUtils.getGoals(request(Map.of(ParameterUtils.GOALS_PARAM, interBrokerGoal)), config));
+  }
+
+  /**
+   * @param brokerIdAndLogdirs The value of {@link ParameterUtils#BROKER_ID_AND_LOGDIRS_PARAM}, or {@code null} to leave the
+   *                           parameter out.
+   * @return A request with the given broker id and logdir pairs.
+   */
+  private static CruiseControlRequestContext requestWithBrokerIdAndLogdirs(String brokerIdAndLogdirs) {
+    return request(brokerIdAndLogdirs == null ? Map.of() : Map.of(ParameterUtils.BROKER_ID_AND_LOGDIRS_PARAM, brokerIdAndLogdirs));
+  }
+
+  /**
+   * @param parameters The value of each parameter of the request.
+   * @return A request with the given parameters.
+   */
+  private static CruiseControlRequestContext request(Map<String, String> parameters) {
+    Map<String, String[]> parameterMap = new HashMap<>();
+    parameters.forEach((name, value) -> parameterMap.put(name, new String[]{value}));
+    CruiseControlRequestContext request = EasyMock.niceMock(CruiseControlRequestContext.class);
+    EasyMock.expect(request.getParameterMap()).andReturn(parameterMap).anyTimes();
+    EasyMock.expect(request.getParameter(EasyMock.anyString()))
+            .andAnswer(() -> parameters.get((String) EasyMock.getCurrentArgument(0))).anyTimes();
+    EasyMock.replay(request);
+    return request;
   }
 }

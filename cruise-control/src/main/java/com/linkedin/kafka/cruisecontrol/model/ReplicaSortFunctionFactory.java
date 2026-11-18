@@ -146,6 +146,25 @@ public final class ReplicaSortFunctionFactory {
   }
 
   /**
+   * Same as {@link #selectReplicasBasedOnExcludedTopics(Set)}, except that replicas of excluded topics are also selected while
+   * they reside on a disk marked for removal (see {@link Disk#isMarkedForRemoval()}), so that the disk can be emptied. The
+   * selection is evaluated again when a replica moves to another disk, hence a replica of an excluded topic is no longer
+   * selected once it is off the disk to remove.
+   *
+   * This is only relevant to intra-broker goals: for an inter-broker move, the disk of a replica is not updated by the time the
+   * selection is evaluated.
+   *
+   * @param excludedTopics Topics excluded from partition movements.
+   *
+   * @return A selection function that filters out replicas which are online, from topics which should be excluded, and not
+   * on a disk marked for removal.
+   */
+  public static Function<Replica, Boolean> selectReplicasBasedOnExcludedTopicsAndDisksToRemove(Set<String> excludedTopics) {
+    return r -> r.isOriginalOffline() || (r.disk() != null && r.disk().isMarkedForRemoval())
+                || !excludedTopics.contains(r.topicPartition().topic());
+  }
+
+  /**
    * @param includedTopics Topics included for partition movements.
    *
    * @return A selection function that filters out replicas which are not from topics which should be included.

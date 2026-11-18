@@ -28,6 +28,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
@@ -61,6 +62,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 /**
@@ -308,6 +310,37 @@ public class LoadMonitorTest {
     assertEquals(13, clusterModel.partition(T0P0).leader().load().expectedUtilizationFor(Resource.DISK), 0.0);
   }
 
+  // Test build cluster model for JBOD brokers whose capacity is only given by the default broker capacity (broker id -1).
+  @Test
+  public void testJbodClusterModelWithDefaultCapacity() throws NotEnoughValidWindowsException, TimeoutException,
+                                                                BrokerCapacityResolutionException {
+    TestContext context = prepareContext(NUM_WINDOWS, "testCapacityConfigJBODDefault.json");
+    LoadMonitor loadMonitor = context.loadmonitor();
+    KafkaPartitionMetricSampleAggregator aggregator = context.aggregator();
+
+    CruiseControlUnitTestUtils.populateSampleAggregator(3, 4, aggregator, PE_T0P0, 0, WINDOW_MS, METRIC_DEF);
+    CruiseControlUnitTestUtils.populateSampleAggregator(3, 4, aggregator, PE_T0P1, 0, WINDOW_MS, METRIC_DEF);
+    CruiseControlUnitTestUtils.populateSampleAggregator(3, 4, aggregator, PE_T1P0, 0, WINDOW_MS, METRIC_DEF);
+    CruiseControlUnitTestUtils.populateSampleAggregator(3, 4, aggregator, PE_T1P1, 0, WINDOW_MS, METRIC_DEF);
+
+    // With capacity estimation, both brokers take the per-logdir capacities of the default broker capacity.
+    ClusterModel clusterModel = loadMonitor.clusterModel(DEFAULT_START_TIME_FOR_CLUSTER_MODEL, Long.MAX_VALUE,
+                                                         new ModelCompletenessRequirements(2, 1.0, false),
+                                                         true,
+                                                         true,
+                                                         new OperationProgress());
+    assertEquals(Set.of(0, 1), clusterModel.capacityEstimationInfoByBrokerId().keySet());
+    assertEquals(4, clusterModel.broker(0).disk("/tmp/kafka-logs").replicas().size());
+    assertEquals(3, clusterModel.broker(1).disk("/tmp/kafka-logs-1").replicas().size());
+    assertEquals(1, clusterModel.broker(1).disk("/tmp/kafka-logs-2").replicas().size());
+    assertEquals(500000.0, clusterModel.broker(1).disk("/tmp/kafka-logs-2").capacity(), 0.0);
+
+    // Without capacity estimation, the capacity of the brokers cannot be resolved.
+    assertThrows(BrokerCapacityResolutionException.class,
+                 () -> loadMonitor.clusterModel(DEFAULT_START_TIME_FOR_CLUSTER_MODEL, Long.MAX_VALUE,
+                                                new ModelCompletenessRequirements(2, 1.0, false), true, false, new OperationProgress()));
+  }
+
   // Not enough snapshot windows and some partitions are missing from all snapshot windows.
   @Test
   public void testClusterModelWithInvalidPartitionAndInsufficientSnapshotWindows()
@@ -512,6 +545,15 @@ public class LoadMonitorTest {
   }
 
   private TestContext prepareContext(int numWindowToPreserve, boolean isClusterJBOD) {
+    return prepareContext(numWindowToPreserve, isClusterJBOD ? "testCapacityConfigJBOD.json" : null);
+  }
+
+  /**
+   * @param numWindowToPreserve Number of partition metric windows to keep.
+   * @param capacityConfigFile The capacity config file in the test resources, or {@code null} to use the default one.
+   * @return The test context.
+   */
+  private TestContext prepareContext(int numWindowToPreserve, String capacityConfigFile) {
     // Create mock metadata client.
     Metadata metadata = getMetadata(Arrays.asList(T0P0, T0P1, T1P0, T1P1));
     MetadataClient mockMetadataClient = EasyMock.mock(MetadataClient.class);
@@ -567,10 +609,9 @@ public class LoadMonitorTest {
     props.put(MonitorConfig.SAMPLE_STORE_CLASS_CONFIG, NoopSampleStore.class.getName());
     props.put(MonitorConfig.SAMPLE_PARTITION_METRIC_STORE_ON_EXECUTION_CLASS_CONFIG, NoopSampleStore.class.getName());
     props.put(MonitorConfig.MONITOR_STATE_UPDATE_INTERVAL_MS_CONFIG, MONITOR_STATE_UPDATE_INTERVAL_MS);
-    if (isClusterJBOD) {
-      String capacityConfigFileJBOD =
-          KafkaCruiseControlUnitTestUtils.class.getClassLoader().getResource("testCapacityConfigJBOD.json").getFile();
-      props.setProperty(BrokerCapacityConfigFileResolver.CAPACITY_CONFIG_FILE, capacityConfigFileJBOD);
+    if (capacityConfigFile != null) {
+      props.setProperty(BrokerCapacityConfigFileResolver.CAPACITY_CONFIG_FILE,
+                        KafkaCruiseControlUnitTestUtils.class.getClassLoader().getResource(capacityConfigFile).getFile());
     }
     KafkaCruiseControlConfig config = new KafkaCruiseControlConfig(props);
     _time = new MockTime(0, START_TIME_MS, TimeUnit.NANOSECONDS.convert(START_TIME_MS, TimeUnit.MILLISECONDS));
