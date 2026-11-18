@@ -59,7 +59,10 @@ public class PrometheusMetricSampler extends AbstractMetricSampler {
 
     // Config name visible to tests
     static final String PROMETHEUS_QUERY_SUPPLIER_CONFIG = "prometheus.query.supplier";
+    static final String PROMETHEUS_QUERY_FILE_CONFIG = "prometheus.query.file";
+
     private static final Class<?> DEFAULT_PROMETHEUS_QUERY_SUPPLIER = DefaultPrometheusQuerySupplier.class;
+    private static final Class<?> PROMETHEUS_QUERY_FILE_SUPPLIER = ConfigurablePrometheusQuerySupplier.class;
 
     private static final Logger LOG = LoggerFactory.getLogger(PrometheusMetricSampler.class);
 
@@ -120,15 +123,21 @@ public class PrometheusMetricSampler extends AbstractMetricSampler {
     }
 
     private void configureQueryMap(Map<String, ?> configs) {
+        String prometheusQueryFileName = (String) configs.get(PROMETHEUS_QUERY_FILE_CONFIG);
         String prometheusQuerySupplierClassName = (String) configs.get(PROMETHEUS_QUERY_SUPPLIER_CONFIG);
         Class<?> prometheusQuerySupplierClass = DEFAULT_PROMETHEUS_QUERY_SUPPLIER;
-        if (prometheusQuerySupplierClassName != null) {
-            prometheusQuerySupplierClass = (Class<?>) ConfigDef.parseType(PROMETHEUS_QUERY_SUPPLIER_CONFIG,
-                prometheusQuerySupplierClassName, CLASS);
-            if (!PrometheusQuerySupplier.class.isAssignableFrom(prometheusQuerySupplierClass)) {
-                throw new ConfigException(String.format(
-                    "Invalid %s is provided to prometheus metric sampler, provided %s",
-                    PROMETHEUS_QUERY_SUPPLIER_CONFIG, prometheusQuerySupplierClass));
+        // prometheus configuration file is first over other custom or default query supplier class
+        if (null != prometheusQueryFileName) {
+            prometheusQuerySupplierClass = PROMETHEUS_QUERY_FILE_SUPPLIER;
+        } else {
+            if (prometheusQuerySupplierClassName != null) {
+                prometheusQuerySupplierClass = (Class<?>) ConfigDef.parseType(PROMETHEUS_QUERY_SUPPLIER_CONFIG,
+                        prometheusQuerySupplierClassName, CLASS);
+                if (!PrometheusQuerySupplier.class.isAssignableFrom(prometheusQuerySupplierClass)) {
+                    throw new ConfigException(String.format(
+                            "Invalid %s is provided to prometheus metric sampler, provided %s",
+                            PROMETHEUS_QUERY_SUPPLIER_CONFIG, prometheusQuerySupplierClass));
+                }
             }
         }
         PrometheusQuerySupplier prometheusQuerySupplier = KafkaCruiseControlConfigUtils.getConfiguredInstance(
