@@ -175,11 +175,10 @@ public class ExcludedTopicsTest {
     // With one excluded but irrelevant topic, no dead brokers (No exception, No proposal, Expected to look optimized)
     p.add(params(0, MinTopicLeadersPerBrokerGoal.class, excludeT1, null,
                  DeterministicCluster.minLeaderReplicaPerBrokerSatisfiable(), noDeadBroker, true, true, configOverrides));
-    // With one excluded and relevant topic, no dead brokers (Expect exception since the excluded topic happens to be the
-    // same topic which this goal interests in)
+    // With one excluded and relevant topic, no dead brokers (No exception, No proposal, Expected to look optimized: the excluded
+    // topic is held rather than enforced, so a broker below its minimum does not make the goal violated)
     p.add(params(1, MinTopicLeadersPerBrokerGoal.class, Collections.singleton(TestConstants.TOPIC_MUST_HAVE_LEADER_REPLICAS_ON_BROKERS),
-                 OptimizationFailureException.class, DeterministicCluster.minLeaderReplicaPerBrokerSatisfiable(),
-                 noDeadBroker, null, null, configOverrides));
+                 null, DeterministicCluster.minLeaderReplicaPerBrokerSatisfiable(), noDeadBroker, true, false, configOverrides));
 
     // ============ReplicaCapacityGoal============
     // Test: With single excluded topic, satisfiable cluster, no dead brokers (No exception, No proposal, Expected to look optimized)

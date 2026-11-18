@@ -361,7 +361,11 @@ public final class AnalyzerConfig {
   public static final String TOPICS_WITH_MIN_LEADERS_PER_BROKER_CONFIG = "topics.with.min.leaders.per.broker";
   public static final String DEFAULT_TOPICS_WITH_MIN_LEADERS_PER_BROKER = "";
   public static final String DEFAULT_TOPICS_WITH_MIN_LEADERS_PER_BROKER_DOC = "The topics that should have a minimum "
-      + "number of leaders on brokers that are not excluded for replica move. It is a regex.";
+      + "number of leaders on brokers that are not excluded for replica move. It is a regex. A topic that a request cannot move "
+      + "(excluded from partition movement, or without new replicas in a request that may only move new replicas, such as a "
+      + "replication factor change) does not fail the request: its minimum is not enforced, but it is not made worse either. "
+      + "Likewise, a broker that a request may not move replicas to (outside its destination_broker_ids) gets leaders only by "
+      + "leadership movements. Neither makes the goal violated.";
 
   /**
    * <code>min.topic.leaders.per.broker</code>
