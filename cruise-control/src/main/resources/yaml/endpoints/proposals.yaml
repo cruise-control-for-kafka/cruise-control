@@ -27,7 +27,7 @@ ProposalsEndpoint:
           default: false
       - name: rebalance_disk
         in: query
-        description: whether to balance load between disks within brokers (requires JBOD Kafka deployment).
+        description: whether to balance load between disks within brokers using the goals in intra.broker.goals (requires JBOD Kafka deployment).
         schema:
           type: boolean
           default: false

@@ -22,6 +22,7 @@ import java.util.function.Function;
 import org.apache.kafka.common.TopicPartition;
 
 import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.averageDiskUtilizationPercentage;
+import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.diskIORate;
 import static com.linkedin.kafka.cruisecontrol.analyzer.goals.GoalUtils.diskUtilizationPercentage;
 import static com.linkedin.kafka.cruisecontrol.monitor.MonitorUtils.UNIT_INTERVAL_TO_PERCENTAGE;
 
@@ -51,6 +52,7 @@ public class ClusterModelStats {
   private int _numUnbalancedDisks;
   // Aggregated standard deviation of disk utilization for the cluster.
   private double _diskUtilizationStDev;
+  private double _diskIORateStDev;
   private Set<Integer> _brokersAllowedReplicaMove;
 
   /**
@@ -70,6 +72,7 @@ public class ClusterModelStats {
     _numBalancedBrokersByResource = new HashMap<>();
     _numUnbalancedDisks = 0;
     _diskUtilizationStDev = 0;
+    _diskIORateStDev = 0;
     _brokersAllowedReplicaMove = Collections.emptySet();
   }
 
@@ -226,6 +229,16 @@ public class ClusterModelStats {
    */
   public double diskUtilizationStandardDeviation() {
     return _diskUtilizationStDev;
+  }
+
+  /**
+   * The deviation of each alive disk is computed against the average estimated disk I/O rate of the alive disks on the
+   * same broker. See {@link GoalUtils#replicaDiskIORate} for the estimation of disk I/O rate.
+   *
+   * @return The standard deviation of estimated disk I/O rate of this cluster model.
+   */
+  public double diskIORateStDev() {
+    return _diskIORateStDev;
   }
 
   /**
@@ -482,31 +495,41 @@ public class ClusterModelStats {
    * {@link com.linkedin.kafka.cruisecontrol.config.constants.AnalyzerConfig#DISK_BALANCE_THRESHOLD_CONFIG}.
    * If the disk utilization percentage is out of the boundary, the disk is counted as unbalanced.
    * Also sum up the variance of utilization for each alive disk and get an aggregated standard deviation.
+   * Similarly, sum up the variance of estimated disk I/O rate for each alive disk (relative to the average estimated disk
+   * I/O rate of alive disks on the same broker) and get an aggregated standard deviation.
    *
    * @param balancingConstraint Balancing constraint.
    * @param aliveBrokers Alive brokers in the cluster -- passed to this function to avoid recomputing them using cluster model.
    */
   private void populateStatsForDisks(BalancingConstraint balancingConstraint, Set<Broker> aliveBrokers) {
     double totalDiskUtilizationVariance = 0;
+    double totalDiskIORateVariance = 0;
+    double diskIOReadWeight = balancingConstraint.diskIOReadWeight();
     int numAliveDisks = 0;
     for (Broker broker : aliveBrokers) {
       double brokerDiskUtilization = averageDiskUtilizationPercentage(broker);
       double upperLimit = brokerDiskUtilization * balancingConstraint.resourceBalancePercentage(Resource.DISK);
       double lowerLimit = brokerDiskUtilization * Math.max(0, (2 - balancingConstraint.resourceBalancePercentage(Resource.DISK)));
+      Map<Disk, Double> diskIORateByAliveDisk = new HashMap<>();
       for (Disk disk : broker.disks()) {
-        if (!disk.isAlive()) {
-          continue;
+        if (disk.isAlive()) {
+          diskIORateByAliveDisk.put(disk, diskIORate(disk, diskIOReadWeight));
         }
-        double diskUtilizationPercentage = diskUtilizationPercentage(disk);
+      }
+      double averageDiskIORate = diskIORateByAliveDisk.values().stream().mapToDouble(Double::doubleValue).average().orElse(0);
+      for (Map.Entry<Disk, Double> entry : diskIORateByAliveDisk.entrySet()) {
+        double diskUtilizationPercentage = diskUtilizationPercentage(entry.getKey());
         if (diskUtilizationPercentage > upperLimit || diskUtilizationPercentage < lowerLimit) {
           _numUnbalancedDisks++;
         }
         totalDiskUtilizationVariance += Math.pow(diskUtilizationPercentage - brokerDiskUtilization, 2);
+        totalDiskIORateVariance += Math.pow(entry.getValue() - averageDiskIORate, 2);
         numAliveDisks++;
       }
     }
     if (numAliveDisks > 0) {
       _diskUtilizationStDev = Math.sqrt(totalDiskUtilizationVariance / numAliveDisks);
+      _diskIORateStDev = Math.sqrt(totalDiskIORateVariance / numAliveDisks);
     }
   }
 }

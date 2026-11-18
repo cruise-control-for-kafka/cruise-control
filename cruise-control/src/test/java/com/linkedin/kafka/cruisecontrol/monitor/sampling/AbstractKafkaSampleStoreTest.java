@@ -36,7 +36,10 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 
 /**
- * Unit test for {@link AbstractKafkaSampleStore}
+ * Unit test for {@link AbstractKafkaSampleStore}.
+ * This test intentionally runs without {@code PowerMockRunner}: nothing in it needs PowerMock, and EasyMock class mocks created
+ * under the PowerMock class loader fail with a {@code LinkageError} whenever another test in the same JVM has already mocked
+ * the same Kafka classes with EasyMock.
  */
 public class AbstractKafkaSampleStoreTest {
 

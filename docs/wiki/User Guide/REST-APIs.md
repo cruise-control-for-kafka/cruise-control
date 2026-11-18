@@ -239,7 +239,7 @@ Supported parameters are:
 | exclude_recently_demoted_brokers  | boolean   | whether to allow leader replicas to be moved to recently demoted brokers              | false                | yes       |
 | exclude_recently_removed_brokers  | boolean   | whether allow replicas to be moved to recently removed broker                         | false                | yes       |
 | destination_broker_ids            | boolean   | specify brokers to move replicas to                                                   | available brokers    | yes       |
-| rebalance_disk                    | boolean   | whether to balance load between disks within brokers (requires JBOD Kafka deployment) | false                | yes       |
+| rebalance_disk                    | boolean   | whether to balance load between disks within brokers using the goals in `intra.broker.goals` (requires JBOD Kafka deployment) | false                | yes       |
 | json                              | boolean   | return in JSON format or not                                                          | false                | yes       | 
 | verbose                           | boolean   | return detailed state information                                                     | false                | yes       |
 | doAs                              | string    | propagated user by the trusted proxy service                                          | null                 | yes       | 
@@ -349,7 +349,7 @@ Supported parameters are:
 | ignore_proposal_cache                         | boolean   | whether to ignore the cached proposal or not                                                                                          | false                 | yes       | 
 | replication_throttle                          | long      | upper bound on the bandwidth used to move replicas (in bytes per second)                                                              | null                  | yes       | 
 | destination_broker_ids                        | list      | specify brokers to move replicas to                                                                                                   | available brokers     | yes       | 
-| rebalance_disk                                | boolean   | whether to balance load between disks within brokers (requires JBOD Kafka deployment)                                                 | false                 | yes       | 
+| rebalance_disk                                | boolean   | whether to balance load between disks within brokers using the goals in `intra.broker.goals` (requires JBOD Kafka deployment) | false                 | yes       | 
 | json                                          | boolean   | return in JSON format or not                                                                                                          | false                 | yes       | 
 | verbose                                       | boolean   | return detailed state information                                                                                                     | false                 | yes       | 
 | reason                                        | string    | reason for the request                                                                                                                | "No reason provided"  | yes       | 

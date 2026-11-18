@@ -5,6 +5,7 @@
 package com.linkedin.kafka.cruisecontrol.analyzer;
 
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskCapacityGoal;
+import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskIORateDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.analyzer.goals.IntraBrokerDiskUsageDistributionGoal;
 import com.linkedin.kafka.cruisecontrol.common.ClusterProperty;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
@@ -103,13 +104,18 @@ public class IntraBrokerRebalanceTest {
   public static Collection<Object[]> data() {
     Collection<Object[]> p = new ArrayList<>();
     List<String> goalNameByPriority = Arrays.asList(IntraBrokerDiskCapacityGoal.class.getName(),
-                                                    IntraBrokerDiskUsageDistributionGoal.class.getName());
+                                                    IntraBrokerDiskUsageDistributionGoal.class.getName(),
+                                                    IntraBrokerDiskIORateDistributionGoal.class.getName());
     Properties props = KafkaCruiseControlUnitTestUtils.getKafkaCruiseControlProperties();
     props.setProperty(AnalyzerConfig.MAX_REPLICAS_PER_BROKER_CONFIG, Long.toString(2000L));
     BalancingConstraint balancingConstraint = new BalancingConstraint(new KafkaCruiseControlConfig(props));
     balancingConstraint.setResourceBalancePercentage(TestConstants.LOW_BALANCE_PERCENTAGE);
     balancingConstraint.setCapacityThreshold(TestConstants.MEDIUM_CAPACITY_THRESHOLD);
     List<OptimizationVerifier.Verification> verifications = Arrays.asList(GOAL_VIOLATION, REGRESSION);
+    // Multiple soft goals may trade off against each other (e.g. disk usage vs. disk I/O rate), hence only verify that
+    // no goal regresses -- similar to the verifications of multiple soft goals in RandomClusterTest.
+    List<String> diskUsageGoalNameByPriority = goalNameByPriority.subList(0, 2);
+    List<OptimizationVerifier.Verification> multiSoftGoalVerifications = Collections.singletonList(REGRESSION);
 
     int testId = 0;
     // -- TEST DECK #1: HEALTHY CLUSTER.
@@ -122,7 +128,8 @@ public class IntraBrokerRebalanceTest {
       p.add(params(testId++, jbodCluster, testGoal, balancingConstraint, Collections.emptySet(), verifications));
     }
     // Test: Multiple Goals.
-    p.add(params(testId++, jbodCluster, goalNameByPriority, balancingConstraint, Collections.emptySet(), verifications));
+    p.add(params(testId++, jbodCluster, diskUsageGoalNameByPriority, balancingConstraint, Collections.emptySet(), verifications));
+    p.add(params(testId++, jbodCluster, goalNameByPriority, balancingConstraint, Collections.emptySet(), multiSoftGoalVerifications));
 
     // -- TEST DECK #2: CLUSTER WITH DEAD&BROKEN BROKER.
     Set<String> excludedTopics = Set.of(T1, T2);
@@ -132,7 +139,8 @@ public class IntraBrokerRebalanceTest {
       p.add(params(testId++, jbodCluster, testGoal, balancingConstraint, excludedTopics, verifications));
     }
     // Test: Multiple Goals.
-    p.add(params(testId++, jbodCluster, goalNameByPriority, balancingConstraint, excludedTopics, verifications));
+    p.add(params(testId++, jbodCluster, diskUsageGoalNameByPriority, balancingConstraint, excludedTopics, verifications));
+    p.add(params(testId++, jbodCluster, goalNameByPriority, balancingConstraint, excludedTopics, multiSoftGoalVerifications));
 
     // -- TEST DECK #3: CLUSTER WITH EXCLUDED TOPIC.
     Map<ClusterProperty, Number> unhealthyCluster = new HashMap<>();
@@ -145,7 +153,9 @@ public class IntraBrokerRebalanceTest {
       p.add(params(testId++, unhealthyCluster, testGoal, balancingConstraint, Collections.emptySet(), verifications));
     }
     // Test: Multiple Goal.
-    p.add(params(testId++, unhealthyCluster, goalNameByPriority, balancingConstraint, Collections.emptySet(), verifications));
+    p.add(params(testId++, unhealthyCluster, diskUsageGoalNameByPriority, balancingConstraint, Collections.emptySet(), verifications));
+    p.add(params(testId++, unhealthyCluster, goalNameByPriority, balancingConstraint, Collections.emptySet(),
+                 multiSoftGoalVerifications));
 
     return p;
   }
