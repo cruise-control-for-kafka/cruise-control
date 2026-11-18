@@ -133,7 +133,8 @@ RebalanceEndpoint:
         schema:
           type: array
           items:
-            type: string
+            type: integer
+            format: int32
           example: [1,2,3]
       - name: kafka_assigner
         in: query

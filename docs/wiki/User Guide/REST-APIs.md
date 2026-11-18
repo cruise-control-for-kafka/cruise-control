@@ -238,7 +238,7 @@ Supported parameters are:
 | use_ready_default_goals           | boolean   | whether to use only ready goals to generate proposals                                 | false                | yes       |
 | exclude_recently_demoted_brokers  | boolean   | whether to allow leader replicas to be moved to recently demoted brokers              | false                | yes       |
 | exclude_recently_removed_brokers  | boolean   | whether allow replicas to be moved to recently removed broker                         | false                | yes       |
-| destination_broker_ids            | boolean   | specify brokers to move replicas to                                                   | available brokers    | yes       |
+| destination_broker_ids            | list      | specify brokers to move replicas to                                                   | available brokers    | yes       |
 | rebalance_disk                    | boolean   | whether to balance load between disks within brokers (requires JBOD Kafka deployment) | false                | yes       |
 | json                              | boolean   | return in JSON format or not                                                          | false                | yes       | 
 | verbose                           | boolean   | return detailed state information                                                     | false                | yes       |
