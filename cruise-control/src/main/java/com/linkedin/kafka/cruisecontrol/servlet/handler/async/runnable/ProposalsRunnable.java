@@ -51,6 +51,7 @@ public class ProposalsRunnable extends GoalBasedOperationRunnable {
                            ModelCompletenessRequirements modelCompletenessRequirements,
                            boolean allowCapacityEstimation,
                            Pattern excludedTopics,
+                           Pattern includedTopics,
                            boolean excludeRecentlyDemotedBrokers,
                            boolean excludeRecentlyRemovedBrokers,
                            boolean ignoreProposalCache,
@@ -60,7 +61,7 @@ public class ProposalsRunnable extends GoalBasedOperationRunnable {
                            boolean isTriggeredByGoalViolation,
                            boolean fastMode) {
     super(kafkaCruiseControl, future, PROPOSALS_DRYRUN, goals, PROPOSALS_STOP_ONGOING_EXECUTION,
-          modelCompletenessRequirements, skipHardGoalCheck, excludedTopics, allowCapacityEstimation,
+          modelCompletenessRequirements, skipHardGoalCheck, excludedTopics, includedTopics, allowCapacityEstimation,
           excludeRecentlyDemotedBrokers, excludeRecentlyRemovedBrokers, PROPOSALS_UUID, PROPOSALS_REASON_SUPPLIER,
           PROPOSALS_IS_TRIGGERED_BY_USER_REQUEST, fastMode);
     _ignoreProposalCache = ignoreProposalCache;
@@ -107,6 +108,7 @@ public class ProposalsRunnable extends GoalBasedOperationRunnable {
                                                                          _excludeRecentlyDemotedBrokers,
                                                                          _excludeRecentlyRemovedBrokers,
                                                                          _excludedTopics,
+                                                                         _includedTopics,
                                                                          _destinationBrokerIds,
                                                                          false,
                                                                          _fastMode);
@@ -121,13 +123,15 @@ public class ProposalsRunnable extends GoalBasedOperationRunnable {
 
   @Override
   protected boolean shouldWorkWithClusterModel() {
-    return _kafkaCruiseControl.ignoreProposalCache(_goals,
-                                                   _combinedCompletenessRequirements,
-                                                   _excludedTopics,
-                                                   _excludeRecentlyDemotedBrokers || _excludeRecentlyRemovedBrokers,
-                                                   _ignoreProposalCache,
-                                                   _isTriggeredByGoalViolation,
-                                                   _destinationBrokerIds,
-                                                   _isRebalanceDiskMode);
+    // Cached proposals are computed without any topic filter, hence they cannot be reused if topics are explicitly included.
+    return _includedTopics != null
+           || _kafkaCruiseControl.ignoreProposalCache(_goals,
+                                                      _combinedCompletenessRequirements,
+                                                      _excludedTopics,
+                                                      _excludeRecentlyDemotedBrokers || _excludeRecentlyRemovedBrokers,
+                                                      _ignoreProposalCache,
+                                                      _isTriggeredByGoalViolation,
+                                                      _destinationBrokerIds,
+                                                      _isRebalanceDiskMode);
   }
 }

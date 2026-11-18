@@ -92,6 +92,7 @@ class ExecutionContext:
     #  'exclude_recently_removed_brokers': 'exclude_recently_removed_brokers',
     #  'excluded_topics': 'excluded_topics',
     #  'goals': 'goals',
+    #  'included_topics': 'included_topics',
     #  'ignore_proposal_cache': 'ignore_proposal_cache',
     #  'leader_concurrency': 'concurrent_leader_movements',
     #  'max_load': 'max_load',

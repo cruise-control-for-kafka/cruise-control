@@ -4,6 +4,11 @@
 
 package com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable;
 
+import com.linkedin.kafka.cruisecontrol.KafkaCruiseControl;
+import com.linkedin.kafka.cruisecontrol.analyzer.OptimizationOptions;
+import com.linkedin.kafka.cruisecontrol.common.DeterministicCluster;
+import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
+import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -11,11 +16,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import org.apache.kafka.common.Cluster;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
+import org.easymock.EasyMock;
 import org.junit.Test;
 
+import static com.linkedin.kafka.cruisecontrol.common.DeterministicCluster.T1;
+import static com.linkedin.kafka.cruisecontrol.common.DeterministicCluster.T2;
 import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.populateRackInfoForReplicationFactorChange;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertEquals;
@@ -63,5 +72,32 @@ public class RunnableUtilsTest {
                                                rackByBroker);
     assertEquals(2, brokersByRack.size());
     assertEquals(NODES.length, rackByBroker.size());
+  }
+
+  @Test
+  public void testComputeOptimizationOptionsWithIncludedTopics() {
+    ClusterModel clusterModel = DeterministicCluster.unbalanced();
+    KafkaCruiseControl mockKafkaCruiseControl = EasyMock.mock(KafkaCruiseControl.class);
+    EasyMock.expect(mockKafkaCruiseControl.executorState())
+            .andReturn(ExecutorState.noTaskInProgress(Collections.emptySet(), Collections.emptySet())).times(3);
+    EasyMock.replay(mockKafkaCruiseControl);
+
+    // Expected: Every topic that does not match the included topics pattern is excluded.
+    assertEquals(Collections.singleton(T2), computeOptimizationOptions(clusterModel, Pattern.compile(T1), mockKafkaCruiseControl)
+        .excludedTopics());
+    // Expected: No topic is excluded if all topics match the included topics pattern.
+    assertEquals(Collections.emptySet(), computeOptimizationOptions(clusterModel, Pattern.compile("T.*"), mockKafkaCruiseControl)
+        .excludedTopics());
+    // Expected: All topics are excluded if no topic matches the included topics pattern.
+    assertEquals(new HashSet<>(Arrays.asList(T1, T2)),
+                 computeOptimizationOptions(clusterModel, Pattern.compile("nonexistent"), mockKafkaCruiseControl).excludedTopics());
+    EasyMock.verify(mockKafkaCruiseControl);
+  }
+
+  private static OptimizationOptions computeOptimizationOptions(ClusterModel clusterModel,
+                                                                Pattern includedTopics,
+                                                                KafkaCruiseControl kafkaCruiseControl) {
+    return RunnableUtils.computeOptimizationOptions(clusterModel, false, kafkaCruiseControl, Collections.emptySet(), true,
+                                                    false, false, null, includedTopics, Collections.emptySet(), false, false);
   }
 }

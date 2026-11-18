@@ -76,7 +76,7 @@ public class DemoteBrokerRunnable extends GoalBasedOperationRunnable {
                               Supplier<String> reasonSupplier,
                               boolean stopOngoingExecution) {
     super(kafkaCruiseControl, new OperationFuture("Broker Demotion for Self-Healing"), SELF_HEALING_DRYRUN, null,
-          stopOngoingExecution, null, true, null,
+          stopOngoingExecution, null, true, null, null,
           allowCapacityEstimation, excludeRecentlyDemotedBrokers, false, anomalyId, reasonSupplier,
           SELF_HEALING_IS_TRIGGERED_BY_USER_REQUEST, SELF_HEALING_FAST_MODE);
     _brokerIds = demotedBrokerIds;
@@ -96,7 +96,7 @@ public class DemoteBrokerRunnable extends GoalBasedOperationRunnable {
                               DemoteBrokerParameters parameters) {
 
     super(kafkaCruiseControl, future, parameters.dryRun(), null,
-          parameters.stopOngoingExecution(), null, true, null,
+          parameters.stopOngoingExecution(), null, true, null, null,
           parameters.allowCapacityEstimation(), parameters.excludeRecentlyDemotedBrokers(), false,
           uuid, parameters::reason, true, false);
     _brokerIds = parameters.brokerIds();
@@ -174,6 +174,7 @@ public class DemoteBrokerRunnable extends GoalBasedOperationRunnable {
                                                                          _excludeRecentlyDemotedBrokers,
                                                                          _excludeRecentlyRemovedBrokers,
                                                                          _excludedTopics,
+                                                                         _includedTopics,
                                                                          Collections.emptySet(),
                                                                          false,
                                                                          _fastMode);

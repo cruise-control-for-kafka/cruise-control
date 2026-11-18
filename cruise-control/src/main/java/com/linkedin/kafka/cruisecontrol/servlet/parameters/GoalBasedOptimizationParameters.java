@@ -16,6 +16,7 @@ import java.util.regex.Pattern;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.DATA_FROM_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.USE_READY_DEFAULT_GOALS_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.EXCLUDED_TOPICS_PARAM;
+import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.INCLUDED_TOPICS_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.EXCLUDE_RECENTLY_REMOVED_BROKERS_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.GOALS_PARAM;
 import static com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils.FAST_MODE_PARAM;
@@ -28,6 +29,7 @@ public abstract class GoalBasedOptimizationParameters extends KafkaOptimizationP
     validParameterNames.add(DATA_FROM_PARAM);
     validParameterNames.add(USE_READY_DEFAULT_GOALS_PARAM);
     validParameterNames.add(EXCLUDED_TOPICS_PARAM);
+    validParameterNames.add(INCLUDED_TOPICS_PARAM);
     validParameterNames.add(EXCLUDE_RECENTLY_REMOVED_BROKERS_PARAM);
     validParameterNames.add(GOALS_PARAM);
     validParameterNames.add(FAST_MODE_PARAM);
@@ -42,6 +44,7 @@ public abstract class GoalBasedOptimizationParameters extends KafkaOptimizationP
   protected ParameterUtils.DataFrom _dataFrom;
   protected boolean _useReadyDefaultGoals;
   protected Pattern _excludedTopics;
+  protected Pattern _includedTopics;
   protected boolean _excludeRecentlyRemovedBrokers;
   protected GoalsAndRequirements _goalsAndRequirements;
   protected boolean _fastMode;
@@ -56,6 +59,7 @@ public abstract class GoalBasedOptimizationParameters extends KafkaOptimizationP
     _dataFrom = ParameterUtils.getDataFrom(_requestContext);
     _useReadyDefaultGoals = ParameterUtils.useReadyDefaultGoals(_requestContext);
     _excludedTopics = ParameterUtils.excludedTopics(_requestContext);
+    _includedTopics = ParameterUtils.includedTopics(_requestContext);
     _excludeRecentlyRemovedBrokers = ParameterUtils.excludeRecentlyRemovedBrokers(_requestContext);
     List<String> goals = ParameterUtils.getGoals(_requestContext);
     _goalsAndRequirements = new GoalsAndRequirements(goals, getRequirements(_dataFrom));
@@ -80,6 +84,10 @@ public abstract class GoalBasedOptimizationParameters extends KafkaOptimizationP
 
   public Pattern excludedTopics() {
     return _excludedTopics;
+  }
+
+  public Pattern includedTopics() {
+    return _includedTopics;
   }
 
   public boolean excludeRecentlyRemovedBrokers() {

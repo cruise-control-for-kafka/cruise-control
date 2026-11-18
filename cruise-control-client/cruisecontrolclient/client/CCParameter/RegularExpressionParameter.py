@@ -38,6 +38,18 @@ class ExcludedTopicsParameter(AbstractRegularExpressionParameter):
     }
 
 
+class IncludedTopicsParameter(AbstractRegularExpressionParameter):
+    """included_topics=[pattern]"""
+
+    name = "included_topics"
+    description = ("A regular expression matching the only topics to include in this endpoint's action; "
+                   "mutually exclusive with excluded_topics")
+    argparse_properties = {
+        "args": ("--included-topics", "--include-topics", "--include-topic"),
+        "kwargs": dict(help=description, metavar="REGEX"),
+    }
+
+
 class TopicParameter(AbstractRegularExpressionParameter):
     """topic=[topic]"""
 
