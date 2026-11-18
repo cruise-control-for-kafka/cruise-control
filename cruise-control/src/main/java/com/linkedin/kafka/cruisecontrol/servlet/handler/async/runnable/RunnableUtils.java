@@ -15,10 +15,12 @@ import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
 import com.linkedin.kafka.cruisecontrol.executor.strategy.ReplicaMovementStrategy;
 import com.linkedin.kafka.cruisecontrol.model.Broker;
 import com.linkedin.kafka.cruisecontrol.model.ClusterModel;
+import com.linkedin.kafka.cruisecontrol.model.ModelUtils;
 import com.linkedin.kafka.cruisecontrol.monitor.ModelCompletenessRequirements;
 import com.linkedin.kafka.cruisecontrol.servlet.parameters.ParameterUtils;
 import com.linkedin.kafka.cruisecontrol.servlet.response.CruiseControlState;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -182,6 +184,44 @@ public final class RunnableUtils {
         if (partitionInfo.offlineReplicas().length > 0) {
           return partitionInfo;
         }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Check partitions in the given cluster for existence of offline replicas, which would remain after changing the replication
+   * factor of the given topics, and get the first such partition. Offline replicas of a partition are removed by the replication
+   * factor change only if its replication factor is decreased and it has enough online replicas to satisfy the target replication
+   * factor (see {@link ModelUtils#replicasToRetainOnReplicationFactorDecrease}).
+   * If no such partitions are identified, return {@code null}.
+   *
+   * @param cluster The current cluster state.
+   * @param topicsToChangeByReplicationFactor Topics to change replication factor by target replication factor.
+   * @return The first identified partition with offline replicas remaining after the replication factor change, {@code null} if
+   * no such partition exists.
+   */
+  public static PartitionInfo partitionWithOfflineReplicasAfterReplicationFactorChange(
+      Cluster cluster,
+      Map<Short, Set<String>> topicsToChangeByReplicationFactor) {
+    Map<String, Short> replicationFactorByTopic = new HashMap<>();
+    topicsToChangeByReplicationFactor.forEach((rf, topics) -> topics.forEach(topic -> replicationFactorByTopic.put(topic, rf)));
+    for (String topic : cluster.topics()) {
+      Short replicationFactor = replicationFactorByTopic.get(topic);
+      for (PartitionInfo partitionInfo : cluster.partitionsForTopic(topic)) {
+        if (partitionInfo.offlineReplicas().length == 0) {
+          continue;
+        }
+        if (replicationFactor != null && replicationFactor < partitionInfo.replicas().length) {
+          Set<Integer> offlineBrokerIds = Arrays.stream(partitionInfo.offlineReplicas()).map(Node::id).collect(Collectors.toSet());
+          List<Integer> replicasToRetain =
+              ModelUtils.replicasToRetainOnReplicationFactorDecrease(partitionInfo, offlineBrokerIds, replicationFactor);
+          if (replicasToRetain.stream().noneMatch(offlineBrokerIds::contains)) {
+            // All offline replicas of this partition will be removed.
+            continue;
+          }
+        }
+        return partitionInfo;
       }
     }
     return null;

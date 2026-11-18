@@ -16,9 +16,11 @@ import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.junit.Test;
 
+import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.partitionWithOfflineReplicasAfterReplicationFactorChange;
 import static com.linkedin.kafka.cruisecontrol.servlet.handler.async.runnable.RunnableUtils.populateRackInfoForReplicationFactorChange;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
 
 
 public class RunnableUtilsTest {
@@ -63,5 +65,34 @@ public class RunnableUtilsTest {
                                                rackByBroker);
     assertEquals(2, brokersByRack.size());
     assertEquals(NODES.length, rackByBroker.size());
+  }
+
+  @Test
+  public void testPartitionWithOfflineReplicasAfterReplicationFactorChange() {
+    // The partition has replicas on brokers [0 (leader), 1, 2], where the replica on broker 2 is offline.
+    PartitionInfo partitionInfo = new PartitionInfo(TOPIC, 0, NODE_0, NODES, new Node[]{NODES[0], NODES[1]}, new Node[]{NODES[2]});
+    Cluster cluster = new Cluster("cluster_id", new HashSet<>(Arrays.asList(NODES)), Collections.singleton(partitionInfo),
+                                  Collections.emptySet(), Collections.emptySet());
+
+    // Expected: The partition, if the replication factor of its topic is not changed.
+    assertEquals(partitionInfo, partitionWithOfflineReplicasAfterReplicationFactorChange(cluster, Collections.emptyMap()));
+    assertEquals(partitionInfo, partitionWithOfflineReplicasAfterReplicationFactorChange(
+        cluster, Collections.singletonMap((short) 2, Collections.singleton("other_topic"))));
+    // Expected: No partition, if decreasing the replication factor of its topic removes its offline replicas.
+    assertNull(partitionWithOfflineReplicasAfterReplicationFactorChange(cluster, Collections.singletonMap((short) 2,
+                                                                                                          Collections.singleton(TOPIC))));
+    assertNull(partitionWithOfflineReplicasAfterReplicationFactorChange(cluster, Collections.singletonMap((short) 1,
+                                                                                                          Collections.singleton(TOPIC))));
+
+    // The partition has replicas on brokers [0 (leader), 1, 2], where the replicas on brokers 1 and 2 are offline.
+    partitionInfo = new PartitionInfo(TOPIC, 0, NODE_0, NODES, new Node[]{NODE_0}, new Node[]{NODES[1], NODES[2]});
+    cluster = new Cluster("cluster_id", new HashSet<>(Arrays.asList(NODES)), Collections.singleton(partitionInfo),
+                          Collections.emptySet(), Collections.emptySet());
+    // Expected: The partition, if decreasing the replication factor of its topic does not remove all of its offline replicas.
+    assertEquals(partitionInfo, partitionWithOfflineReplicasAfterReplicationFactorChange(
+        cluster, Collections.singletonMap((short) 2, Collections.singleton(TOPIC))));
+    // Expected: No partition, if decreasing the replication factor of its topic removes all of its offline replicas.
+    assertNull(partitionWithOfflineReplicasAfterReplicationFactorChange(cluster, Collections.singletonMap((short) 1,
+                                                                                                          Collections.singleton(TOPIC))));
   }
 }

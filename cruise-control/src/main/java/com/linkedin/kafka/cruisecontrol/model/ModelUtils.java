@@ -11,7 +11,10 @@ import com.linkedin.kafka.cruisecontrol.common.Resource;
 import com.linkedin.kafka.cruisecontrol.config.KafkaCruiseControlConfig;
 import com.linkedin.kafka.cruisecontrol.config.constants.MonitorConfig;
 import com.linkedin.kafka.cruisecontrol.monitor.metricdefinition.KafkaMetricDef;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import org.apache.kafka.common.Node;
 import org.apache.kafka.common.PartitionInfo;
 import org.slf4j.Logger;
@@ -199,5 +202,56 @@ public final class ModelUtils {
     }
 
     return true;
+  }
+
+  /**
+   * Get the ids of brokers hosting the replicas of the given partition to retain when its replication factor is decreased
+   * to the given value. Replicas are retained in the following order of preference, and the ones that are not retained are
+   * expected to be removed:
+   * <ol>
+   *   <li>The current leader replica, if it is online.</li>
+   *   <li>Online in-sync replicas, following their order in the replica list of the partition.</li>
+   *   <li>Online out-of-sync replicas, following their order in the replica list of the partition.</li>
+   *   <li>Offline replicas (i.e. replicas on dead brokers or broken disks), following their order in the replica list of the partition.</li>
+   * </ol>
+   * Hence, offline and out-of-sync replicas are removed first. This lets the replication factor decrease go through when there are
+   * dead brokers or broken disks, and avoids waiting for lagging replicas to catch up (e.g. in a cluster under heavy load).
+   *
+   * @param partitionInfo The partition whose replication factor is decreased.
+   * @param offlineBrokerIds Ids of brokers hosting offline replicas of the partition.
+   * @param replicationFactor The target replication factor.
+   * @return Ids of brokers hosting the replicas of the given partition to retain, in the order of preference.
+   */
+  public static List<Integer> replicasToRetainOnReplicationFactorDecrease(PartitionInfo partitionInfo,
+                                                                          Set<Integer> offlineBrokerIds,
+                                                                          int replicationFactor) {
+    Set<Integer> inSyncBrokerIds = new HashSet<>();
+    if (partitionInfo.inSyncReplicas() != null) {
+      for (Node node : partitionInfo.inSyncReplicas()) {
+        if (node != null) {
+          inSyncBrokerIds.add(node.id());
+        }
+      }
+    }
+    List<Integer> onlineInSync = new ArrayList<>();
+    List<Integer> onlineOutOfSync = new ArrayList<>();
+    List<Integer> offline = new ArrayList<>();
+    Node leader = partitionInfo.leader();
+    for (Node node : partitionInfo.replicas()) {
+      int brokerId = node.id();
+      if (offlineBrokerIds.contains(brokerId)) {
+        offline.add(brokerId);
+      } else if (leader != null && brokerId == leader.id()) {
+        onlineInSync.add(0, brokerId);
+      } else if (inSyncBrokerIds.contains(brokerId)) {
+        onlineInSync.add(brokerId);
+      } else {
+        onlineOutOfSync.add(brokerId);
+      }
+    }
+    List<Integer> retained = new ArrayList<>(onlineInSync);
+    retained.addAll(onlineOutOfSync);
+    retained.addAll(offline);
+    return retained.subList(0, Math.min(replicationFactor, retained.size()));
   }
 }
