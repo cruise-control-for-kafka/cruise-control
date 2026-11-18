@@ -4,6 +4,7 @@
 
 package com.linkedin.kafka.cruisecontrol.detector;
 
+import com.codahale.metrics.Counter;
 import com.codahale.metrics.Gauge;
 import com.codahale.metrics.Meter;
 import com.codahale.metrics.MetricRegistry;
@@ -81,6 +82,8 @@ public class AnomalyDetectorState {
   private double _balancednessScore;
   private boolean _hasUnfixableGoals;
   private final Map<AnomalyType, Timer> _anomalyDetectToFixCompleteTimer;
+  private final Map<AnomalyType, Counter> _numSelfHealingStartedPerAnomaly;
+  private final Map<AnomalyType, Counter> _numSelfHealingEndedPerAnomaly;
 
   public AnomalyDetectorState(Time time,
                               AnomalyNotifier anomalyNotifier,
@@ -125,6 +128,8 @@ public class AnomalyDetectorState {
                                         (Gauge<Integer>) () -> hasUnfixableGoals() ? 1 : 0);
 
       _anomalyRateByType = new HashMap<>();
+      _numSelfHealingStartedPerAnomaly = new HashMap<>();
+      _numSelfHealingEndedPerAnomaly = new HashMap<>();
       _anomalyRateByType.put(BROKER_FAILURE,
                              dropwizardMetricRegistry.meter(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, "broker-failure-rate")));
       _anomalyRateByType.put(GOAL_VIOLATION,
@@ -138,12 +143,24 @@ public class AnomalyDetectorState {
       _anomalyRateByType.put(MAINTENANCE_EVENT,
                              dropwizardMetricRegistry.meter(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, "maintenance-event-rate")));
       for (KafkaAnomalyType anomalyType : KafkaAnomalyType.cachedValues()) {
-        Timer timer = dropwizardMetricRegistry.timer(
-            MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, String.format("%s-detect-to-fix-complete-timer", anomalyType.toString().toLowerCase())));
-        _anomalyDetectToFixCompleteTimer.put(anomalyType, timer);
+        _anomalyDetectToFixCompleteTimer.put(anomalyType,
+                dropwizardMetricRegistry.timer(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR,
+                        String.format("%s-detect-to-fix-complete-timer", anomalyType.toString().toLowerCase()))));
+
+        _numSelfHealingStartedPerAnomaly.put(anomalyType,
+                dropwizardMetricRegistry.counter(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR,
+                        String.format("num-of-self-healing-started-for-%s", anomalyType.toString().toLowerCase()))));
+
+        _numSelfHealingEndedPerAnomaly.put(anomalyType,
+                dropwizardMetricRegistry.counter(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR,
+                        String.format("num-of-self-healing-ended-for-%s", anomalyType.toString().toLowerCase()))));
       }
     } else {
       _anomalyRateByType = new HashMap<>();
+      _numSelfHealingStartedPerAnomaly = new HashMap<>();
+      _numSelfHealingEndedPerAnomaly = new HashMap<>();
+      KafkaAnomalyType.cachedValues().forEach(anomalyType -> _numSelfHealingStartedPerAnomaly.put(anomalyType, new Counter()));
+      KafkaAnomalyType.cachedValues().forEach(anomalyType -> _numSelfHealingEndedPerAnomaly.put(anomalyType, new Counter()));
       KafkaAnomalyType.cachedValues().forEach(anomalyType -> _anomalyRateByType.put(anomalyType, new Meter()));
     }
     _balancednessScore = INITIAL_BALANCEDNESS_SCORE;
@@ -259,9 +276,21 @@ public class AnomalyDetectorState {
 
   /**
    * Increment the number of self healing actions started successfully.
+   *
+   * @param anomalyType Type of anomaly
    */
-  void incrementNumSelfHealingStarted() {
+  void incrementNumSelfHealingStarted(AnomalyType anomalyType) {
     _numSelfHealingStarted.incrementAndGet();
+    _numSelfHealingStartedPerAnomaly.get(anomalyType).inc();
+  }
+
+  /**
+   * Increment the number of self healing actions ended successfully per anomaly.
+   *
+   * @param anomalyType Type of anomaly
+   */
+  void incrementNumSelfHealingEndedPerAnomaly(AnomalyType anomalyType) {
+    _numSelfHealingEndedPerAnomaly.get(anomalyType).inc();
   }
 
   /**
@@ -309,6 +338,7 @@ public class AnomalyDetectorState {
       // Time the duration if the self-healing is completed successfully.
       // completeWithError is true if the proposal execution is interrupted (receive stop signal) or encountered exception.
       // execution-stopped metrics track the number of stopped execution.
+      incrementNumSelfHealingEndedPerAnomaly(_ongoingSelfHealingAnomaly.anomalyType());
       _anomalyDetectToFixCompleteTimer.get(_ongoingSelfHealingAnomaly.anomalyType()).update(totalTime, TimeUnit.MILLISECONDS);
     }
     _ongoingSelfHealingAnomaly = null;
