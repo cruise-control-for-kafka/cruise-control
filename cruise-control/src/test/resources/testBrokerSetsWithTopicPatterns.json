@@ -1,0 +1,10 @@
+{
+  "brokerSets":[
+    {
+      "brokerSetId": "fast",
+      "brokerIds": [1, 2, 3],
+      "topicPattern": "hot",
+      "doc": "Topics matching topicPattern may only live on brokers 1, 2 and 3. Broker 0 is not listed."
+    }
+  ]
+}

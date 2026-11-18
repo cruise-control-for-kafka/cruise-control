@@ -17,12 +17,14 @@ import org.apache.kafka.common.annotation.InterfaceStability;
 @InterfaceStability.Evolving
 public interface ReplicaToBrokerSetMappingPolicy {
   /**
-   * Maps a replica to a broker set
+   * Maps a replica to a broker set. A policy may leave a replica unconstrained by returning {@code null}: the replica is then not
+   * bound to any broker set, and {@link com.linkedin.kafka.cruisecontrol.analyzer.goals.BrokerSetAwareGoal} neither moves it
+   * (unless it is offline), nor vetoes its moves, nor checks its placement.
    *
    * @param replica replica object
    * @param clusterModel cluster model object
    * @param brokerSetResolutionHelper broker set resolution helper
-   * @return A broker set Id
+   * @return A broker set Id, or {@code null} if the replica is not bound to any broker set
    */
   String brokerSetIdForReplica(Replica replica, ClusterModel clusterModel, BrokerSetResolutionHelper brokerSetResolutionHelper)
       throws BrokerSetResolutionException, ReplicaToBrokerSetMappingException;

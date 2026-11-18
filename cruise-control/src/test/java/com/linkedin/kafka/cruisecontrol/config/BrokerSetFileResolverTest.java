@@ -61,6 +61,18 @@ public class BrokerSetFileResolverTest {
   }
 
   /**
+   * Tests if a brokerSets.json with the optional topicPattern field still resolves to the same broker sets.
+   */
+  @Test
+  public void testParseBrokerSetFileWithTopicPatterns() throws BrokerSetResolutionException {
+    BrokerSetResolver brokerSetResolver = getBrokerSetResolver("testBrokerSetsWithTopicPatterns.json", this.getClass());
+    final Map<String, Set<Integer>> brokerSets = brokerSetResolver.brokerIdsByBrokerSetId(
+        BrokerSetResolutionHelper.getRackIdByBrokerIdMapping(DeterministicCluster.brokerSetTopicPatternSatisfiable()));
+
+    assertEquals(Map.of("fast", Set.of(1, 2, 3), NoOpBrokerSetAssignmentPolicy.UNMAPPED_BROKER_SET_ID, Set.of(0)), brokerSets);
+  }
+
+  /**
    * Tests if a non-existent file throws exception in loading
    */
   @Test

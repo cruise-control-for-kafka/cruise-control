@@ -15,6 +15,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,6 +42,9 @@ public final class DeterministicCluster {
   public static final Map<Integer, Integer> RACK_BY_BROKER3;
   public static final Map<Integer, Integer> RACK_BY_BROKER4;
   public static final Map<Integer, Integer> RACK_BY_BROKER5;
+  public static final Map<Integer, Integer> RACK_BY_BROKER_TOPIC_PATTERN = Map.of(0, 0, 1, 1, 2, 2, 3, 0);
+  public static final String TOPIC_HOT = "hot";
+  public static final String TOPIC_COLD = "cold";
   public static final String CLUSTER_ID = "DETERMINISTIC_CLUSTER";
   public static final int PORT = 0;
 
@@ -1571,6 +1575,75 @@ public final class DeterministicCluster {
     cluster.createReplica(RACK_BY_BROKER4.get(5).toString(), 5, topic1Partition3, 2, false);
     cluster.setReplicaLoad(RACK_BY_BROKER4.get(5).toString(), 5, topic1Partition3, aggregatedMetricValues, Collections.singletonList(1L));
 
+    return cluster;
+  }
+
+  /**
+   * 4 brokers on 3 racks (brokers 0 and 3 are on rack 0), to be used with testBrokerSetsWithTopicPatterns.json: brokers 1, 2
+   * and 3 form broker set "fast" with topic pattern "hot", and broker 0 is not listed (i.e. it is in the unmapped broker set).
+   * 2 topics, each topic has four partitions, each partition has 2 replicas. Topic "hot" is pinned to "fast" but has replicas on
+   * broker 0. Topic "cold" matches no topic pattern and spans all brokers.
+   *
+   * <p>
+   * <h3>Replica Distribution</h3>
+   * <li>B0: hot_P0_leader,   hot_P1_follower, cold_P0_leader,   cold_P1_leader</li>
+   * <li>B1: hot_P0_follower, hot_P2_follower, cold_P0_follower, cold_P2_follower</li>
+   * <li>B2: hot_P1_leader,   hot_P2_leader,   hot_P3_follower,  cold_P1_follower, cold_P3_leader</li>
+   * <li>B3: hot_P3_leader,   cold_P2_leader,  cold_P3_follower</li>
+   * </p>
+   *
+   * @return Cluster model for the tests.
+   */
+  public static ClusterModel brokerSetTopicPatternSatisfiable() {
+    return brokerSetTopicPattern(false, -1);
+  }
+
+  /**
+   * The JBOD version of {@link #brokerSetTopicPatternSatisfiable()}, in which the replicas of partition 2 of both topics on broker 1
+   * (hot_P2_follower and cold_P2_follower) are offline on the bad disk TestConstants.LOGDIR1 of broker 1.
+   *
+   * @return Cluster model for the tests.
+   */
+  public static ClusterModel brokerSetTopicPatternWithBadDisk() {
+    return brokerSetTopicPattern(true, 1);
+  }
+
+  private static ClusterModel brokerSetTopicPattern(boolean jbod, int brokerWithBadDisk) {
+    ClusterModel cluster = getHomogeneousCluster(RACK_BY_BROKER_TOPIC_PATTERN, TestConstants.BROKER_CAPACITY,
+                                                 jbod ? TestConstants.DISK_CAPACITY : null);
+    AggregatedMetricValues aggregatedMetricValues =
+        getAggregatedMetricValues(TestConstants.TYPICAL_CPU_CAPACITY / 20,
+                                  TestConstants.LARGE_BROKER_CAPACITY / 20,
+                                  TestConstants.MEDIUM_BROKER_CAPACITY / 20,
+                                  TestConstants.LARGE_BROKER_CAPACITY / 20);
+    List<Long> windows = Collections.singletonList(1L);
+
+    // Broker ids of the replicas of each partition. The first broker hosts the leader.
+    Map<TopicPartition, List<Integer>> brokerIdsByPartition = new LinkedHashMap<>();
+    brokerIdsByPartition.put(new TopicPartition(TOPIC_HOT, 0), List.of(0, 1));
+    brokerIdsByPartition.put(new TopicPartition(TOPIC_HOT, 1), List.of(2, 0));
+    brokerIdsByPartition.put(new TopicPartition(TOPIC_HOT, 2), List.of(2, 1));
+    brokerIdsByPartition.put(new TopicPartition(TOPIC_HOT, 3), List.of(3, 2));
+    brokerIdsByPartition.put(new TopicPartition(TOPIC_COLD, 0), List.of(0, 1));
+    brokerIdsByPartition.put(new TopicPartition(TOPIC_COLD, 1), List.of(0, 2));
+    brokerIdsByPartition.put(new TopicPartition(TOPIC_COLD, 2), List.of(3, 1));
+    brokerIdsByPartition.put(new TopicPartition(TOPIC_COLD, 3), List.of(2, 3));
+
+    for (Map.Entry<TopicPartition, List<Integer>> entry : brokerIdsByPartition.entrySet()) {
+      TopicPartition tp = entry.getKey();
+      List<Integer> brokerIds = entry.getValue();
+      for (int index = 0; index < brokerIds.size(); index++) {
+        int brokerId = brokerIds.get(index);
+        String rackId = RACK_BY_BROKER_TOPIC_PATTERN.get(brokerId).toString();
+        boolean isOffline = brokerId == brokerWithBadDisk && tp.partition() == 2;
+        String logdir = jbod ? (isOffline ? TestConstants.LOGDIR1 : TestConstants.LOGDIR0) : null;
+        cluster.createReplica(rackId, brokerId, tp, index, index == 0, isOffline, logdir, false);
+        cluster.setReplicaLoad(rackId, brokerId, tp, aggregatedMetricValues, windows);
+      }
+    }
+    if (brokerWithBadDisk >= 0) {
+      cluster.setBrokerState(brokerWithBadDisk, Broker.State.BAD_DISKS);
+    }
     return cluster;
   }
 
