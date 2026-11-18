@@ -15,6 +15,12 @@ RemoveDisksEndpoint:
         schema:
           type: boolean
           default: false
+      - name: verbose
+        in: query
+        description: Return detailed state information.
+        schema:
+          type: boolean
+          default: false
       - name: reason
         in: query
         description: Reason for request.
