@@ -132,7 +132,14 @@ public class Executor {
   private final long _removalHistoryRetentionTimeMs;
   private final ConcurrentMap<Integer, Long> _latestDemoteStartTimeMsByBrokerId;
   private final ConcurrentMap<Integer, Long> _latestRemoveStartTimeMsByBrokerId;
+  // Bounds the time that removing a leftover log dir throttle can block the proposal executor thread if a removal does not
+  // take effect. The removal is retried on the next sweep.
+  private static final int LEFTOVER_LOG_DIR_THROTTLE_REMOVAL_RETRIES = 5;
   private final ScheduledExecutorService _executionHistoryScannerExecutor;
+  // Log dir throttles that executions have set, but not removed yet (see #removeLeftoverLogDirThrottles).
+  private final LogDirThrottleHelper.AppliedThrottles _appliedLogDirThrottles;
+  private final AtomicBoolean _leftoverLogDirThrottleRemovalQueued;
+  private final ScheduledExecutorService _leftoverLogDirThrottleCleanerExecutor;
   private UserTaskManager _userTaskManager;
   private final AnomalyDetectorManager _anomalyDetectorManager;
   private final ConcurrencyAdjuster _concurrencyAdjuster;
@@ -251,6 +258,16 @@ public class Executor {
                                              ExecutionUtils.MIN_ISR_CACHE_CLEANER_INITIAL_DELAY,
                                              _time);
     _concurrencyAdjusterExecutor.scheduleAtFixedRate(_concurrencyAdjuster, intervalMs, intervalMs, TimeUnit.MILLISECONDS);
+    _appliedLogDirThrottles = new LogDirThrottleHelper.AppliedThrottles();
+    _leftoverLogDirThrottleRemovalQueued = new AtomicBoolean(false);
+    _leftoverLogDirThrottleCleanerExecutor = Executors.newSingleThreadScheduledExecutor(
+        new KafkaCruiseControlThreadFactory(LeftoverLogDirThrottleCleaner.class.getSimpleName()));
+    // A log dir throttle that an execution failed to restore is retried as often as the progress of an execution is checked.
+    long leftoverLogDirThrottleCheckIntervalMs = Math.max(1L, _defaultExecutionProgressCheckIntervalMs);
+    _leftoverLogDirThrottleCleanerExecutor.scheduleAtFixedRate(new LeftoverLogDirThrottleCleaner(),
+                                                               leftoverLogDirThrottleCheckIntervalMs,
+                                                               leftoverLogDirThrottleCheckIntervalMs,
+                                                               TimeUnit.MILLISECONDS);
     _executionHistoryScannerExecutor = Executors.newSingleThreadScheduledExecutor(
         new KafkaCruiseControlThreadFactory(ExecutionHistoryScanner.class.getSimpleName()));
     _executionHistoryScannerExecutor.scheduleAtFixedRate(new ExecutionHistoryScanner(),
@@ -441,6 +458,58 @@ public class Executor {
       long startTime = entry.getValue();
       return startTime != ExecutionUtils.PERMANENT_TIMESTAMP && startTime + _removalHistoryRetentionTimeMs < _time.milliseconds();
     });
+  }
+
+  /**
+   * Remove the log dir throttles that executions have left behind -- i.e. the per-broker
+   * {@code replica.alter.log.dirs.io.max.bytes.per.second} that an execution set and then failed to restore, because the
+   * broker could not be described or altered at the time. The value is a DYNAMIC broker config, so it survives broker
+   * restarts; and a later execution reading it would treat it as the operator's own value and faithfully put it back. So
+   * without this sweep a single failed restore leaves a rate limit on that broker for good.
+   *
+   * <p>Called only while there is no ongoing execution, and from the proposal executor thread, so that it cannot interfere
+   * with an execution's own throttling.</p>
+   *
+   * <p>This cannot recover from a hard kill of the process: the record of what was borrowed is in memory. Such a leftover
+   * has to be removed by hand (or by whatever persists the execution state).</p>
+   */
+  private void removeLeftoverLogDirThrottles() {
+    if (_hasOngoingExecution || _appliedLogDirThrottles.isEmpty()) {
+      return;
+    }
+    LOG.info("Removing leftover log dir throttles of brokers {}.", _appliedLogDirThrottles.originalThrottleByBroker().keySet());
+    // The applied rate is not checked here: this runs after the execution that set it has finished, so a current value that
+    // differs from the original is restored rather than left alone.
+    LogDirThrottleHelper.removeThrottles(_adminClient, _appliedLogDirThrottles.originalThrottleByBroker(), null,
+                                         LEFTOVER_LOG_DIR_THROTTLE_REMOVAL_RETRIES);
+  }
+
+  /**
+   * A runnable class to periodically remove the log dir throttles that executions left behind (see
+   * {@link #removeLeftoverLogDirThrottles()}) while there is no ongoing execution.
+   */
+  private class LeftoverLogDirThrottleCleaner implements Runnable {
+    @Override
+    public void run() {
+      if (_hasOngoingExecution || _appliedLogDirThrottles.isEmpty()
+          || !_leftoverLogDirThrottleRemovalQueued.compareAndSet(false, true)) {
+        return;
+      }
+      try {
+        // Remove the throttles in the proposal executor thread, so that the removal does not interfere with an execution.
+        _proposalExecutor.execute(() -> {
+          try {
+            removeLeftoverLogDirThrottles();
+          } finally {
+            _leftoverLogDirThrottleRemovalQueued.set(false);
+          }
+        });
+      } catch (Throwable t) {
+        // E.g. the proposal executor is shut down.
+        _leftoverLogDirThrottleRemovalQueued.set(false);
+        LOG.debug("Failed to queue the removal of leftover log dir throttles.", t);
+      }
+    }
   }
 
   /**
@@ -803,6 +872,8 @@ public class Executor {
    * @param replicaMovementStrategy The strategy used to determine the execution order of generated replica movement tasks.
    * @param replicationThrottle The replication throttle (bytes/second) to apply to both leaders and followers
    *                            when executing a proposal (if null, no throttling is applied).
+   * @param logDirThrottle The throttle (bytes/second) to apply to intra-broker replica movements -- i.e. moving replicas
+   *                       between the logdirs of a broker (if null, no throttling is applied).
    * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
    * @param uuid UUID of the execution.
    * @param isKafkaAssignerMode {@code true} if kafka assigner mode, {@code false} otherwise.
@@ -821,6 +892,7 @@ public class Executor {
                                             Long requestedExecutionProgressCheckIntervalMs,
                                             ReplicaMovementStrategy replicaMovementStrategy,
                                             Long replicationThrottle,
+                                            Long logDirThrottle,
                                             boolean isTriggeredByUserRequest,
                                             String uuid,
                                             boolean isKafkaAssignerMode,
@@ -833,7 +905,7 @@ public class Executor {
                             requestedIntraBrokerPartitionMovementConcurrency, requestedClusterLeadershipMovementConcurrency,
                             requestedBrokerLeadershipMovementConcurrency, requestedExecutionProgressCheckIntervalMs, replicaMovementStrategy,
                             isTriggeredByUserRequest, loadMonitor);
-      startExecution(loadMonitor, null, removedBrokers, replicationThrottle, isTriggeredByUserRequest);
+      startExecution(loadMonitor, null, removedBrokers, replicationThrottle, logDirThrottle, isTriggeredByUserRequest);
     } catch (Exception e) {
       if (e instanceof OngoingExecutionException) {
         LOG.info("User task {}: Broker removal operation aborted due to ongoing execution", uuid);
@@ -926,7 +998,7 @@ public class Executor {
       initProposalExecution(proposals, demotedBrokers, concurrentSwaps, null, 0,
                             requestedClusterLeadershipMovementConcurrency, requestedBrokerLeadershipMovementConcurrency,
                             requestedExecutionProgressCheckIntervalMs, replicaMovementStrategy, isTriggeredByUserRequest, loadMonitor);
-      startExecution(loadMonitor, demotedBrokers, null, replicationThrottle, isTriggeredByUserRequest);
+      startExecution(loadMonitor, demotedBrokers, null, replicationThrottle, null, isTriggeredByUserRequest);
     } catch (Exception e) {
       processExecuteProposalsFailure();
       throw e;
@@ -1007,12 +1079,15 @@ public class Executor {
    * @param removedBrokers Brokers to be removed, null if no broker has been removed.
    * @param replicationThrottle The replication throttle (bytes/second) to apply to both leaders and followers
    *                            while moving partitions (if null, no throttling is applied).
+   * @param logDirThrottle The throttle (bytes/second) to apply to intra-broker replica movements -- i.e. moving replicas
+   *                       between the logdirs of a broker (if null, no throttling is applied).
    * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
    */
   private void startExecution(LoadMonitor loadMonitor,
                               Collection<Integer> demotedBrokers,
                               Collection<Integer> removedBrokers,
                               Long replicationThrottle,
+                              Long logDirThrottle,
                               boolean isTriggeredByUserRequest) throws OngoingExecutionException {
     _executionStoppedByUser.set(false);
     sanityCheckOngoingMovement();
@@ -1048,7 +1123,8 @@ public class Executor {
       _numExecutionStartedInNonKafkaAssignerMode.incrementAndGet();
     }
     _proposalExecutor.execute(
-        new ProposalExecutionRunnable(loadMonitor, demotedBrokers, removedBrokers, replicationThrottle, isTriggeredByUserRequest));
+        new ProposalExecutionRunnable(loadMonitor, demotedBrokers, removedBrokers, replicationThrottle, logDirThrottle,
+                                      isTriggeredByUserRequest));
   }
 
   /**
@@ -1207,6 +1283,7 @@ public class Executor {
     }
     KafkaCruiseControlUtils.closeAdminClientWithTimeout(_adminClient);
     _executionHistoryScannerExecutor.shutdownNow();
+    _leftoverLogDirThrottleCleanerExecutor.shutdownNow();
     _concurrencyAdjusterExecutor.shutdownNow();
     _topicMinIsrCache.shutdown();
     LOG.info("Executor shutdown completed.");
@@ -1299,6 +1376,7 @@ public class Executor {
     private final Set<Integer> _recentlyDemotedBrokers;
     private final Set<Integer> _recentlyRemovedBrokers;
     private final Long _replicationThrottle;
+    private final LogDirThrottleHelper _logDirThrottleHelper;
     private Throwable _executionException;
     private final boolean _isTriggeredByUserRequest;
     private long _lastSlowTaskReportingTimeMs;
@@ -1313,6 +1391,7 @@ public class Executor {
                               Collection<Integer> demotedBrokers,
                               Collection<Integer> removedBrokers,
                               Long replicationThrottle,
+                              Long logDirThrottle,
                               boolean isTriggeredByUserRequest) {
       _loadMonitor = loadMonitor;
       _demotedBrokers = demotedBrokers;
@@ -1348,6 +1427,7 @@ public class Executor {
       _recentlyDemotedBrokers = recentlyDemotedBrokers();
       _recentlyRemovedBrokers = recentlyRemovedBrokers();
       _replicationThrottle = replicationThrottle;
+      _logDirThrottleHelper = new LogDirThrottleHelper(_adminClient, logDirThrottle, _appliedLogDirThrottles);
       _isTriggeredByUserRequest = isTriggeredByUserRequest;
       _lastSlowTaskReportingTimeMs = -1L;
       if (_removedBrokers != null && !_removedBrokers.isEmpty()) {
@@ -1495,6 +1575,8 @@ public class Executor {
         LOG.error("User task {}: Executor got exception during execution", _uuid, t);
         _executionException = t;
       } finally {
+        // Restore the log dir throttles (if any) on all exit paths, before the execution is reported as finished.
+        _logDirThrottleHelper.clearAllThrottles();
         notifyFinishedTask(userTaskInfo);
       }
     }
@@ -1689,6 +1771,7 @@ public class Executor {
         LOG.info("User task {}: Executor will execute {} task(s)", _uuid, tasksToExecute.size());
 
         if (!tasksToExecute.isEmpty()) {
+          _logDirThrottleHelper.setThrottles(tasksToExecute);
           // Execute the tasks.
           _executionTaskManager.markTasksInProgress(tasksToExecute);
           executeIntraBrokerReplicaMovements(tasksToExecute, _adminClient, _executionTaskManager, _config);

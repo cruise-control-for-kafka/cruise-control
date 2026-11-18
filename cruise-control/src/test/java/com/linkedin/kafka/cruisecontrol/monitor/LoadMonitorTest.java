@@ -308,6 +308,14 @@ public class LoadMonitorTest {
     assertEquals(13, clusterModel.partition(T0P0).leader().load().expectedUtilizationFor(Resource.DISK), 0.0);
   }
 
+  @Test
+  public void testHasBrokerWithMultipleLogDirs() throws TimeoutException, BrokerCapacityResolutionException {
+    // Broker 0 has one logdir, and broker 1 has two logdirs.
+    assertTrue(prepareContext(NUM_WINDOWS, true).loadmonitor().hasBrokerWithMultipleLogDirs(true));
+    // The disk capacity of brokers is not specified by logdir.
+    assertFalse(prepareContext().loadmonitor().hasBrokerWithMultipleLogDirs(true));
+  }
+
   // Not enough snapshot windows and some partitions are missing from all snapshot windows.
   @Test
   public void testClusterModelWithInvalidPartitionAndInsufficientSnapshotWindows()

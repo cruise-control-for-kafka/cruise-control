@@ -17,10 +17,13 @@ import com.linkedin.kafka.cruisecontrol.common.KafkaCruiseControlThreadFactory;
 import com.linkedin.kafka.cruisecontrol.config.constants.AnomalyDetectorConfig;
 import com.linkedin.kafka.cruisecontrol.detector.notifier.AnomalyNotificationResult;
 import com.linkedin.kafka.cruisecontrol.detector.notifier.AnomalyNotifier;
+import com.linkedin.kafka.cruisecontrol.detector.notifier.NoopNotifier;
+import com.linkedin.kafka.cruisecontrol.detector.notifier.SelfHealingNotifier;
 import com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyType;
 import com.linkedin.kafka.cruisecontrol.exception.OptimizationFailureException;
 import com.linkedin.kafka.cruisecontrol.executor.ExecutorState;
 import com.linkedin.kafka.cruisecontrol.monitor.task.LoadMonitorTaskRunner;
+import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -41,6 +44,8 @@ import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils.RANDOM;
 import static com.linkedin.kafka.cruisecontrol.KafkaCruiseControlUtils.sanityCheckGoals;
 import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.anomalyComparator;
 import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.getSelfHealingGoalNames;
+import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.getIntraBrokerDetectionGoals;
+import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.getSelfHealingIntraBrokerGoalNames;
 import static com.linkedin.kafka.cruisecontrol.detector.AnomalyDetectorUtils.SHUTDOWN_ANOMALY;
 import static com.linkedin.kafka.cruisecontrol.detector.notifier.KafkaAnomalyType.*;
 
@@ -74,6 +79,7 @@ public class AnomalyDetectorManager {
   private volatile boolean _shutdown;
   private final AnomalyDetectorState _anomalyDetectorState;
   private final List<String> _selfHealingGoals;
+  private final List<String> _selfHealingIntraBrokerGoals;
   private final ExecutorService _anomalyLoggerExecutor;
   private volatile Anomaly _anomalyInProgress;
   private final AtomicLong _numCheckedWithDelay;
@@ -108,6 +114,8 @@ public class AnomalyDetectorManager {
     _kafkaCruiseControl = kafkaCruiseControl;
     _selfHealingGoals = getSelfHealingGoalNames(config);
     sanityCheckGoals(_selfHealingGoals, false, config);
+    _selfHealingIntraBrokerGoals = getSelfHealingIntraBrokerGoalNames(config);
+    maybeWarnAboutIgnoredIntraBrokerGoalViolations(_anomalyNotifier, config);
     _goalViolationDetector = new GoalViolationDetector(_anomalies, _kafkaCruiseControl, dropwizardMetricRegistry);
     _brokerFailureDetector = new KafkaBrokerFailureDetector(_anomalies, _kafkaCruiseControl);
     _metricAnomalyDetector = new MetricAnomalyDetector(_anomalies, _kafkaCruiseControl);
@@ -160,6 +168,7 @@ public class AnomalyDetectorManager {
     _detectorScheduler = detectorScheduler;
     _shutdown = false;
     _selfHealingGoals = Collections.emptyList();
+    _selfHealingIntraBrokerGoals = Collections.emptyList();
     _anomalyLoggerExecutor = Executors.newSingleThreadScheduledExecutor(new KafkaCruiseControlThreadFactory("AnomalyLogger"));
     _anomalyInProgress = null;
     _numCheckedWithDelay = new AtomicLong();
@@ -174,6 +183,50 @@ public class AnomalyDetectorManager {
    * Register sensors.
    * @param dropwizardMetricRegistry The metric registry that holds all the metrics for monitoring Cruise Control.
    */
+  /**
+   * Warn if self-healing of intra-broker goal violations is requested while the configured {@link AnomalyNotifier} cannot
+   * deliver it.
+   *
+   * {@link AnomalyNotifier#onIntraBrokerGoalViolation(IntraBrokerGoalViolations)} is a {@code default} method that ignores the
+   * violations, so that custom notifiers written before this anomaly type keep compiling. The cost of that compatibility is
+   * silence: such a notifier produces neither an alert nor a fix, whatever the self-healing configuration says. Warn only when
+   * self-healing of this anomaly type has actually been asked for -- the default {@link NoopNotifier} does not override the
+   * method either, and warning about it in a default deployment would be noise.
+   *
+   * @param anomalyNotifier The configured anomaly notifier.
+   * @param config The configurations for Cruise Control.
+   */
+  private static void maybeWarnAboutIgnoredIntraBrokerGoalViolations(AnomalyNotifier anomalyNotifier, KafkaCruiseControlConfig config) {
+    if (getIntraBrokerDetectionGoals(config).isEmpty() || !isSelfHealingRequestedForIntraBrokerGoalViolation(config)) {
+      return;
+    }
+    try {
+      Method onIntraBrokerGoalViolation = anomalyNotifier.getClass().getMethod("onIntraBrokerGoalViolation",
+                                                                              IntraBrokerGoalViolations.class);
+      if (onIntraBrokerGoalViolation.isDefault()) {
+        LOG.warn("{} does not override onIntraBrokerGoalViolation, so intra-broker goal violations will be neither alerted nor "
+                 + "self-healed although self-healing is enabled for them. Override it, or set {} to an empty list to stop "
+                 + "detecting them.", anomalyNotifier.getClass().getName(),
+                 AnomalyDetectorConfig.ANOMALY_DETECTION_INTRA_BROKER_GOALS_CONFIG);
+      }
+    } catch (NoSuchMethodException e) {
+      // Cannot happen: the method is declared on the interface.
+      LOG.debug("Could not check whether {} handles intra-broker goal violations.", anomalyNotifier.getClass().getName(), e);
+    }
+  }
+
+  /**
+   * @param config The configurations for Cruise Control.
+   * @return {@code true} if self-healing of intra-broker goal violations is requested, {@code false} otherwise. These are
+   * notifier configs rather than {@code ConfigDef} entries, so they are read the same way {@link SelfHealingNotifier} reads
+   * them: the per-anomaly flag if it is set, and the global one otherwise.
+   */
+  private static boolean isSelfHealingRequestedForIntraBrokerGoalViolation(KafkaCruiseControlConfig config) {
+    Object perType = config.originals().get(SelfHealingNotifier.SELF_HEALING_INTRA_BROKER_GOAL_VIOLATION_ENABLED_CONFIG);
+    Object allTypes = config.originals().get(SelfHealingNotifier.SELF_HEALING_ENABLED_CONFIG);
+    return Boolean.parseBoolean(String.valueOf(perType != null ? perType : allTypes));
+  }
+
   private void registerSensors(MetricRegistry dropwizardMetricRegistry) {
     dropwizardMetricRegistry.register(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR, "balancedness-score"),
                                       (Gauge<Double>) _goalViolationDetector::balancednessScore);
@@ -182,7 +235,7 @@ public class AnomalyDetectorManager {
     for (KafkaAnomalyType anomalyType : KafkaAnomalyType.cachedValues()) {
       dropwizardMetricRegistry.register(MetricRegistry.name(ANOMALY_DETECTOR_SENSOR,
                                                             String.format("%s-self-healing-enabled", anomalyType.toString().toLowerCase())),
-                                        (Gauge<Integer>) () -> _anomalyNotifier.selfHealingEnabled().get(anomalyType) ? 1 : 0);
+                                        (Gauge<Integer>) () -> Boolean.TRUE.equals(_anomalyNotifier.selfHealingEnabled().get(anomalyType)) ? 1 : 0);
     }
 
     // The cluster is identified as under-provisioned, over-provisioned, or right-sized (undecided not reported).
@@ -437,6 +490,9 @@ public class AnomalyDetectorManager {
           notificationResult = _anomalyNotifier.onGoalViolation(goalViolations);
           _anomalyDetectorState.refreshHasUnfixableGoal(goalViolations);
           break;
+        case INTRA_BROKER_GOAL_VIOLATION:
+          notificationResult = _anomalyNotifier.onIntraBrokerGoalViolation((IntraBrokerGoalViolations) _anomalyInProgress);
+          break;
         case BROKER_FAILURE:
           BrokerFailures brokerFailures = (BrokerFailures) _anomalyInProgress;
           notificationResult = _anomalyNotifier.onBrokerFailure(brokerFailures);
@@ -505,7 +561,7 @@ public class AnomalyDetectorManager {
         LOG.info("Skipping {} fix because load monitor is in {} state.", anomalyType, loadMonitorTaskRunnerState);
         _anomalyDetectorState.onAnomalyHandle(_anomalyInProgress, AnomalyState.Status.LOAD_MONITOR_NOT_READY);
       } else {
-        if (_kafkaCruiseControl.meetCompletenessRequirements(_selfHealingGoals)) {
+        if (_kafkaCruiseControl.meetCompletenessRequirements(selfHealingGoals(anomalyType))) {
           return true;
         } else {
           LOG.warn("Skipping {} fix because load completeness requirement is not met for goals.", anomalyType);
@@ -515,14 +571,25 @@ public class AnomalyDetectorManager {
       return false;
     }
 
-    private void logSelfHealingOperation(String anomalyId, OptimizationFailureException ofe, String optimizationResult) {
+    /**
+     * @param anomalyType The type of anomaly.
+     * @return The names of goals used for self-healing the given type of anomaly.
+     */
+    private List<String> selfHealingGoals(AnomalyType anomalyType) {
+      return anomalyType == KafkaAnomalyType.INTRA_BROKER_GOAL_VIOLATION ? _selfHealingIntraBrokerGoals : _selfHealingGoals;
+    }
+
+    private void logSelfHealingOperation(String anomalyId,
+                                         OptimizationFailureException ofe,
+                                         String optimizationResult,
+                                         List<String> selfHealingGoals) {
       if (optimizationResult != null) {
         OPERATION_LOG.info("[{}] Self-healing started successfully:\n{}", anomalyId, optimizationResult);
       } else if (ofe != null) {
         OPERATION_LOG.warn("[{}] Self-healing failed to start:\n{}", anomalyId, ofe);
       } else {
         OPERATION_LOG.warn("[{}] Self-healing failed to start due to inability to optimize combined self-healing goals ({}).",
-                           anomalyId, _selfHealingGoals);
+                           anomalyId, selfHealingGoals);
       }
     }
 
@@ -547,10 +614,11 @@ public class AnomalyDetectorManager {
               }
               LOG.info("{} the anomaly {}.", fixStarted ? "Fixing" : "Cannot fix", _anomalyInProgress);
               String optimizationResult = fixStarted ? _anomalyInProgress.optimizationResult(false) : null;
-              _anomalyLoggerExecutor.execute(() -> logSelfHealingOperation(anomalyId, null, optimizationResult));
+              _anomalyLoggerExecutor.execute(() -> logSelfHealingOperation(anomalyId, null, optimizationResult,
+                                                                           selfHealingGoals(anomalyType)));
             }
           } catch (OptimizationFailureException ofe) {
-            _anomalyLoggerExecutor.execute(() -> logSelfHealingOperation(anomalyId, ofe, null));
+            _anomalyLoggerExecutor.execute(() -> logSelfHealingOperation(anomalyId, ofe, null, selfHealingGoals(anomalyType)));
             skipReportingIfNotUpdated = anomalyType == KafkaAnomalyType.BROKER_FAILURE;
             throw ofe;
           } finally {

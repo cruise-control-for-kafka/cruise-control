@@ -11,6 +11,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import com.linkedin.kafka.cruisecontrol.servlet.CruiseControlEndPoint;
+import com.linkedin.kafka.cruisecontrol.servlet.UserRequestException;
 import org.easymock.EasyMock;
 import org.junit.Assert;
 import org.junit.Test;
@@ -23,6 +24,8 @@ public class ParameterUtilsTest {
   private static final String END_TIME_STRING = "23456";
   private static final String REPLICATION_THROTTLE_STRING = "1000";
   private static final String DEFAULT_REPLICATION_THROTTLE_STRING = "2000";
+  private static final String LOG_DIR_THROTTLE_STRING = "3000";
+  private static final String DEFAULT_LOG_DIR_THROTTLE_STRING = "4000";
   private static final String EXECUTION_PROGRESS_CHECK_INTERVAL_STRING = "1500";
 
   @Test
@@ -100,6 +103,60 @@ public class ParameterUtilsTest {
     Assert.assertEquals(DEFAULT_START_TIME_MS, startMs);
     Assert.assertEquals(DEFAULT_END_TIME_MS, endMs);
     EasyMock.verify(mockRequest);
+  }
+
+  @Test
+  public void testParseLogDirThrottleWithNoDefault() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    KafkaCruiseControlConfig controlConfig = EasyMock.mock(KafkaCruiseControlConfig.class);
+
+    Map<String, String[]> paramMap = Collections.singletonMap(ParameterUtils.LOG_DIR_THROTTLE_PARAM,
+                                                              new String[]{ParameterUtils.LOG_DIR_THROTTLE_PARAM});
+
+    EasyMock.expect(mockRequest.getParameterMap()).andReturn(paramMap).once();
+    EasyMock.expect(mockRequest.getParameter(ParameterUtils.LOG_DIR_THROTTLE_PARAM)).andReturn(LOG_DIR_THROTTLE_STRING).once();
+    // No default
+    EasyMock.expect(controlConfig.getLong(ExecutorConfig.DEFAULT_LOG_DIR_THROTTLE_CONFIG)).andReturn(null);
+
+    EasyMock.replay(mockRequest, controlConfig);
+
+    Long logDirThrottle = ParameterUtils.logDirThrottle(mockRequest, controlConfig);
+    Assert.assertEquals(Long.valueOf(LOG_DIR_THROTTLE_STRING), logDirThrottle);
+    EasyMock.verify(mockRequest, controlConfig);
+  }
+
+  @Test
+  public void testParseLogDirThrottleWithDefault() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    KafkaCruiseControlConfig controlConfig = EasyMock.mock(KafkaCruiseControlConfig.class);
+    // No parameter string value in the parameter map
+    EasyMock.expect(mockRequest.getParameterMap()).andReturn(Collections.emptyMap()).once();
+    EasyMock.expect(controlConfig.getLong(ExecutorConfig.DEFAULT_LOG_DIR_THROTTLE_CONFIG))
+            .andReturn(Long.valueOf(DEFAULT_LOG_DIR_THROTTLE_STRING));
+
+    EasyMock.replay(mockRequest, controlConfig);
+
+    Long logDirThrottle = ParameterUtils.logDirThrottle(mockRequest, controlConfig);
+    Assert.assertEquals(Long.valueOf(DEFAULT_LOG_DIR_THROTTLE_STRING), logDirThrottle);
+    EasyMock.verify(mockRequest, controlConfig);
+  }
+
+  @Test
+  public void testParseLogDirThrottleRejectsNonPositiveValue() {
+    CruiseControlRequestContext mockRequest = EasyMock.mock(CruiseControlRequestContext.class);
+    KafkaCruiseControlConfig controlConfig = EasyMock.mock(KafkaCruiseControlConfig.class);
+
+    Map<String, String[]> paramMap = Collections.singletonMap(ParameterUtils.LOG_DIR_THROTTLE_PARAM,
+                                                              new String[]{ParameterUtils.LOG_DIR_THROTTLE_PARAM});
+
+    EasyMock.expect(mockRequest.getParameterMap()).andReturn(paramMap).once();
+    EasyMock.expect(mockRequest.getParameter(ParameterUtils.LOG_DIR_THROTTLE_PARAM)).andReturn("0").once();
+    EasyMock.expect(controlConfig.getLong(ExecutorConfig.DEFAULT_LOG_DIR_THROTTLE_CONFIG)).andReturn(null);
+
+    EasyMock.replay(mockRequest, controlConfig);
+
+    Assert.assertThrows(UserRequestException.class, () -> ParameterUtils.logDirThrottle(mockRequest, controlConfig));
+    EasyMock.verify(mockRequest, controlConfig);
   }
 
   @Test

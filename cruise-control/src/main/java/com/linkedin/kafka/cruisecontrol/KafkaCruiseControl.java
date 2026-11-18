@@ -631,7 +631,8 @@ public class KafkaCruiseControl {
   }
 
   /**
-   * Execute the given balancing proposals for non-(demote/remove) operations.
+   * Execute the given balancing proposals for non-(demote/remove) operations, throttling intra-broker replica movements
+   * (if any) with default.log.dir.throttle.
    * @param proposals the given balancing proposals
    * @param unthrottledBrokers Brokers for which the rate of replica movements from/to will not be throttled.
    * @param isKafkaAssignerMode {@code true} if kafka assigner mode, {@code false} otherwise.
@@ -670,11 +671,61 @@ public class KafkaCruiseControl {
                                boolean isTriggeredByUserRequest,
                                String uuid,
                                boolean skipInterBrokerReplicaConcurrencyAdjustment) throws OngoingExecutionException {
+    executeProposals(proposals, unthrottledBrokers, isKafkaAssignerMode, concurrentInterBrokerPartitionMovements,
+                     maxInterBrokerPartitionMovements, concurrentIntraBrokerPartitionMovements, clusterConcurrentLeaderMovements,
+                     brokerConcurrentLeaderMovements, executionProgressCheckIntervalMs, replicaMovementStrategy, replicationThrottle,
+                     _config.getLong(ExecutorConfig.DEFAULT_LOG_DIR_THROTTLE_CONFIG), isTriggeredByUserRequest, uuid,
+                     skipInterBrokerReplicaConcurrencyAdjustment);
+  }
+
+  /**
+   * Execute the given balancing proposals for non-(demote/remove) operations.
+   * @param proposals the given balancing proposals
+   * @param unthrottledBrokers Brokers for which the rate of replica movements from/to will not be throttled.
+   * @param isKafkaAssignerMode {@code true} if kafka assigner mode, {@code false} otherwise.
+   * @param concurrentInterBrokerPartitionMovements The maximum number of concurrent inter-broker partition movements per broker
+   *                                                (if null, use num.concurrent.partition.movements.per.broker).
+   * @param maxInterBrokerPartitionMovements The upper bound of concurrent inter-broker partition movements in cluster
+   *                                                (if null, use num.concurrent.partition.movements.per.broker).
+   * @param concurrentIntraBrokerPartitionMovements The maximum number of concurrent intra-broker partition movements
+   *                                                (if null, use num.concurrent.intra.broker.partition.movements).
+   * @param clusterConcurrentLeaderMovements The maximum number of concurrent leader movements in a cluster
+   *                                  (if null, use num.concurrent.leader.movements).
+   * @param brokerConcurrentLeaderMovements The maximum number of concurrent leader movements involved in a broker
+   *                                  (if null, use num.concurrent.leader.movements.per.broker).
+   * @param executionProgressCheckIntervalMs The interval between checking and updating the progress of an initiated
+   *                                         execution (if null, use execution.progress.check.interval.ms).
+   * @param replicaMovementStrategy The strategy used to determine the execution order of generated replica movement tasks
+   *                                (if null, use default.replica.movement.strategies).
+   * @param replicationThrottle The replication throttle (bytes/second) to apply to both leaders and followers
+   *                            when executing proposals (if null, no throttling is applied).
+   * @param logDirThrottle The throttle (bytes/second) to apply to intra-broker replica movements -- i.e. moving replicas
+   *                       between the logdirs of a broker (if null, no throttling is applied).
+   * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
+   * @param uuid UUID of the execution.
+   * @param skipInterBrokerReplicaConcurrencyAdjustment {@code true} to skip auto adjusting concurrency of inter-broker
+   * replica movements even if the concurrency adjuster is enabled, {@code false} otherwise.
+   */
+  public void executeProposals(Set<ExecutionProposal> proposals,
+                               Set<Integer> unthrottledBrokers,
+                               boolean isKafkaAssignerMode,
+                               Integer concurrentInterBrokerPartitionMovements,
+                               Integer maxInterBrokerPartitionMovements,
+                               Integer concurrentIntraBrokerPartitionMovements,
+                               Integer clusterConcurrentLeaderMovements,
+                               Integer brokerConcurrentLeaderMovements,
+                               Long executionProgressCheckIntervalMs,
+                               ReplicaMovementStrategy replicaMovementStrategy,
+                               Long replicationThrottle,
+                               Long logDirThrottle,
+                               boolean isTriggeredByUserRequest,
+                               String uuid,
+                               boolean skipInterBrokerReplicaConcurrencyAdjustment) throws OngoingExecutionException {
     if (hasProposalsToExecute(proposals, uuid)) {
       _executor.executeProposals(proposals, unthrottledBrokers, null, _loadMonitor, concurrentInterBrokerPartitionMovements,
                                  maxInterBrokerPartitionMovements, concurrentIntraBrokerPartitionMovements, clusterConcurrentLeaderMovements,
                                  brokerConcurrentLeaderMovements, executionProgressCheckIntervalMs, replicaMovementStrategy, replicationThrottle,
-                                 isTriggeredByUserRequest, uuid, isKafkaAssignerMode, skipInterBrokerReplicaConcurrencyAdjustment);
+                                 logDirThrottle, isTriggeredByUserRequest, uuid, isKafkaAssignerMode, skipInterBrokerReplicaConcurrencyAdjustment);
     } else {
       failGeneratingProposalsForExecution(uuid);
     }
@@ -721,7 +772,8 @@ public class KafkaCruiseControl {
                                  _loadMonitor, concurrentInterBrokerPartitionMovements, maxInterBrokerPartitionMovements, 0,
                                  clusterLeaderMovementConcurrency, brokerLeaderMovementConcurrency,
                                  executionProgressCheckIntervalMs, replicaMovementStrategy, replicationThrottle,
-                                 isTriggeredByUserRequest, uuid, isKafkaAssignerMode, false);
+                                 // Removal operations do not move replicas between the logdirs of a broker.
+                                 null, isTriggeredByUserRequest, uuid, isKafkaAssignerMode, false);
     } else {
       failGeneratingProposalsForExecution(uuid);
     }

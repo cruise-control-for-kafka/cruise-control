@@ -16,6 +16,7 @@ AdminEndpoint:
               - METRIC_ANOMALY
               - DISK_FAILURE
               - TOPIC_ANOMALY
+              - INTRA_BROKER_GOAL_VIOLATION
           example: ["METRIC_ANOMALY"]
       - name: enable_self_healing_for
         in: query
@@ -30,6 +31,7 @@ AdminEndpoint:
               - METRIC_ANOMALY
               - DISK_FAILURE
               - TOPIC_ANOMALY
+              - INTRA_BROKER_GOAL_VIOLATION
           example: ["GOAL_VIOLATION", "BROKER_FAILURE"]
       - name: concurrent_partition_movements_per_broker
         in: query
