@@ -561,6 +561,31 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
     EasyMock.verify(mockMetadataClient, mockLoadMonitor, mockAnomalyDetectorManager, mockUserTaskInfo, mockUserTaskManager);
   }
 
+  @Test
+  public void testStartMsField() throws OngoingExecutionException {
+    MockTime time = new MockTime();
+    Executor executor = new Executor(new KafkaCruiseControlConfig(getExecutorProperties()), time, new MetricRegistry(),
+                                    null, EasyMock.mock(MetadataAdminClient.class), null,
+                                    EasyMock.mock(AnomalyDetectorManager.class));
+    // Check time is not set when no task in progress
+    assertEquals(0L, executor.state().startMs());
+
+    // Check time is set to current time once a execution starts
+    executor.setGeneratingProposalsForExecution(RANDOM_UUID, () -> "reason", false);
+    long firstStartMs = executor.state().startMs();
+    assertEquals(time.milliseconds(), firstStartMs);
+
+    // Reset back to no task in progress, check time is not set
+    executor.failGeneratingProposalsForExecution(RANDOM_UUID);
+    assertEquals(0L, executor.state().startMs());
+
+    // Check time matches after clock has advanced
+    long clockAdvanceMs = 10_000L;
+    time.sleep(clockAdvanceMs);
+    executor.setGeneratingProposalsForExecution(RANDOM_UUID, () -> "reason", false);
+    assertEquals(firstStartMs + clockAdvanceMs, executor.state().startMs());
+  }
+
   /**
    * Proposal#1: [TPO] move from original broker to the other one -- e.g. 0 -> 1
    * Proposal#2: [TP1] change order and leader -- e.g. [0, 1] -> [1, 0]

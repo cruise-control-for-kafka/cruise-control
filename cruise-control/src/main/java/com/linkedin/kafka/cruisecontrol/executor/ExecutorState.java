@@ -204,6 +204,7 @@ public final class ExecutorState {
    * @param recentlyDemotedBrokers Recently demoted broker IDs.
    * @param recentlyRemovedBrokers Recently removed broker IDs.
    * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
+   * @param startMs The time this execution state happened, in milliseconds.
    * @return Executor state when the execution is starting.
    */
   public static ExecutorState executionStarting(String uuid,
@@ -229,6 +230,7 @@ public final class ExecutorState {
    * @param recentlyDemotedBrokers Recently demoted broker IDs.
    * @param recentlyRemovedBrokers Recently removed broker IDs.
    * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
+   * @param startMs The time this execution state happened, in milliseconds.
    * @return Executor state when initializing proposal execution.
    */
   public static ExecutorState initializeProposalExecution(String uuid,
@@ -254,6 +256,7 @@ public final class ExecutorState {
    * @param recentlyDemotedBrokers Recently demoted broker IDs.
    * @param recentlyRemovedBrokers Recently removed broker IDs.
    * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
+   * @param startMs The time this execution state happened, in milliseconds.
    * @return Executor state when generating proposals for execution.
    */
   public static ExecutorState generatingProposalsForExecution(String uuid,
@@ -282,6 +285,7 @@ public final class ExecutorState {
    * @param recentlyDemotedBrokers Recently demoted broker IDs.
    * @param recentlyRemovedBrokers Recently removed broker IDs.
    * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
+   * @param startMs The time this execution state happened, in milliseconds.
    * @return Executor state when execution is in progress.
    */
   public static ExecutorState operationInProgress(State state,

@@ -1396,7 +1396,8 @@ public class Executor {
         userTaskInfo = _userTaskManager.markTaskExecutionBegan(_uuid);
       }
       String reason = _reasonSupplier.get();
-      _executorState = ExecutorState.executionStarting(_uuid, reason, _recentlyDemotedBrokers, _recentlyRemovedBrokers, _isTriggeredByUserRequest, _time.milliseconds());
+      _executorState = ExecutorState.executionStarting(_uuid, reason, _recentlyDemotedBrokers, _recentlyRemovedBrokers,
+                                                       _isTriggeredByUserRequest, _time.milliseconds());
       OPERATION_LOG.info("Task [{}] execution starts. The reason of execution is {}.", _uuid, reason);
       _ongoingExecutionIsBeingModified.set(false);
       return userTaskInfo;
