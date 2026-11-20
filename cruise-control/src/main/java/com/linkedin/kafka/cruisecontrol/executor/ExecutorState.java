@@ -30,6 +30,8 @@ public final class ExecutorState {
   private static final String RECENTLY_DEMOTED_BROKERS = "recentlyDemotedBrokers";
   @JsonResponseField(required = false)
   private static final String RECENTLY_REMOVED_BROKERS = "recentlyRemovedBrokers";
+  @JsonResponseField(required = false)
+  private static final String START_MS = "startMs";
 
   @JsonResponseField(required = false)
   private static final String NUM_TOTAL_LEADERSHIP_MOVEMENTS = "numTotalLeadershipMovements";
@@ -156,6 +158,7 @@ public final class ExecutorState {
   private final boolean _isTriggeredByUserRequest;
   private final Set<Integer> _recentlyDemotedBrokers;
   private final Set<Integer> _recentlyRemovedBrokers;
+  private final long _startMs;
 
   private ExecutorState(State state,
                         ExecutionTasksSummary executionTasksSummary,
@@ -164,7 +167,8 @@ public final class ExecutorState {
                         String reason,
                         Set<Integer> recentlyDemotedBrokers,
                         Set<Integer> recentlyRemovedBrokers,
-                        boolean isTriggeredByUserRequest) {
+                        boolean isTriggeredByUserRequest,
+                        long startMs) {
     _state = state;
     _executionTasksSummary = executionTasksSummary;
     _executionConcurrencySummary = executionConcurrencySummary;
@@ -173,6 +177,7 @@ public final class ExecutorState {
     _recentlyDemotedBrokers = recentlyDemotedBrokers;
     _recentlyRemovedBrokers = recentlyRemovedBrokers;
     _isTriggeredByUserRequest = isTriggeredByUserRequest;
+    _startMs = startMs;
   }
 
   /**
@@ -189,7 +194,8 @@ public final class ExecutorState {
                              "",
                              recentlyDemotedBrokers,
                              recentlyRemovedBrokers,
-                             false);
+                             false,
+                             0);
   }
 
   /**
@@ -198,13 +204,15 @@ public final class ExecutorState {
    * @param recentlyDemotedBrokers Recently demoted broker IDs.
    * @param recentlyRemovedBrokers Recently removed broker IDs.
    * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
+   * @param startMs The time this execution state happened, in milliseconds.
    * @return Executor state when the execution is starting.
    */
   public static ExecutorState executionStarting(String uuid,
                                                 String reason,
                                                 Set<Integer> recentlyDemotedBrokers,
                                                 Set<Integer> recentlyRemovedBrokers,
-                                                boolean isTriggeredByUserRequest) {
+                                                boolean isTriggeredByUserRequest,
+                                                long startMs) {
     return new ExecutorState(State.STARTING_EXECUTION,
                              null,
                              null,
@@ -212,7 +220,8 @@ public final class ExecutorState {
                              reason,
                              recentlyDemotedBrokers,
                              recentlyRemovedBrokers,
-                             isTriggeredByUserRequest);
+                             isTriggeredByUserRequest,
+                             startMs);
   }
 
   /**
@@ -221,13 +230,15 @@ public final class ExecutorState {
    * @param recentlyDemotedBrokers Recently demoted broker IDs.
    * @param recentlyRemovedBrokers Recently removed broker IDs.
    * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
+   * @param startMs The time this execution state happened, in milliseconds.
    * @return Executor state when initializing proposal execution.
    */
   public static ExecutorState initializeProposalExecution(String uuid,
                                                           String reason,
                                                           Set<Integer> recentlyDemotedBrokers,
                                                           Set<Integer> recentlyRemovedBrokers,
-                                                          boolean isTriggeredByUserRequest) {
+                                                          boolean isTriggeredByUserRequest,
+                                                          long startMs) {
     return new ExecutorState(State.INITIALIZING_PROPOSAL_EXECUTION,
                              null,
                              null,
@@ -235,7 +246,8 @@ public final class ExecutorState {
                              reason,
                              recentlyDemotedBrokers,
                              recentlyRemovedBrokers,
-                             isTriggeredByUserRequest);
+                             isTriggeredByUserRequest,
+                             startMs);
   }
 
   /**
@@ -244,13 +256,15 @@ public final class ExecutorState {
    * @param recentlyDemotedBrokers Recently demoted broker IDs.
    * @param recentlyRemovedBrokers Recently removed broker IDs.
    * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
+   * @param startMs The time this execution state happened, in milliseconds.
    * @return Executor state when generating proposals for execution.
    */
   public static ExecutorState generatingProposalsForExecution(String uuid,
                                                               String reason,
                                                               Set<Integer> recentlyDemotedBrokers,
                                                               Set<Integer> recentlyRemovedBrokers,
-                                                              boolean isTriggeredByUserRequest) {
+                                                              boolean isTriggeredByUserRequest,
+                                                              long startMs) {
     return new ExecutorState(State.GENERATING_PROPOSALS_FOR_EXECUTION,
                              null,
                              null,
@@ -258,7 +272,8 @@ public final class ExecutorState {
                              reason,
                              recentlyDemotedBrokers,
                              recentlyRemovedBrokers,
-                             isTriggeredByUserRequest);
+                             isTriggeredByUserRequest,
+                             startMs);
   }
 
   /**
@@ -270,6 +285,7 @@ public final class ExecutorState {
    * @param recentlyDemotedBrokers Recently demoted broker IDs.
    * @param recentlyRemovedBrokers Recently removed broker IDs.
    * @param isTriggeredByUserRequest Whether the execution is triggered by a user request.
+   * @param startMs The time this execution state happened, in milliseconds.
    * @return Executor state when execution is in progress.
    */
   public static ExecutorState operationInProgress(State state,
@@ -279,7 +295,8 @@ public final class ExecutorState {
                                                   String reason,
                                                   Set<Integer> recentlyDemotedBrokers,
                                                   Set<Integer> recentlyRemovedBrokers,
-                                                  boolean isTriggeredByUserRequest) {
+                                                  boolean isTriggeredByUserRequest,
+                                                  long startMs) {
     if (!IN_PROGRESS_STATES.contains(state)) {
       throw new IllegalArgumentException(String.format("%s is not an operation-in-progress executor state %s.", state, IN_PROGRESS_STATES));
     }
@@ -290,7 +307,8 @@ public final class ExecutorState {
                              reason,
                              recentlyDemotedBrokers,
                              recentlyRemovedBrokers,
-                             isTriggeredByUserRequest);
+                             isTriggeredByUserRequest,
+                             startMs);
   }
 
   /**
@@ -344,6 +362,10 @@ public final class ExecutorState {
     return _recentlyRemovedBrokers;
   }
 
+  public long startMs() {
+    return _startMs;
+  }
+
   public ExecutionTasksSummary executionTasksSummary() {
     return _executionTasksSummary;
   }
@@ -389,10 +411,12 @@ public final class ExecutorState {
       case GENERATING_PROPOSALS_FOR_EXECUTION:
         populateUuidFieldInJsonStructure(execState, _uuid);
         execState.put(TRIGGERED_TASK_REASON, _reason);
+        execState.put(START_MS, Long.toString(_startMs));
         break;
       case LEADER_MOVEMENT_TASK_IN_PROGRESS:
         populateUuidFieldInJsonStructure(execState, _uuid);
         execState.put(TRIGGERED_TASK_REASON, _reason);
+        execState.put(START_MS, Long.toString(_startMs));
         execState.put(MAXIMUM_BROKER_LEADER_MOVEMENT_CONCURRENCY, _executionConcurrencySummary.getMaxExecutionConcurrency(
             ConcurrencyType.LEADERSHIP_BROKER));
         execState.put(MINIMUM_BROKER_LEADER_MOVEMENT_CONCURRENCY,
@@ -411,6 +435,7 @@ public final class ExecutorState {
         interBrokerPartitionMovementStats = _executionTasksSummary.taskStat().get(INTER_BROKER_REPLICA_ACTION);
         populateUuidFieldInJsonStructure(execState, _uuid);
         execState.put(TRIGGERED_TASK_REASON, _reason);
+        execState.put(START_MS, Long.toString(_startMs));
         execState.put(MAXIMUM_CONCURRENT_INTER_BROKER_PARTITION_MOVEMENTS_PER_BROKER,
                       _executionConcurrencySummary.getMaxExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA));
         execState.put(MINIMUM_CONCURRENT_INTER_BROKER_PARTITION_MOVEMENTS_PER_BROKER,
@@ -437,6 +462,7 @@ public final class ExecutorState {
         intraBrokerPartitionMovementStats = _executionTasksSummary.taskStat().get(INTRA_BROKER_REPLICA_ACTION);
         populateUuidFieldInJsonStructure(execState, _uuid);
         execState.put(TRIGGERED_TASK_REASON, _reason);
+        execState.put(START_MS, Long.toString(_startMs));
         execState.put(MAXIMUM_CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_PER_BROKER,
                       _executionConcurrencySummary.getMaxExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA));
         execState.put(MINIMUM_CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_PER_BROKER,
@@ -464,6 +490,7 @@ public final class ExecutorState {
         intraBrokerPartitionMovementStats = _executionTasksSummary.taskStat().get(INTRA_BROKER_REPLICA_ACTION);
         populateUuidFieldInJsonStructure(execState, _uuid);
         execState.put(TRIGGERED_TASK_REASON, _reason);
+        execState.put(START_MS, Long.toString(_startMs));
         execState.put(MAXIMUM_CONCURRENT_INTER_BROKER_PARTITION_MOVEMENTS_PER_BROKER,
                       _executionConcurrencySummary.getMaxExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA));
         execState.put(MAXIMUM_CONCURRENT_INTRA_BROKER_PARTITION_MOVEMENTS_PER_BROKER,
@@ -513,21 +540,23 @@ public final class ExecutorState {
       case STARTING_EXECUTION:
       case INITIALIZING_PROPOSAL_EXECUTION:
       case GENERATING_PROPOSALS_FOR_EXECUTION:
-        return String.format("{%s: %s, %s: %s, %s: %s%s%s}", STATE, _state,
+        return String.format("{%s: %s, %s: %s, %s: %s, %s: %s%s%s}", STATE, _state,
                              _isTriggeredByUserRequest ? TRIGGERED_USER_TASK_ID : TRIGGERED_SELF_HEALING_TASK_ID,
-                             _uuid, TRIGGERED_TASK_REASON, _reason, recentlyDemotedBrokers, recentlyRemovedBrokers);
+                             _uuid, START_MS, _startMs, TRIGGERED_TASK_REASON, _reason,
+                             recentlyDemotedBrokers, recentlyRemovedBrokers);
       case LEADER_MOVEMENT_TASK_IN_PROGRESS:
         return String.format("{%s: %s, finished(%d)/total(%d) leadership movements,"
                              + " max/min/avg broker leadership movement concurrency: %d/%d/%.2f, "
                              + "cluster leadership movement concurrency: %d, "
-                             + "%s: %s, %s: %s%s%s}",
+                             + "%s: %s, %s: %s, %s: %s%s%s}",
                              STATE, _state, numFinishedMovements(LEADER_ACTION), numTotalMovements(LEADER_ACTION),
                              _executionConcurrencySummary.getMaxExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER),
                              _executionConcurrencySummary.getMinExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER),
                              _executionConcurrencySummary.getAvgExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER),
                              _executionConcurrencySummary.getClusterLeadershipMovementConcurrency(),
                              _isTriggeredByUserRequest ? TRIGGERED_USER_TASK_ID : TRIGGERED_SELF_HEALING_TASK_ID,
-                             _uuid, TRIGGERED_TASK_REASON, _reason, recentlyDemotedBrokers, recentlyRemovedBrokers);
+                             _uuid, START_MS, _startMs, TRIGGERED_TASK_REASON, _reason,
+                             recentlyDemotedBrokers, recentlyRemovedBrokers);
       case INTER_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS:
 
         interBrokerPartitionMovementStats = _executionTasksSummary.taskStat().get(INTER_BROKER_REPLICA_ACTION);
@@ -540,7 +569,7 @@ public final class ExecutorState {
 
         return String.format("{%s: %s, pending(%d)/in-progress(%d)/aborting(%d)/finished(%d)/total(%d) inter-broker partition movements,"
                              + " completed(%d)/total(%d) bytes in MBs: %.2f%%, max/min/avg concurrent inter-broker partition movements per-broker:"
-                             + " %d/%d/%.2f, %s: %s, %s: %s%s%s}",
+                             + " %d/%d/%.2f, %s: %s, %s: %s, %s: %s%s%s}",
                              STATE, _state,
                              interBrokerPartitionMovementStats.get(ExecutionTaskState.PENDING),
                              interBrokerPartitionMovementStats.get(ExecutionTaskState.IN_PROGRESS),
@@ -554,7 +583,7 @@ public final class ExecutorState {
                              _executionConcurrencySummary.getMinExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA),
                              _executionConcurrencySummary.getAvgExecutionConcurrency(ConcurrencyType.INTER_BROKER_REPLICA),
                              _isTriggeredByUserRequest ? TRIGGERED_USER_TASK_ID : TRIGGERED_SELF_HEALING_TASK_ID, _uuid,
-                             TRIGGERED_TASK_REASON, _reason, recentlyDemotedBrokers, recentlyRemovedBrokers);
+                             START_MS, _startMs, TRIGGERED_TASK_REASON, _reason, recentlyDemotedBrokers, recentlyRemovedBrokers);
       case INTRA_BROKER_REPLICA_MOVEMENT_TASK_IN_PROGRESS:
         intraBrokerPartitionMovementStats = _executionTasksSummary.taskStat().get(INTRA_BROKER_REPLICA_ACTION);
         long finishedIntraBrokerDataMovementInMB = _executionTasksSummary.finishedIntraBrokerDataMovementInMB();
@@ -566,7 +595,7 @@ public final class ExecutorState {
 
         return String.format("{%s: %s, pending(%d)/in-progress(%d)/aborting(%d)/finished(%d)/total(%d) intra-broker partition movements,"
                              + "completed(%d)/total(%d) bytes in MBs: %.2f%%, max/min/avg concurrent intra-broker partition movements per-broker:"
-                             + "%d/%d/%.2f, %s: %s, %s: %s%s%s}",
+                             + "%d/%d/%.2f, %s: %s, %s: %s, %s: %s%s%s}",
                              STATE, _state,
                              intraBrokerPartitionMovementStats.get(ExecutionTaskState.PENDING),
                              intraBrokerPartitionMovementStats.get(ExecutionTaskState.IN_PROGRESS),
@@ -580,7 +609,7 @@ public final class ExecutorState {
                              _executionConcurrencySummary.getMinExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA),
                              _executionConcurrencySummary.getAvgExecutionConcurrency(ConcurrencyType.INTRA_BROKER_REPLICA),
                              _isTriggeredByUserRequest ? TRIGGERED_USER_TASK_ID : TRIGGERED_SELF_HEALING_TASK_ID, _uuid,
-                             TRIGGERED_TASK_REASON, _reason, recentlyDemotedBrokers, recentlyRemovedBrokers);
+                             START_MS, _startMs, TRIGGERED_TASK_REASON, _reason, recentlyDemotedBrokers, recentlyRemovedBrokers);
       case STOPPING_EXECUTION:
         interBrokerPartitionMovementStats = _executionTasksSummary.taskStat().get(INTER_BROKER_REPLICA_ACTION);
         intraBrokerPartitionMovementStats = _executionTasksSummary.taskStat().get(INTRA_BROKER_REPLICA_ACTION);
@@ -590,7 +619,7 @@ public final class ExecutorState {
                              + "maximum concurrent inter-broker partition movements per-broker: %d, "
                              + "maximum broker leadership movement concurrency: %d, "
                              + "cluster leadership movements concurrency: %d, "
-                             + "%s: %s, %s: %s%s%s}",
+                             + "%s: %s, %s: %s, %s: %s%s%s}",
                              STATE, _state,
                              intraBrokerPartitionMovementStats.get(ExecutionTaskState.PENDING),
                              intraBrokerPartitionMovementStats.get(ExecutionTaskState.IN_PROGRESS),
@@ -607,7 +636,7 @@ public final class ExecutorState {
                              _executionConcurrencySummary.getMaxExecutionConcurrency(ConcurrencyType.LEADERSHIP_BROKER),
                              _executionConcurrencySummary.getClusterLeadershipMovementConcurrency(),
                              _isTriggeredByUserRequest ? TRIGGERED_USER_TASK_ID : TRIGGERED_SELF_HEALING_TASK_ID, _uuid,
-                             TRIGGERED_TASK_REASON, _reason, recentlyDemotedBrokers, recentlyRemovedBrokers);
+                             START_MS, _startMs, TRIGGERED_TASK_REASON, _reason, recentlyDemotedBrokers, recentlyRemovedBrokers);
       default:
         throw new IllegalStateException("This should never happen");
     }
