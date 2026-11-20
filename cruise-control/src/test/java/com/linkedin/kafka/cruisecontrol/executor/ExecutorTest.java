@@ -579,11 +579,82 @@ public class ExecutorTest extends CCKafkaClientsIntegrationTestHarness {
     executor.failGeneratingProposalsForExecution(RANDOM_UUID);
     assertEquals(0L, executor.state().startMs());
 
-    // Check time matches after clock has advanced
+    // Check time updates when starting a new execution
     long clockAdvanceMs = 10_000L;
     time.sleep(clockAdvanceMs);
     executor.setGeneratingProposalsForExecution(RANDOM_UUID, () -> "reason", false);
     assertEquals(firstStartMs + clockAdvanceMs, executor.state().startMs());
+  }
+
+  @Test
+  public void testStartMsFieldPersists() throws OngoingExecutionException {
+    // same setup as in testTimeoutAndExecutionStop()
+    createTopics(0);
+    ExecutionProposal proposal =
+        new ExecutionProposal(TP1, 0, new ReplicaPlacementInfo(1),
+                              Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(1)),
+                              Arrays.asList(new ReplicaPlacementInfo(0), new ReplicaPlacementInfo(1)));
+
+    KafkaCruiseControlConfig configs = new KafkaCruiseControlConfig(getExecutorProperties());
+    Time time = new MockTime();
+    MetadataAdminClient mockMetadataClient = EasyMock.mock(MetadataAdminClient.class);
+    Node node0 = new Node(BROKER_ID_0, "host0", 100);
+    Node node1 = new Node(BROKER_ID_1, "host1", 100);
+    Node[] replicas = new Node[2];
+    replicas[0] = node0;
+    replicas[1] = node1;
+    PartitionInfo partitionInfo = new PartitionInfo(TP1.topic(), TP1.partition(), node1, replicas, replicas);
+    Cluster cluster = new Cluster("id", Arrays.asList(node0, node1), Collections.singleton(partitionInfo),
+                                  Collections.emptySet(), Collections.emptySet());
+    EasyMock.expect(mockMetadataClient.cluster()).andReturn(cluster).anyTimes();
+    LoadMonitor mockLoadMonitor = getMockLoadMonitor();
+    AnomalyDetectorManager mockAnomalyDetectorManager = getMockAnomalyDetector(RANDOM_UUID, false);
+    UserTaskManager.UserTaskInfo mockUserTaskInfo = getMockUserTaskInfo();
+    // Execution will be stopped manually so it will result in error
+    UserTaskManager mockUserTaskManager = getMockUserTaskManager(RANDOM_UUID, mockUserTaskInfo, Collections.singletonList(true));
+    EasyMock.replay(mockMetadataClient, mockLoadMonitor, mockAnomalyDetectorManager, mockUserTaskInfo, mockUserTaskManager);
+
+    Collection<ExecutionProposal> proposalsToExecute = Collections.singletonList(proposal);
+    Executor executor = new Executor(configs, time, new MetricRegistry(), null, mockMetadataClient, null,
+                                     mockAnomalyDetectorManager);
+    executor.setUserTaskManager(mockUserTaskManager);
+
+    // Same check as in previous test, make sure time is initialized properly
+    executor.setGeneratingProposalsForExecution(RANDOM_UUID, () -> "reason", false);
+    long firstStartMs = executor.state().startMs();
+    assertEquals(time.milliseconds(), firstStartMs);
+
+    // Advance clock and move to next state
+    time.sleep(10_000L);
+    executor.executeProposals(proposalsToExecute,
+                              Collections.emptySet(),
+                              null,
+                              mockLoadMonitor,
+                              null, null,
+                              null,
+                              null,
+                              null,
+                              null,
+                              null,
+                              null,
+                              true,
+                              RANDOM_UUID,
+                              false,
+                              false);
+    waitUntilTrue(() -> (executor.state().state() == ExecutorState.State.LEADER_MOVEMENT_TASK_IN_PROGRESS && !executor.inExecutionTasks().isEmpty()),
+                  "Leader movement task did not start within the time limit",
+                  EXECUTION_DEADLINE_MS, EXECUTION_SHORT_CHECK_MS);
+    // Check that the state's startMs has not changed
+    assertEquals(firstStartMs, executor.state().startMs());
+    // Also check that startMs is consistent when no state transitions occur
+    time.sleep(10_000L);
+    assertEquals(firstStartMs, executor.state().startMs());
+
+    executor.userTriggeredStopExecution(false);
+    waitUntilTrue(() -> (!executor.hasOngoingExecution() && executor.state().state() == ExecutorState.State.NO_TASK_IN_PROGRESS),
+                  "Proposal execution did not finish within the time limit",
+                  EXECUTION_DEADLINE_MS, EXECUTION_REGULAR_CHECK_MS);
+    EasyMock.verify(mockMetadataClient, mockLoadMonitor, mockAnomalyDetectorManager, mockUserTaskInfo, mockUserTaskManager);
   }
 
   /**
