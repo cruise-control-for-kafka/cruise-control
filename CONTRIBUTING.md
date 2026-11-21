@@ -46,6 +46,20 @@ git commit -s -m "Your commit message"
 This adds a `Signed-off-by` line to your commit message with your name and email address.
 Make sure the name and email match your Git configuration (`user.name` and `user.email`).
 
+Use of Generative AI Tools
+==========================
+
+You may use AI tools to prepare a contribution. You must still follow the
+contribution agreement, the DCO, and the Linux Foundation
+[guidance on generative AI tools](https://www.linuxfoundation.org/legal/generative-ai).
+AI output must not reproduce third-party code.
+
+Check the generative AI disclosure box in the
+[pull request template](./.github/pull_request_template.md) when AI tools
+prepared any part of the change.
+
+Coding agents should also follow [AGENTS.md](./AGENTS.md).
+
 Responsible Disclosure of Security Vulnerabilities
 ==================================================
 
